@@ -206,10 +206,12 @@ ncurses would decode for the bytes actually received.
 
 ## Open items
 
-- **Live re-verification (the last step)**: run the fixed battery against
-  the bash app and, for the mouse part, the C reference (`cmouse` under
-  strace) — both with `TERM=xterm-256color` — and diff the EV streams:
-  click 4, slow press/release 2/1, double 8, triple 16, middle click 128,
-  wheel up 65536, double-diff-pos 8 at the second position; plus the key
-  battery (UP 259, DOWN 258, LEFT 260, RIGHT 261, HOME 262, END 360,
-  F1 265, F10 274, F12 276, PPAGE/NPAGE raw, bare CSI `\E[A` raw).
+- ~~Live re-verification (the last step)~~ — **done**: the C reference
+  (`cmouse` under strace) diff was recorded above ("C ground truth"), and
+  the fixed battery now runs headlessly against the bash app in a tmux
+  pane (`TERM=xterm-256color`) via `tests/integration.sh`, asserting the
+  whole EV stream — click 4, slow press/release 2/1, double 8, triple 16,
+  middle click 128, wheel up 65536, double-diff-pos 8 at the second
+  position — plus the key battery (UP 259, DOWN 258, LEFT 260, RIGHT 261,
+  HOME 262, END 360, F1 265, F10 274, F12 276, PPAGE/NPAGE raw, bare CSI
+  `\E[A` raw). 24/24 green.
