@@ -1,0 +1,12 @@
+# secrets — never commit
+opencode.json
+
+# test/build artifacts
+tmp/
+
+# read-only reference corpus (vendored shallow clones; see references/README.md)
+references/
+
+# stray files
+typescript
+~
