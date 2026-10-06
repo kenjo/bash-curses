@@ -147,7 +147,7 @@ type_color() { # p idx -> pair (assumes not the current/highlighted row)
     l) echo 4 ;;
     c|b|p|s) echo 5 ;;
     *)
-      if (( XX[$i] )); then echo 3; else echo 1; fi
+      if (( XX[$i] )); then echo 3; else echo 11; fi
       ;;
   esac
 }
@@ -175,6 +175,7 @@ draw_panel() {
   local active=0; (( p == CUR )) && active=1
   local bp; (( active )) && bp=7 || bp=8
 
+  wbkgd "$win" ' ' 0 7
   werase "$win"
   wattrset "$win" $(( active ? 1 : 0 )) "$bp"
   box "$win"
@@ -189,6 +190,8 @@ draw_panel() {
   top+="$dstr. >"
   top=${top:0:$(( w - 2 ))}
   mvwaddstr "$win" 0 1 "$top"
+  wattrset "$win" 0 13
+  mvwaddstr "$win" 0 4 "${dp:0:$(( w - 8 ))}"
 
   # header row
   local NAMEW
@@ -202,25 +205,55 @@ draw_panel() {
   hname=$(printf '%-*s' "$NAMEW" "  $ind  Name")
   hsize=$(printf '%*s' "$SIZEW" "Size")
   htime=$(printf '%-*s' "$TIMEW" "Modify time")
-  wattrset "$win" 1 "$bp"
-  mvwaddstr "$win" 1 0 "│${hname}│${hsize}│${htime}│"
+  # column titles in bright yellow (pair 12); the │ dividers keep the border color
+  wattrset "$win" 0 "$bp"
+  mvwaddch "$win" 1 0 "│"
+  wattrset "$win" 1 12
+  mvwaddstr "$win" 1 1 "$hname"
+  wattrset "$win" 0 "$bp"
+  mvwaddch "$win" 1 $(( 1 + NAMEW )) "│"
+  wattrset "$win" 1 12
+  mvwaddstr "$win" 1 $(( 2 + NAMEW )) "$hsize"
+  wattrset "$win" 0 "$bp"
+  mvwaddch "$win" 1 $(( 2 + NAMEW + SIZEW )) "│"
+  wattrset "$win" 1 12
+  mvwaddstr "$win" 1 $(( 3 + NAMEW + SIZEW )) "$htime"
+  wattrset "$win" 0 "$bp"
+  mvwaddch "$win" 1 $(( 3 + NAMEW + SIZEW + TIMEW )) "│"
 
-  # entry rows
-  local y idx cpair nstr rest
+  # entry rows: │ dividers keep the border color, entry text uses its type color;
+  # the selected row is a full cyan strip (name in black, dividers/size/time in white).
+  local y idx cpair row
   for (( y = 0; y < rows; y++ )); do
     idx=$(( off + y ))
     (( idx >= cnt )) && break
+    row=$(( y + 2 ))
     if (( idx == pos )); then
-      cpair=6
+      wmove "$win" "$row" 0
+      wchgat "$win" "$w" 0 14
+      wattrset "$win" 0 6
+      mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+      wattrset "$win" 0 14
+      mvwaddch "$win" "$row" "$SD" "│"
+      mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+      mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
+      mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+      mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
     else
       cpair=$(type_color "$p" "$idx")
+      wattrset "$win" 0 "$cpair"
+      mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+      wattrset "$win" 0 7
+      mvwaddch "$win" "$row" "$SD" "│"
+      wattrset "$win" 0 "$cpair"
+      mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+      wattrset "$win" 0 7
+      mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
+      wattrset "$win" 0 "$cpair"
+      mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+      wattrset "$win" 0 7
+      mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
     fi
-    nstr=$(printf '%-*s' "$NAMEW" "${NN[$idx]}")
-    wattrset "$win" $(( cpair == 6 ? 1 : 0 )) "$cpair"
-    mvwaddstr "$win" "$(( y + 2 ))" 1 "$nstr"
-    rest="│$(printf '%*s' "$SIZEW" "${SS[$idx]}")│$(printf '%-*s' "$TIMEW" "${TM[$idx]}")│"
-    wattrset "$win" 0 "$cpair"
-    mvwaddstr "$win" "$(( y + 2 ))" "$SD" "$rest"
   done
 
   # separator, status, bottom
@@ -237,7 +270,7 @@ draw_panel() {
     local et=${NN[$pos]:0:1}
     if [[ ${NN[$pos]} == /.* ]]; then status="dir"; else status="file ${SS[$pos]} bytes"; fi
   fi
-  wattrset "$win" 0 1
+  wattrset "$win" 0 7
   mvwprintw "$win" "$(( h - 2 ))" 1 '%s' "${status:0:$(( w - 2 ))}"
 
   local total_kb avail_kb fstr="no info"
@@ -252,7 +285,7 @@ draw_panel() {
   (( rd < 0 )) && rd=0
   printf -v ld '─%.0s' $(seq 1 "$left")
   printf -v rdstr '─%.0s' $(seq 1 "$rd")
-  wattrset "$win" $(( active ? 1 : 0 )) "$bp"
+  wattrset "$win" 0 7
   mvwaddstr "$win" "$(( h - 1 ))" 1 "$ld $fstr $rdstr"
 }
 
@@ -330,16 +363,35 @@ draw_entry_row() { # p idx hl
   getmaxyx "$win"; h=$BC_GMY; w=$BC_GMX
   row=$(( idx - off + 2 ))
   (( row < 2 )) && return
-  local NAMEW SD cpair nstr rest
+  local NAMEW SD cpair
   NAMEW=$(name_width "$w")
   SD=$(( 1 + NAMEW + 1 ))
-  (( hl )) && cpair=6 || cpair=$(type_color "$p" "$idx")
-  nstr=$(printf '%-*s' "$NAMEW" "${NN[$idx]}")
-  wattrset "$win" $(( cpair == 6 ? 1 : 0 )) "$cpair"
-  mvwaddstr "$win" "$row" 1 "$nstr"
-  rest="│$(printf '%*s' "$SIZEW" "${SS[$idx]}")│$(printf '%-*s' "$TIMEW" "${TM[$idx]}")│"
-  wattrset "$win" 0 "$cpair"
-  mvwaddstr "$win" "$row" "$SD" "$rest"
+  if (( hl )); then
+    wmove "$win" "$row" 0
+    wchgat "$win" "$w" 0 14
+    wattrset "$win" 0 6
+    mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+    wattrset "$win" 0 14
+    mvwaddch "$win" "$row" "$SD" "│"
+    mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+    mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
+    mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+    mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
+  else
+    cpair=$(type_color "$p" "$idx")
+    wattrset "$win" 0 "$cpair"
+    mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+    wattrset "$win" 0 7
+    mvwaddch "$win" "$row" "$SD" "│"
+    wattrset "$win" 0 "$cpair"
+    mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+    wattrset "$win" 0 7
+    mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
+    wattrset "$win" 0 "$cpair"
+    mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+    wattrset "$win" 0 7
+    mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
+  fi
 }
 
 # Cheap in-place update after a selection move that did not scroll the window:
@@ -366,7 +418,7 @@ update_selection() { # p oldpos
   else
     status="file ${SS[$newpos]} bytes"
   fi
-  wattrset "$win" 0 1
+  wattrset "$win" 0 7
   printf -v statusline '%-*s' "$(( w - 2 ))" "$status"
   mvwaddstr "$win" "$(( h - 2 ))" 1 "$statusline"
   wrefresh "$win"
@@ -766,16 +818,22 @@ main() {
   keypad 0 1
   start_color
   trap 'endwin' EXIT INT TERM
-  init_pair 1 "$COLOR_WHITE" "$COLOR_BLACK"
-  init_pair 2 "$COLOR_BLUE" "$COLOR_BLACK"
-  init_pair 3 "$COLOR_GREEN" "$COLOR_BLACK"
-  init_pair 4 "$COLOR_MAGENTA" "$COLOR_BLACK"
-  init_pair 5 "$COLOR_RED" "$COLOR_BLACK"
-  init_pair 6 "$COLOR_WHITE" "$COLOR_BLUE"
-  init_pair 7 "$COLOR_YELLOW" "$COLOR_BLACK"
-  init_pair 8 "$COLOR_WHITE" "$COLOR_BLACK"
-  init_pair 9 "$COLOR_BLACK" "$COLOR_YELLOW"
-  init_pair 10 "$COLOR_BLACK" "$COLOR_CYAN"
+  # Pairs 1,9,10 are the menu bar / dropdown (left unchanged).  The rest are the
+  # main-window palette, matching real Midnight Commander's colors.
+  init_pair 1 "$COLOR_WHITE"   "$COLOR_BLACK"   # menu bar, hint/cmdline/buttons
+  init_pair 2 15 "$COLOR_BLUE"               # directories (bright white)
+  init_pair 3 15 "$COLOR_BLUE"               # executables
+  init_pair 4 15 "$COLOR_BLUE"               # symlinks
+  init_pair 5 15 "$COLOR_BLUE"               # special files
+  init_pair 6 "$COLOR_BLACK"   "$COLOR_CYAN"  # selected entry: name
+  init_pair 7 "$COLOR_WHITE"   "$COLOR_BLUE"  # active border, dividers, status+size text
+  init_pair 8 "$COLOR_WHITE"   "$COLOR_BLUE"  # inactive border
+  init_pair 9 "$COLOR_BLACK"   "$COLOR_YELLOW" # active menu item / selected menu entry
+  init_pair 10 "$COLOR_BLACK"  "$COLOR_CYAN"  # dropdown bg/text
+  init_pair 11 "$COLOR_YELLOW" "$COLOR_BLUE"  # regular files
+  init_pair 12 11 "$COLOR_BLUE"               # column headers (bright yellow)
+  init_pair 13 "$COLOR_BLACK"  "$COLOR_WHITE"  # directory path in top border
+  init_pair 14 "$COLOR_WHITE"  "$COLOR_CYAN"   # selected entry: dividers/size/time
 
   init_ui || { endwin; exit 1; }
 
