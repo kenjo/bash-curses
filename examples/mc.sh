@@ -37,12 +37,17 @@ MO=(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
 
 # menus and their items
 MENUNAMES=(File Search Command Disk Options Help)
-MENU_File=("View" "Edit" "Delete" "Rename / Move" "Copy" "Mkdir" "Chmod" "Chown")
+MENU_File=(
+  "File listing" "Quick view C-x q" "Info C-x i" "Tree" "Listing format..."
+  "Sort order..." "Filter..." "Encoding... M-e" "FTP link..." "Shell link..."
+  "SFTP link..." "Panelize" "Rescan C-r"
+)
 MENU_Search=("Find file" "Exchange panels")
 MENU_Command=("Directory menu" "Command line")
 MENU_Disk=("Exchange panels")
 MENU_Options=("Sort by name" "Sort by size" "Sort by date" "Reverse sort")
 MENU_Help=("About mc" "F-key help" "Quit")
+MENU_ACTIVE=-1   # which top-level menu has its dropdown open (-1 = none)
 
 # ------------------------------------------------------------------ helpers
 hum() { # kb -> human
@@ -264,11 +269,18 @@ draw_menu() {
     mvwaddstr 0 0 "${pos[$i]}" "${names[$i]}"
   done
   mvwaddstr 0 0 "$(( COLS - 6 ))" "Right"
-  local ax aname
-  if (( CUR == 0 )); then ax=2; aname=Left; else ax=$(( COLS - 6 )); aname=Right; fi
-  wattrset 0 1 9
-  mvwaddstr 0 0 "$ax" "$aname"
-  wattrset 0 0 1
+  local ax aname ai
+  if (( MENU_ACTIVE >= 0 )); then
+    ai=$(( MENU_ACTIVE + 1 ))            # names[0]=Left, so menu i sits at index i+1
+    wattrset 0 0 9
+    mvwaddstr 0 0 "${pos[$ai]}" "${names[$ai]}"
+    wattrset 0 0 1
+  else
+    if (( CUR == 0 )); then ax=2; aname=Left; else ax=$(( COLS - 6 )); aname=Right; fi
+    wattrset 0 1 9
+    mvwaddstr 0 0 "$ax" "$aname"
+    wattrset 0 0 1
+  fi
 }
 
 draw_bottom() {
@@ -490,11 +502,9 @@ menu_bar() { # drop-down menu, anchored under the active top-level item
   load_menu_items "$MENU_SEL"; n=$MN
   while :; do
     if (( built != MENU_SEL )); then
-      if [[ $dw_win ]]; then
-        delwin "$dw_win"
-        draw_all; doupdate   # restore panels beneath the previous dropdown
-        dw_win=0
-      fi
+      (( dw_win > 0 )) && delwin "$dw_win"
+      MENU_ACTIVE=$MENU_SEL
+      draw_all; doupdate   # active-item highlight + restore panels beneath any previous dropdown
       local x=${menux[$MENU_SEL]}
       local maxlen=0 m
       for m in "${MITEMS[@]}"; do (( ${#m} > maxlen )) && maxlen=${#m}; done
@@ -522,11 +532,12 @@ menu_bar() { # drop-down menu, anchored under the active top-level item
       $KEY_RIGHT) MENU_SEL=$(( (MENU_SEL + 1) % 6 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
       $KEY_UP)    sel=$(( (sel - 1 + n) % n )) ;;
       $KEY_DOWN)  sel=$(( (sel + 1) % n )) ;;
-      $'\r')      DLG_RESULT=$sel; [[ $dw_win ]] && delwin "$dw_win"; return 0 ;;
-      $'\x1b')    [[ $dw_win ]] && delwin "$dw_win"; return 1 ;;
+      $'\r')      DLG_RESULT=$sel; MENU_ACTIVE=-1; (( dw_win > 0 )) && delwin "$dw_win"; return 0 ;;
+      $'\x1b')    MENU_ACTIVE=-1; (( dw_win > 0 )) && delwin "$dw_win"; return 1 ;;
     esac
   done
-  [[ $dw_win ]] && delwin "$dw_win"
+  MENU_ACTIVE=-1
+  (( dw_win > 0 )) && delwin "$dw_win"
   return 1
 }
 
@@ -664,14 +675,9 @@ run_menu() {
   case $name in
     File)
       case $item in
-        View) do_view ;;
-        Edit) message_dialog "Edit" "No editor configured." ;;
-        Delete) do_delete ;;
-        "Rename / Move") do_move ;;
-        Copy) do_copy ;;
-        Mkdir) do_mkdir ;;
-        Chmod) message_dialog "Chmod" "Not implemented." ;;
-        Chown) message_dialog "Chown" "Not implemented." ;;
+        "Quick view C-x q") do_view ;;
+        "Sort order...")    do_sort name ;;
+        *)                  message_dialog "File menu" "Not implemented: $item" ;;
       esac
       ;;
     Search)
