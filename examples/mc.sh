@@ -281,7 +281,8 @@ draw_bottom() {
   mvwaddstr 0 "$HINTY" 0 "Hint: Tab switches panel, Enter opens, type to run a command."
   # command line
   mvwaddstr 0 "$CMY" 0 "$clear"
-  local cwd=${DIR[$CUR]} scwd=${cwd/#$HOME/~}
+  local cwd=${DIR[$CUR]}
+  local scwd=${cwd/#$HOME/~}
   local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
   mvwaddstr 0 "$CMY" 0 "$prompt"
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
@@ -366,7 +367,8 @@ draw_cmdline() {
   clear=${clear:1}
   wattrset 0 0 1
   mvwaddstr 0 "$CMY" 0 "$clear"
-  local cwd=${DIR[$CUR]} scwd=${cwd/#$HOME/~}
+  local cwd=${DIR[$CUR]}
+  local scwd=${cwd/#$HOME/~}
   local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
   mvwaddstr 0 "$CMY" 0 "$prompt"
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
