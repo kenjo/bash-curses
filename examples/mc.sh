@@ -18,7 +18,7 @@ source "${BASH_SOURCE[0]%/*}/../lib/bc.sh"
 # ---- per-panel state (suffix 0=left, 1=right) ----
 NAMES_0=(); TYPES_0=(); SIZES_0=(); TIMES_0=(); REALS_0=(); EXEC_0=()
 NAMES_1=(); TYPES_1=(); SIZES_1=(); TIMES_1=(); REALS_1=(); EXEC_1=()
-DIR=("$HOME" "$HOME")
+DIR=("$PWD" "$PWD")
 POS_0=0; POS_1=0; OFF_0=0; OFF_1=0
 SORT=(name name)
 REV=(0 0)
