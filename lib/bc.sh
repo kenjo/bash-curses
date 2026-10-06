@@ -36,6 +36,30 @@ readonly ACS_DIAMOND='◆'
 readonly ACS_CHECK='☐'
 readonly ACS_STARS='☰'
 readonly ACS_ATEER='█'
+# ncurses long-name aliases (ACS_*); glyphs follow the library's Unicode
+# convention and match the short names above where they overlap.
+readonly ACS_ULCORNER='┌'
+readonly ACS_LLCORNER='└'
+readonly ACS_URCORNER='┐'
+readonly ACS_LRCORNER='┘'
+readonly ACS_S3='│'
+readonly ACS_S7='─'
+readonly ACS_CKBOARD='▒'
+readonly ACS_DEGREE='°'
+readonly ACS_PLMINUS='±'
+readonly ACS_BULLET='•'
+readonly ACS_LARROW='←'
+readonly ACS_RARROW='→'
+readonly ACS_DARROW='↓'
+readonly ACS_UARROW='↑'
+readonly ACS_BOARD='▒'
+readonly ACS_LANTERN='▓'
+readonly ACS_BLOCK='█'
+readonly ACS_LEQUAL='≤'
+readonly ACS_GEQUAL='≥'
+readonly ACS_PI='π'
+readonly ACS_NEQUAL='≠'
+readonly ACS_STERLING='£'
 
 # -------------------------------------------------------------- key values
 # Values mirror /usr/include/ncurses.h (octal there).
@@ -316,6 +340,7 @@ _bc_init_window() { # w y x h
   BC_WCURA[$w]=0
   BC_WCURP[$w]=0
   BC_WDELAY[$w]=0
+  BC_WKEYPAD[$w]=0
   BC_WLIST+=("$w")
 }
 
@@ -512,22 +537,65 @@ _bc_put() { # w y x ch a p
   BC_WAY[$w]=$ny
 }
 
-# emit a string starting at (y,x), advancing the cursor like waddstr
+# emit a string starting at (y,x), advancing the cursor like waddstr.
+# Control characters follow ncurses addch semantics: '\n' clears to end of
+# line then moves to column 0 of the next line (no move on the bottom line),
+# '\r' returns to column 0, '\b' steps back one column (not past 0).
 _bc_emit() { # w y x text a p
   local w=$1 y=$2 x=$3 text=$4 a=$5 p=$6
   local i=0 h=${BC_WH[$w]} ww=${BC_WW[$w]} ch
   while (( i < ${#text} )); do
     ch=${text:i:1}
-    _bc_put "$w" "$y" "$x" "$ch" "$a" "$p"
-    x=$(( x + 1 ))
-    if (( x >= ww )); then
-      x=0
-      y=$(( y + 1 ))
-    fi
+    case $ch in
+      $'\n')
+        _bc_clrtoeol_cell "$w" "$y" "$x"
+        if (( y < h - 1 )); then
+          y=$(( y + 1 ))
+          x=0
+        fi
+        ;;
+      $'\r')
+        x=0
+        ;;
+      $'\b')
+        (( x > 0 )) && x=$(( x - 1 ))
+        ;;
+      *)
+        _bc_put "$w" "$y" "$x" "$ch" "$a" "$p"
+        x=$(( x + 1 ))
+        if (( x >= ww )); then
+          x=0
+          y=$(( y + 1 ))
+        fi
+        ;;
+    esac
     i=$(( i + 1 ))
   done
+  (( y >= h )) && y=$(( h - 1 ))
+  (( x >= ww )) && x=$(( ww - 1 ))
   BC_WAX[$w]=$x
   BC_WAY[$w]=$y
+}
+
+# clear a window line from relative (y,x) to the end of the line
+_bc_clrtoeol_cell() { # w y x
+  local w=$1 y=$2 x=$3
+  local ww=${BC_WW[$w]}
+  (( y >= ${BC_WH[$w]} || x >= ww )) && return 0
+  _bc_render "$w" ' ' 0 0
+  local k
+  for (( x = x; x < ww; x++ )); do
+    k="$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
+    _bc_cell "$w" "$(( BC_WY[$w] + y ))" "$(( BC_WX[$w] + x ))" "$BC_RCH" "$BC_RA" "$BC_RP"
+  done
+}
+
+# set one absolute cell to the window background rendition
+_bc_clear_cell() { # w ay ax
+  local w=$1 ay=$2 ax=$3
+  (( ay < 0 || ax < 0 || ay >= ${BC_WH[$w]} || ax >= ${BC_WW[$w]} )) && return 0
+  _bc_render "$w" ' ' 0 0
+  _bc_cell "$w" "$ay" "$ax" "$BC_RCH" "$BC_RA" "$BC_RP"
 }
 
 # fill a window with its background rendition, marking every cell dirty
@@ -568,6 +636,7 @@ initscr() {
   fi
   if [[ -z ${BC_WY[0]:-} ]]; then
     _bc_init_window 0 0 0 "$BC_LINES" "$BC_COLS"
+    BC_WKEYPAD[0]=1
   fi
   BC_CURR=0
   return 0
@@ -585,6 +654,44 @@ endwin() {
     stty "$BC_OLDSTTY" 2>/dev/null
   fi
   BC_STARTED=0
+  return 0
+}
+
+# save the current terminal mode (ncurses def_prog_mode)
+def_prog_mode() {
+  BC_PROG_STTY=$(stty -g 2>/dev/null) || BC_PROG_STTY=""
+  return 0
+}
+
+# restore the mode saved by def_prog_mode and re-enter curses, forcing a
+# full redraw on the next refresh (ncurses reset_prog_mode)
+reset_prog_mode() {
+  if [[ -n ${BC_PROG_STTY:-} ]]; then
+    stty "$BC_PROG_STTY" 2>/dev/null
+  fi
+  if (( ! BC_STARTED )); then
+    printf '\e[?1049h\e[2J\e[?25l'
+    BC_STARTED=1
+  fi
+  BC_S=(); BC_SA=(); BC_SP=()
+  _bc_mark_all "$BC_STDSCR"
+  return 0
+}
+
+# mark every cell of a window dirty so the next refresh redraws it all
+_bc_mark_all() { # w
+  local w=$1 y x k mk wd=""
+  for (( y = 0; y < ${BC_WH[$w]}; y++ )); do
+    for (( x = 0; x < ${BC_WW[$w]}; x++ )); do
+      k="$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
+      mk="$w/$k"
+      if [[ -z ${BC_MK[$mk]:-} ]]; then
+        BC_MK[$mk]=1
+        wd+=",$k"
+      fi
+    done
+  done
+  BC_WD[$w]+="$wd"
   return 0
 }
 
@@ -964,6 +1071,15 @@ cbreak() { stty -icanon 2>/dev/null; return 0; }
 noecho() { stty -echo 2>/dev/null; return 0; }
 raw() { stty raw -echo 2>/dev/null; return 0; }
 noraw() { if [[ -n $BC_OLDSTTY ]]; then stty "$BC_OLDSTTY" 2>/dev/null; fi; return 0; }
+keypad() { # win bf
+  local w=${1:-$BC_CURR}
+  if (( ${2:-1} )); then
+    BC_WKEYPAD[$w]=1
+  else
+    BC_WKEYPAD[$w]=0
+  fi
+  return 0
+}
 
 # --------------------------------------------------------------- colors
 start_color() {
@@ -1076,10 +1192,27 @@ getbegyx() { # win
   return 0
 }
 
+# window-relative cursor position (ncurses getyx)
+getyx() { # win -> BC_GCY BC_GCX
+  local w=${1:-$BC_CURR}
+  BC_GCY=${BC_WAY[$w]}
+  BC_GCX=${BC_WAX[$w]}
+  return 0
+}
+
 # ----------------------------------------------------------- erase / fill
 werase() { _bc_erase_region "${1:-$BC_CURR}"; }
 wclear() { werase "$@"; }
 clear() { werase "$BC_STDSCR"; }
+
+# clear from the window cursor to the end of its line (ncurses clrtoeol)
+wclrtoeol() { # win
+  local w=${1:-$BC_CURR}
+  _bc_clrtoeol_cell "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}"
+  return 0
+}
+
+clrtoeol() { wclrtoeol "$BC_STDSCR"; }
 
 beep() { printf '\a'; return 0; }
 flash() { return 0; }
@@ -1091,7 +1224,7 @@ waddstr() { # win str
   return 0
 }
 
-addstr() { waddstr "$@"; }
+addstr() { waddstr "$BC_CURR" "$@"; }
 
 waddnstr() { # win str n
   local w=${1:-$BC_CURR}
@@ -1099,7 +1232,7 @@ waddnstr() { # win str n
   return 0
 }
 
-addnstr() { waddnstr "$@"; }
+addnstr() { waddnstr "$BC_CURR" "$@"; }
 
 mvwaddstr() { # win y x str
   wmove "$1" "$2" "$3" && waddstr "$1" "$4"
@@ -1113,6 +1246,30 @@ mvwaddnstr() { # win y x str n
 
 mvaddnstr() { mvwaddnstr "$BC_STDSCR" "$@"; }
 
+# printf-style output: format with bash printf, then emit the result
+printw() { # fmt [args...]
+  local out
+  printf -v out "$1" "${@:2}"
+  addstr "$out"
+  return 0
+}
+
+mvprintw() { # y x fmt [args...]
+  move "$1" "$2" || return 1
+  local out
+  printf -v out "$3" "${@:4}"
+  addstr "$out"
+  return 0
+}
+
+mvwprintw() { # win y x fmt [args...]
+  wmove "$1" "$2" "$3" || return 1
+  local out
+  printf -v out "$4" "${@:5}"
+  waddstr "$1" "$out"
+  return 0
+}
+
 waddch() { # win ch [a p]
   local w=${1:-$BC_CURR}
   local a=${3:-${BC_WCURA[$w]}}
@@ -1121,7 +1278,7 @@ waddch() { # win ch [a p]
   return 0
 }
 
-addch() { waddch "$@"; }
+addch() { waddch "$BC_CURR" "$@"; }
 
 mvwaddch() { # win y x ch [a p]
   wmove "$1" "$2" "$3" && waddch "$1" "${4:- }" ${5:+"$5"} ${6:+"$6"}
@@ -1180,6 +1337,25 @@ box() { # win [verch horch]
 
 hline() { wborder "$1" "$ACS_VLINE" "$ACS_VLINE" "$ACS_HLINE" "$ACS_HLINE"; }
 vline() { wborder "$1" "$ACS_VLINE" "$ACS_VLINE" "$ACS_HLINE" "$ACS_HLINE"; }
+
+# draw a horizontal/vertical line of n chars starting at (y,x) on stdscr
+# (ncurses mvhline/mvvline: move to (y,x), then emit n chars)
+mvhline() { # y x ch n
+  wmove "$BC_STDSCR" "$1" "$2" || return 1
+  local i
+  for (( i = 0; i < $4; i++ )); do
+    waddch "$BC_STDSCR" "$3"
+  done
+  return 0
+}
+
+mvvline() { # y x ch n
+  local i
+  for (( i = 0; i < $4; i++ )); do
+    mvwaddch "$BC_STDSCR" "$(( $1 + i ))" "$2" "$3"
+  done
+  return 0
+}
 
 wbkgd() { # win ch a p
   local w=${1:-$BC_CURR}
@@ -1726,6 +1902,43 @@ getkey() { wgetch "$BC_STDSCR"; }
 
 echochar() { wgetch "$BC_STDSCR" && waddch "$BC_STDSCR" "$key"; }
 
+# read a line into the global bc_str, echoing each char to the window like
+# ncurses wgetstr (the terminal is raw/-echo, so we echo into the window)
+wgetstr() { # win
+  local w=${1:-$BC_CURR}
+  local c cy cx
+  bc_str=""
+  while :; do
+    if ! wgetch "$w"; then
+      break
+    fi
+    c=$key
+    case $c in
+      $'\n') break ;;
+      $'\r') break ;;
+      $'\x1b') return 1 ;;
+      $'\x7f' | $'\x08')
+        if (( ${#bc_str} > 0 )); then
+          bc_str=${bc_str:0:-1}
+          cy=${BC_WAY[$w]}; cx=${BC_WAX[$w]}
+          if (( cx > 0 )); then
+            cx=$(( cx - 1 ))
+            _bc_clear_cell "$w" "$cy" "$cx"
+          fi
+          BC_WAX[$w]=$cx
+        fi
+        ;;
+      *)
+        bc_str+=$c
+        waddch "$w" "$c"
+        ;;
+    esac
+  done
+  return 0
+}
+
+getstr() { wgetstr "$BC_STDSCR"; }
+
 # --------------------------------------------------------- attrs / pairs
 wattrset() { # win a p
   local w=${1:-$BC_CURR}
@@ -1754,6 +1967,55 @@ attroff() { wattroff "$BC_STDSCR" "$1"; }
 
 standend() { wattrset "$BC_STDSCR" 0 0; }
 standout() { wattron "$BC_STDSCR" "$(( A_BOLD | A_REVERSE ))"; }
+
+# change attributes of a line of cells (ncurses chgat): from (y,x) for n
+# cells (n<0 -> to end of line), single line, no wrap, cursor unchanged.
+# The character is preserved; attribute bits are replaced, pair is set.
+_bc_chgat_impl() { # w y x n attr pair
+  local w=$1 y=$2 x=$3 n=$4 attr=$5 pair=$6
+  local h=${BC_WH[$w]} ww=${BC_WW[$w]}
+  (( y < 0 || y >= h )) && return 0
+  (( x < 0 )) && x=0
+  local end
+  if (( n == -1 )); then
+    end=$(( ww - 1 ))
+  else
+    end=$(( x + n - 1 ))
+    (( end >= ww )) && end=$(( ww - 1 ))
+  fi
+  (( x > end )) && return 0
+  local ay=$(( BC_WY[$w] + y ))
+  local i k ch mk
+  for (( i = x; i <= end; i++ )); do
+    k="$ay $i"
+    ch=${BC_C[$k]:-${BC_WBG[$w]}}
+    BC_C[$k]=$ch
+    BC_A[$k]=$attr
+    BC_P[$k]=$pair
+    mk="$w/$k"
+    if [[ -z ${BC_MK[$mk]:-} ]]; then
+      BC_MK[$mk]=1
+      BC_WD[$w]+=",$k"
+    fi
+  done
+}
+
+wchgat() { # win n attr pair [s]
+  local w=${1:-$BC_CURR}
+  _bc_chgat_impl "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "$2" "$3" "${4:-0}"
+  return 0
+}
+
+chgat() { # n attr pair [s]
+  wchgat "$BC_STDSCR" "$@"
+  return 0
+}
+
+mvchgat() { # y x n attr pair [s]
+  wmove "$BC_STDSCR" "$1" "$2" || return 1
+  _bc_chgat_impl "$BC_STDSCR" "$1" "$2" "$3" "$4" "${5:-0}"
+  return 0
+}
 
 # ------------------------------------------------------ rendition on stdout
 vidattr() { _bc_sgr "${1:-0}" "${2:-0}"; printf '\e[%sm' "$BC_SGR"; }
