@@ -278,7 +278,7 @@ draw_bottom() {
   # hint
   wattrset 0 0 1
   mvwaddstr 0 "$HINTY" 0 "$clear"
-  mvwaddstr 0 "$HINTY" 0 "Hint: Tab switches panel, Enter opens, type to run a command."
+  mvwaddstr 0 "$HINTY" 0 "Hint: Tab switch panel, Enter open, F2 menu, F10 quit, or type 'quit'+Enter (no F-key)."
   # command line
   mvwaddstr 0 "$CMY" 0 "$clear"
   local cwd=${DIR[$CUR]}
