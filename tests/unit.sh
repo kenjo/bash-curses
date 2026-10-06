@@ -210,29 +210,30 @@ check "ACS STERLING" "£" "$ACS_STERLING"
 # run $1 in a fresh subshell with stdscr (24x80) initialised at the origin
 scr() { ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; BC_WKEYPAD[0]=1
           BC_CURR=0; eval "$1"; ); }
-# read a run of cells from the global BC_C (default space)
-row() { local y=$1 x0=$2 len=$3 out="" x
-        for (( x = x0; x < x0 + len; x++ )); do out+="${BC_C["$y $x"]- }"; done
+# read a run of cells from a window's buffer (default space)
+row() { local w=$1 y=$2 x0=$3 len=$4 out="" x buf
+        buf=${BC_WBUF[$w]}
+        for (( x = x0; x < x0 + len; x++ )); do out+="${BC_C["$buf/$y $x"]- }"; done
         printf '%s' "$out"; }
 
 check "getyx"              "5 7"         "$(scr 'wmove 0 5 7; getyx 0; printf "%s %s" "$BC_GCY" "$BC_GCX"')"
 check "keypad on"          "1"           "$(scr 'keypad 0 1; printf "%s" "${BC_WKEYPAD[0]}"')"
 check "keypad off"         "0"           "$(scr 'keypad 0 0; printf "%s" "${BC_WKEYPAD[0]}"')"
-check "printw fmt"         "Hello World" "$(scr 'printw "Hello %s" World; row 0 0 11')"
-check "mvprintw fmt"       "Value 42"    "$(scr 'mvprintw 2 3 "Value %d" 42; row 2 3 8')"
-check "mvwprintw offset"   "X7"          "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; mvwprintw 5 1 2 "X%d" 7; row 3 5 2 ) )"
-check "mvhline"            "#####"       "$(scr 'mvhline 0 0 "#" 5; row 0 0 5')"
-check "mvvline"            "****"        "$(scr 'mvvline 0 0 "*" 4; for (( y = 0; y < 4; y++ )); do printf "%s" "${BC_C["$y 0"]- }"; done')"
-check "clrtoeol before"    "C"           "$(scr 'addstr "ABCDEFGHIJ"; wmove 0 0 3; clrtoeol; printf "%s" "${BC_C["0 2"]}"')"
-check "clrtoeol at cursor" " "           "$(scr 'addstr "ABCDEFGHIJ"; wmove 0 0 3; clrtoeol; printf "%s" "${BC_C["0 3"]}"')"
-check "clrtoeol after"     " "           "$(scr 'addstr "ABCDEFGHIJ"; wmove 0 0 3; clrtoeol; printf "%s" "${BC_C["0 9"]}"')"
-check "mvchgat char kept"  "B"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_C["0 1"]}"')"
-check "mvchgat attr set"   "8"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_A["0 1"]}"')"
-check "mvchgat pair set"   "5"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_P["0 1"]}"')"
-check "mvchgat pre-range"  "0"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_A["0 0"]:-0}"')"
+check "printw fmt"         "Hello World" "$(scr 'printw "Hello %s" World; row 0 0 0 11')"
+check "mvprintw fmt"       "Value 42"    "$(scr 'mvprintw 2 3 "Value %d" 42; row 0 2 3 8')"
+check "mvwprintw offset"   "X7"          "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; mvwprintw 5 1 2 "X%d" 7; row 5 3 5 2 ) )"
+check "mvhline"            "#####"       "$(scr 'mvhline 0 0 "#" 5; row 0 0 0 5')"
+check "mvvline"            "****"        "$(scr 'mvvline 0 0 "*" 4; for (( y = 0; y < 4; y++ )); do printf "%s" "${BC_C["0/$y 0"]- }"; done')"
+check "clrtoeol before"    "C"           "$(scr 'addstr "ABCDEFGHIJ"; wmove 0 0 3; clrtoeol; printf "%s" "${BC_C["0/0 2"]}"')"
+check "clrtoeol at cursor" " "           "$(scr 'addstr "ABCDEFGHIJ"; wmove 0 0 3; clrtoeol; printf "%s" "${BC_C["0/0 3"]}"')"
+check "clrtoeol after"     " "           "$(scr 'addstr "ABCDEFGHIJ"; wmove 0 0 3; clrtoeol; printf "%s" "${BC_C["0/0 9"]}"')"
+check "mvchgat char kept"  "B"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_C["0/0 1"]}"')"
+check "mvchgat attr set"   "8"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_A["0/0 1"]}"')"
+check "mvchgat pair set"   "5"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_P["0/0 1"]}"')"
+check "mvchgat pre-range"  "0"           "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s" "${BC_A["0/0 0"]:-0}"')"
 check "mvchgat no cursor mv" "0 1"       "$(scr 'addstr "ABCDE"; mvchgat 0 1 -1 8 5; printf "%s %s" "${BC_WAY[0]}" "${BC_WAX[0]}"')"
-check "wchgat from cursor" "8"           "$(scr 'addstr "ABCDE"; wmove 0 0 2; wchgat 0 -1 8 3; printf "%s" "${BC_A["0 2"]}"')"
-check "chgat bounded n"    "8 0"         "$(scr 'addstr "ABCDE"; wmove 0 0 0; chgat 2 8 2; printf "%s %s" "${BC_A["0 1"]}" "${BC_A["0 2"]:-0}"')"
+check "wchgat from cursor" "8"           "$(scr 'addstr "ABCDE"; wmove 0 0 2; wchgat 0 -1 8 3; printf "%s" "${BC_A["0/0 2"]}"')"
+check "chgat bounded n"    "8 0"         "$(scr 'addstr "ABCDE"; wmove 0 0 0; chgat 2 8 2; printf "%s %s" "${BC_A["0/0 1"]}" "${BC_A["0/0 2"]:-0}"')"
 check "_bc_mark_all count" "1920"        "$(scr '_bc_mark_all 0; n=0; for k in "${!BC_MK[@]}"; do [[ $k == "0/"* ]] && n=$((n+1)); done; printf "%s" "$n"')"
 check "def_prog_mode rc"   "0"           "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; def_prog_mode; printf "%s" "$?" ) )"
 check "reset_prog_mode redraw" "1920"    "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; reset_prog_mode >/dev/null 2>&1; n=0; for k in "${!BC_MK[@]}"; do [[ $k == "0/"* ]] && n=$((n+1)); done; printf "%s" "$n" ) )"

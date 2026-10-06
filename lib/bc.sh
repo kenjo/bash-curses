@@ -315,6 +315,14 @@ declare -A BC_PAIRS_A=() # pair -> fg
 declare -A BC_PAIRS_B=() # pair -> bg
 declare -A BC_SGRC=()  # "a/p" -> sgr code
 declare -a BC_WLIST=()
+declare -A BC_WBUF=() # buffer owner per window (w -> owner window id)
+# panel state: BC_PSTACK holds panel ids ordered bottom -> top
+BC_PN=0
+declare -A BC_PWIN=()   # panel id -> window id
+declare -A BC_PHID=()   # panel id -> 1 if hidden
+declare -A BC_PUSR=()   # panel id -> opaque user pointer (string)
+declare -a BC_PSTACK=()
+bc_panel=""
 
 key=""
 wch=""
@@ -341,6 +349,7 @@ _bc_init_window() { # w y x h
   BC_WCURP[$w]=0
   BC_WDELAY[$w]=0
   BC_WKEYPAD[$w]=0
+  BC_WBUF[$w]=$w
   BC_WLIST+=("$w")
 }
 
@@ -487,13 +496,14 @@ _bc_sgr() { # a p
 
 # record one absolute cell as changed for a window
 _bc_cell() { # w ay ax ch a p
-  local k="$2 $3" mk="$1/$2 $3"
+  local buf=${BC_WBUF[$1]}
+  local k="$buf/$2 $3" mk="$1/$2 $3"
   BC_C[$k]=$4
   BC_A[$k]=$5
   BC_P[$k]=$6
   if [[ -z ${BC_MK[$mk]:-} ]]; then
     BC_MK[$mk]=1
-    BC_WD[$1]+=",$k"
+    BC_WD[$1]+=",$2 $3"
   fi
 }
 
@@ -1145,6 +1155,7 @@ derwin() { # win nlines ncol begin_y begin_x (absolute, within parent)
   local id=$BC_WN
   BC_WN=$(( BC_WN + 1 ))
   _bc_init_window "$id" "$y" "$x" "$h" "$wd"
+  BC_WBUF[$id]=$w
   bc_win=$id
   return 0
 }
@@ -1154,7 +1165,7 @@ subwin() { derwin "$@"; }
 delwin() {
   local w=$1
   _bc_clear_marks "$w"
-  unset "BC_WD[$w]"
+  unset "BC_WD[$w]" "BC_WBUF[$w]"
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
   unset "BC_WAX[$w]" "BC_WAY[$w]" "BC_WCURA[$w]" "BC_WCURP[$w]" "BC_WDELAY[$w]"
@@ -1307,7 +1318,8 @@ winsn() { # win y x n str
 
 mvwinch() { # win y x -> sets wch, wcha, wchp
   local w=$1
-  local k="$(( BC_WY[$w] + $2 )) $(( BC_WX[$w] + $3 ))"
+  local buf=${BC_WBUF[$w]}
+  local k="$buf/$(( BC_WY[$w] + $2 )) $(( BC_WX[$w] + $3 ))"
   wch=${BC_C[$k]:- }
   wcha=${BC_A[$k]:-0}
   wchp=${BC_P[$k]:-0}
@@ -1359,6 +1371,16 @@ mvhline() { # y x ch n
   return 0
 }
 
+mvwhline() { # win y x ch n
+  local w=${1:-$BC_CURR}
+  wmove "$w" "$2" "$3" || return 1
+  local i
+  for (( i = 0; i < $5; i++ )); do
+    waddch "$w" "$4"
+  done
+  return 0
+}
+
 mvvline() { # y x ch n
   local i
   for (( i = 0; i < $4; i++ )); do
@@ -1385,10 +1407,11 @@ wbkgd() { # win ch a p
   BC_WBGA[$w]=$newa
   BC_WBGP[$w]=$newp
   # re-apply the background to every existing cell
+  local buf=${BC_WBUF[$w]}
   local y x k ch a p
   for (( y = 0; y < BC_WH[$w]; y++ )); do
     for (( x = 0; x < BC_WW[$w]; x++ )); do
-      k="$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
+      k="$buf/$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
       ch=${BC_C[$k]:- }
       a=${BC_A[$k]:-0}
       p=${BC_P[$k]:-0}
@@ -1690,6 +1713,7 @@ slk_attr_on() { # attr opts
 # --------------------------------------------------------------- refresh
 wrefresh() { # win
   local w=${1:-$BC_CURR}
+  local buf=${BC_WBUF[$w]}
   local -a keys=()
   local k y x ch a p out="" lasty=-1 lastx=-1
   if [[ -n ${BC_WD[$w]:-} ]]; then
@@ -1703,9 +1727,9 @@ wrefresh() { # win
   for k in "${keys[@]}"; do
     y=${k%% *}
     x=${k##* }
-    ch=${BC_C[$k]:- }
-    a=${BC_A[$k]:-0}
-    p=${BC_P[$k]:-0}
+    ch=${BC_C["$buf/$k"]:- }
+    a=${BC_A["$buf/$k"]:-0}
+    p=${BC_P["$buf/$k"]:-0}
     if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$p" ]]; then
       continue
     fi
@@ -1731,7 +1755,164 @@ wrefresh() { # win
 refresh() { wrefresh "$BC_STDSCR"; }
 
 wnoutrefresh() { wrefresh "$@"; }
-doupdate() { return 0; }
+
+# flush every cell in a window's rect from its buffer (panel compositing)
+_bc_flush_full() { # w
+  local w=$1
+  local buf=${BC_WBUF[$w]}
+  local y0=${BC_WY[$w]} x0=${BC_WX[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]}
+  local bg=${BC_WBG[$w]}
+  local y x ay ax k ch a p out="" lasty=-1 lastx=-1
+  for (( y = 0; y < h; y++ )); do
+    ay=$(( y0 + y ))
+    for (( x = 0; x < ww; x++ )); do
+      ax=$(( x0 + x ))
+      k="$ay $ax"
+      ch=${BC_C["$buf/$k"]:-$bg}
+      a=${BC_A["$buf/$k"]:-0}
+      p=${BC_P["$buf/$k"]:-0}
+      if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$p" ]]; then
+        lasty=-1
+        continue
+      fi
+      _bc_sgr "$a" "$p"
+      if (( lasty != ay || lastx != ax - 1 )); then
+        out+="${BC_ESC}[$(( ay + 1 ));$(( ax + 1 ))H"
+      fi
+      out+="${BC_ESC}[0m${BC_ESC}[${BC_SGR}m"
+      out+=$ch
+      BC_S[$k]=$ch
+      BC_SA[$k]=$a
+      BC_SP[$k]=$p
+      lasty=$ay
+      lastx=$ax
+    done
+  done
+  [[ -n $out ]] && printf '%s' "$out"
+  return 0
+}
+
+doupdate() {
+  _bc_flush_full "$BC_STDSCR"
+  local p
+  for p in "${BC_PSTACK[@]}"; do
+    [[ ${BC_PHID[$p]} == 1 ]] && continue
+    _bc_flush_full "${BC_PWIN[$p]}"
+  done
+  return 0
+}
+
+# --------------------------------------------------------------- panels
+# Panels attach independent windows to a bottom -> top stack. doupdate()
+# composites stdscr then the visible panels in stack order, so the topmost
+# visible panel wins in overlapping regions. User pointers are opaque
+# strings the caller interprets.
+new_panel() { # win
+  local p=$BC_PN
+  BC_PN=$(( BC_PN + 1 ))
+  BC_PWIN[$p]=$1
+  BC_PHID[$p]=0
+  BC_PUSR[$p]=""
+  BC_PSTACK+=("$p")
+  bc_panel=$p
+  return 0
+}
+
+del_panel() { # p
+  local p=$1 z
+  local -a ns=()
+  for z in "${BC_PSTACK[@]}"; do
+    [[ $z != "$p" ]] && ns+=("$z")
+  done
+  BC_PSTACK=("${ns[@]}")
+  unset "BC_PWIN[$p]" "BC_PHID[$p]" "BC_PUSR[$p]"
+  return 0
+}
+
+panel_window() { # p -> bc_panel_win
+  bc_panel_win=${BC_PWIN[$1]}
+  return 0
+}
+
+set_panel_userptr() { # p ptr
+  BC_PUSR[$1]=$2
+  return 0
+}
+
+panel_userptr() { # p -> bc_panel_user
+  bc_panel_user=${BC_PUSR[$1]}
+  return 0
+}
+
+top_panel() { # p
+  local p=$1 z
+  local -a ns=()
+  for z in "${BC_PSTACK[@]}"; do
+    [[ $z != "$p" ]] && ns+=("$z")
+  done
+  ns+=("$p")
+  BC_PSTACK=("${ns[@]}")
+  return 0
+}
+
+bottom_panel() { # p
+  local p=$1 z
+  local -a ns=("$p")
+  for z in "${BC_PSTACK[@]}"; do
+    [[ $z != "$p" ]] && ns+=("$z")
+  done
+  BC_PSTACK=("${ns[@]}")
+  return 0
+}
+
+hide_panel() { # p
+  BC_PHID[$1]=1
+  return 0
+}
+
+show_panel() { # p
+  BC_PHID[$1]=0
+  return 0
+}
+
+move_panel() { # p ny nx
+  local p=$1 w=${BC_PWIN[$1]}
+  local ny=$2 nx=$3
+  local oy=${BC_WY[$w]} ox=${BC_WX[$w]}
+  (( ny == oy && nx == ox )) && return 0
+  local buf=${BC_WBUF[$w]}
+  local h=${BC_WH[$w]} ww=${BC_WW[$w]}
+  local y x k oyk kk
+  declare -A sc=() sa=() sp=()
+  for (( y = 0; y < h; y++ )); do
+    for (( x = 0; x < ww; x++ )); do
+      oyk="$(( oy + y )) $(( ox + x ))"
+      if [[ -n ${BC_C["$buf/$oyk"]:-} ]]; then
+        k="$(( ny + y )) $(( nx + x ))"
+        sc[$k]=${BC_C["$buf/$oyk"]}
+        sa[$k]=${BC_A["$buf/$oyk"]}
+        sp[$k]=${BC_P["$buf/$oyk"]}
+        # drop the old-position cell so the window leaves no ghost behind
+        unset "BC_C[$buf/$oyk]" "BC_A[$buf/$oyk]" "BC_P[$buf/$oyk]"
+      fi
+    done
+  done
+  _bc_clear_marks "$w"
+  unset "BC_WD[$w]"
+  BC_WY[$w]=$ny
+  BC_WX[$w]=$nx
+  for kk in "${!sc[@]}"; do
+    _bc_cell "$w" "${kk%% *}" "${kk##* }" "${sc[$kk]}" "${sa[$kk]}" "${sp[$kk]}"
+  done
+  return 0
+}
+
+replace_panel() { # p win
+  BC_PWIN[$1]=$2
+  return 0
+}
+
+update_panels() { return 0; }
 
 # ---------------------------------------------------- screen save / restore
 # Dump format: one line per row, cells separated by US (\x1f), each cell is
@@ -1832,7 +2013,7 @@ ungetch() { # $1 ch to push back
 
 wgetch() { # win -> sets global key; 0 if read, 1 if ERR
   local w=${1:-$BC_CURR}
-  local c s="" t
+  local c s="" t rc
   wrefresh "$w"
   while :; do
     if [[ -n $BC_PENDING_IN ]]; then
@@ -1841,12 +2022,18 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
       return 0
     fi
     if (( BC_WDELAY[$w] )); then
-      IFS= read -rsn1 -t 0.001 c || return 1
+      IFS= read -rsn1 -t 0.001 c; rc=$?
     else
-      IFS= read -rsn1 c || return 1
+      IFS= read -rsn1 c; rc=$?
+    fi
+    if (( rc )); then
+      return 1
     fi
     if [[ -z $c ]]; then
-      return 1
+      # bash's read treats CR/LF as line terminators and strips them, so a
+      # successful empty read means a CR/LF byte arrived -> report ENTER.
+      key=$'\r'
+      return 0
     fi
     if [[ $c == $'\x1b' ]]; then
       # Accumulate the full escape sequence, then match it against the
@@ -1996,13 +2183,15 @@ _bc_chgat_impl() { # w y x n attr pair
   fi
   (( x > end )) && return 0
   local ay=$(( BC_WY[$w] + y ))
-  local i k ch mk
+  local buf=${BC_WBUF[$w]}
+  local i k bk ch mk
   for (( i = x; i <= end; i++ )); do
     k="$ay $i"
-    ch=${BC_C[$k]:-${BC_WBG[$w]}}
-    BC_C[$k]=$ch
-    BC_A[$k]=$attr
-    BC_P[$k]=$pair
+    bk="$buf/$k"
+    ch=${BC_C[$bk]:-${BC_WBG[$w]}}
+    BC_C[$bk]=$ch
+    BC_A[$bk]=$attr
+    BC_P[$bk]=$pair
     mk="$w/$k"
     if [[ -z ${BC_MK[$mk]:-} ]]; then
       BC_MK[$mk]=1
