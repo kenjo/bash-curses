@@ -188,7 +188,8 @@ draw_panel() {
   # header row
   local NAMEW
   NAMEW=$(name_width "$w")
-  local SD=$(( 1 + NAMEW + 1 )) TD=$(( SD + SIZEW + 1 ))
+  local SD=$(( 1 + NAMEW + 1 ))
+  local TD=$(( SD + SIZEW + 1 ))
   local ind
   case ${SORT[$p]} in size) ind=s ;; date) ind=d ;; *) ind=n ;; esac
   (( REV[$p] )) && ind="^$ind"
@@ -303,6 +304,60 @@ draw_all() {
   draw_panel 0
   draw_panel 1
   draw_bottom
+}
+
+# redraw one list row of panel p (list index idx) in place; hl highlights it.
+# Mirrors the per-row body of draw_panel so a single row can be patched without
+# re-rendering the whole panel.
+draw_entry_row() { # p idx hl
+  local p=$1 idx=$2 hl=$3
+  local -n NN=NAMES_$p SS=SIZES_$p TM=TIMES_$p
+  local win=${WIN[$p]} off=${OFF[$p]}
+  local w h row
+  getmaxyx "$win"; h=$BC_GMY; w=$BC_GMX
+  row=$(( idx - off + 2 ))
+  (( row < 2 )) && return
+  local NAMEW SD cpair nstr rest
+  NAMEW=$(name_width "$w")
+  SD=$(( 1 + NAMEW + 1 ))
+  (( hl )) && cpair=6 || cpair=$(type_color "$p" "$idx")
+  nstr=$(printf '%-*s' "$NAMEW" "${NN[$idx]}")
+  wattrset "$win" $(( cpair == 6 ? 1 : 0 )) "$cpair"
+  mvwaddstr "$win" "$row" 1 "$nstr"
+  rest="│$(printf '%*s' "$SIZEW" "${SS[$idx]}")│$(printf '%-*s' "$TIMEW" "${TM[$idx]}")│"
+  wattrset "$win" 0 "$cpair"
+  mvwaddstr "$win" "$row" "$SD" "$rest"
+}
+
+# Cheap in-place update after a selection move that did not scroll the window:
+# patch the old and new selection rows plus the panel status row, then wrefresh
+# only that panel. Returns 0 on success, 1 when a full redraw is required.
+update_selection() { # p oldpos
+  local p=$1 oldpos=$2
+  local win=${WIN[$p]}
+  local off=${OFF[$p]}
+  local w h rows newpos
+  getmaxyx "$win"; h=$BC_GMY; w=$BC_GMX
+  rows=$(( h - 5 ))
+  newpos=${POS[$p]}
+  (( oldpos < off || oldpos >= off + rows )) && return 1
+  (( newpos < off || newpos >= off + rows )) && return 1
+  (( oldpos != newpos )) && draw_entry_row "$p" "$oldpos" 0
+  draw_entry_row "$p" "$newpos" 1
+  local -n NN=NAMES_$p SS=SIZES_$p
+  local status statusline
+  if (( newpos == 0 )); then
+    status="UP--DIR"
+  elif [[ ${NN[$newpos]} == /.* ]]; then
+    status="dir"
+  else
+    status="file ${SS[$newpos]} bytes"
+  fi
+  wattrset "$win" 0 1
+  printf -v statusline '%-*s' "$(( w - 2 ))" "$status"
+  mvwaddstr "$win" "$(( h - 2 ))" 1 "$statusline"
+  wrefresh "$win"
+  return 0
 }
 
 draw_cmdline() {
@@ -701,14 +756,16 @@ main() {
   draw_all
   doupdate
 
-  local k
+  local k cheap
   while :; do
     local -n _CN=NAMES_$CUR
+    local prev_pos=${POS[$CUR]}
+    cheap=0
     getch || break
     k=$key
     case $k in
-      $KEY_UP)     POS[$CUR]=$(( POS[$CUR] > 0 ? POS[$CUR]-1 : 0 )) ;;
-      $KEY_DOWN)   POS[$CUR]=$(( POS[$CUR] < ${#_CN[@]}-1 ? POS[$CUR]+1 : POS[$CUR] )) ;;
+      $KEY_UP)     (( POS[$CUR] > 0 )) && { POS[$CUR]=$(( POS[$CUR]-1 )); cheap=1; } ;;
+      $KEY_DOWN)   (( POS[$CUR] < ${#_CN[@]}-1 )) && { POS[$CUR]=$(( POS[$CUR]+1 )); cheap=1; } ;;
       $KEY_LEFT)   CUR=$(( 1 - CUR )) ;;
       $KEY_RIGHT)  CUR=$(( 1 - CUR )) ;;
       $'\t')       CUR=$(( 1 - CUR )) ;;
@@ -744,8 +801,12 @@ main() {
         fi
         ;;
     esac
-    draw_all
-    doupdate
+    if (( cheap )); then
+      update_selection "$CUR" "$prev_pos" || { draw_all; doupdate; }
+    else
+      draw_all
+      doupdate
+    fi
     (( STOP )) && break
   done
   endwin
