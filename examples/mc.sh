@@ -11,7 +11,7 @@
 #   Enter       open dir / view file  r                  : refresh
 #   F1 help     F2 menu               F3 view            F4 edit
 #   F5 copy     F6 rename/move        F7 mkdir           F8 delete
-#   F9 view     F10 quit              printable chars    : command line
+#   F9 cmd line F10 quit              printable chars    : command line
 #   Esc         focus command line
 source "${BASH_SOURCE[0]%/*}/../lib/bc.sh"
 
@@ -288,7 +288,7 @@ draw_bottom() {
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
   # button bar
   mvwaddstr 0 "$BTNY" 0 "$clear"
-  local -a bl=(Help Menu View Edit Copy RenMov Mkdir Delete PullDn Quit)
+  local -a bl=(Help Menu View Edit Copy RenMov Mkdir Delete Command Quit)
   local x=1 num
   for num in "${!bl[@]}"; do
     local n=$(( num + 1 ))
@@ -628,7 +628,7 @@ fkey_help() {
   message_dialog "F-keys" \
     "F1 Help   F2 Menu   F3 View   F4 Edit" \
     "F5 Copy   F6 RenMov F7 Mkdir  F8 Delete" \
-    "F9 View   F10 Quit" \
+    "F9 Command  F10 Quit" \
     "Arrows move, Tab/Left/Right switch panel" \
     "Enter open, r refresh, type to run command"
 }
@@ -670,7 +670,7 @@ run_menu() {
     Command)
       case $item in
         "Directory menu") message_dialog "Command" "Directory menu not implemented." ;;
-        "Command line") : ;;
+        "Command line") focus_cmdline ;;
       esac
       ;;
     Disk)
@@ -694,6 +694,10 @@ run_menu() {
       esac
       ;;
   esac
+}
+
+focus_cmdline() { # F9: focus the command line (fresh line to type a command)
+  CMD_LINE=""
 }
 
 execute_cmd() {
@@ -785,7 +789,7 @@ main() {
       $KEY_F6)    do_move ;;
       $KEY_F7)    do_mkdir ;;
       $KEY_F8)    do_delete ;;
-      $KEY_F9)    do_view ;;
+      $KEY_F9)    focus_cmdline ;;
       $KEY_F10)   STOP=1 ;;
       $'\x1b')    [[ -n $CMD_LINE ]] && CMD_LINE="" ;;
       $'\x7f' | $'\x08')
