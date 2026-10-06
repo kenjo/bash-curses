@@ -483,25 +483,38 @@ load_menu_items() { # mi
 
 # interactive menu bar: Left/Right switch top-level menu, Up/Down move the
 # item, Enter selects (MENU_SEL = menu, DLG_RESULT = item), Esc cancels.
-menu_bar() {
+menu_bar() { # drop-down menu, anchored under the active top-level item
   MENU_SEL=${1:-0}
   local sel=0 n dw_win=0 built=-1
+  local -a menux=(12 22 32 42 52 62)
   load_menu_items "$MENU_SEL"; n=$MN
   while :; do
     if (( built != MENU_SEL )); then
-      [[ $dw_win ]] && delwin "$dw_win"
-      local w=$(( n + 5 )); (( w < 24 )) && w=24; (( w > COLS - 8 )) && w=$(( COLS - 8 ))
-      local h=$(( n + 4 )); (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-      dialog_box "$w" "$h" "${MENUNAMES[$MENU_SEL]}"
-      dw_win=$dw; built=$MENU_SEL
+      if [[ $dw_win ]]; then
+        delwin "$dw_win"
+        draw_all; doupdate   # restore panels beneath the previous dropdown
+        dw_win=0
+      fi
+      local x=${menux[$MENU_SEL]}
+      local maxlen=0 m
+      for m in "${MITEMS[@]}"; do (( ${#m} > maxlen )) && maxlen=${#m}; done
+      local w=$(( maxlen + 4 )); (( w < 14 )) && w=14; (( w > COLS - x - 1 )) && w=$(( COLS - x - 1 ))
+      local h=$(( n + 2 )); (( h > LINES - 2 )) && h=$(( LINES - 2 ))
+      newwin "$h" "$w" 1 "$x"
+      dw_win=$bc_win
+      werase "$dw_win"
+      wbkgd "$dw_win" 0 0 10
+      wattrset "$dw_win" 0 10
+      box "$dw_win"
+      built=$MENU_SEL
     fi
-    local i mark
+    local i bg
     for (( i = 0; i < n; i++ )); do
-      mark="  "; (( i == sel )) && mark="->"
-      wattrset "$dw_win" $(( i == sel ? 1 : 0 )) $(( i == sel ? 9 : 1 ))
-      mvwaddstr "$dw_win" "$(( i + 2 ))" 2 "${mark} ${MITEMS[$i]}"
+      bg=$(( i == sel ? 9 : 10 ))
+      wattrset "$dw_win" $(( i == sel ? 1 : 0 )) "$bg"
+      mvwhline "$dw_win" "$(( i + 1 ))" 1 ' ' $(( w - 2 ))
+      mvwaddstr "$dw_win" "$(( i + 1 ))" 2 "  ${MITEMS[$i]}"
     done
-    wattrset "$dw_win" 0 1
     wrefresh "$dw_win"
     wgetch "$dw_win" || break
     case $key in
@@ -756,6 +769,7 @@ main() {
   init_pair 7 "$COLOR_YELLOW" "$COLOR_BLACK"
   init_pair 8 "$COLOR_WHITE" "$COLOR_BLACK"
   init_pair 9 "$COLOR_BLACK" "$COLOR_YELLOW"
+  init_pair 10 "$COLOR_BLACK" "$COLOR_CYAN"
 
   init_ui || { endwin; exit 1; }
 
