@@ -361,6 +361,7 @@ _bc_term() {
   stty raw -echo 2>/dev/null
   printf '\e[?1049h\e[2J\e[?25l'
   _bc_load_keytable
+  [[ -n $BC_SMKX ]] && printf '%s' "$BC_SMKX"
   trap '_bc_endwin_trap' EXIT
 }
 
@@ -387,6 +388,8 @@ _bc_ti_decode() { # $1 raw terminfo string -> _BC_TI decoded bytes
 _bc_load_keytable() {
   BC_KEYSEQ=()
   BC_KEYVAL=()
+  BC_SMKX=""
+  BC_RMKX=""
   [[ -n ${TERM:-} ]] || return 0
   local -A valmap=(
     [kcuu1]=$KEY_UP   [kcud1]=$KEY_DOWN [kcul1]=$KEY_LEFT [kcub1]=$KEY_LEFT [kcuf1]=$KEY_RIGHT
@@ -408,6 +411,12 @@ _bc_load_keytable() {
       [[ $ent == *=* ]] || continue
       cap=${ent%%=*}
       val=${ent#*=}
+      if [[ $cap == smkx || $cap == rmkx ]]; then
+        _bc_ti_decode "$val"
+        [[ -n $_BC_TI ]] || continue
+        if [[ $cap == smkx ]]; then BC_SMKX=$_BC_TI; else BC_RMKX=$_BC_TI; fi
+        continue
+      fi
       [[ -n ${valmap[$cap]:-} ]] || continue
       _bc_ti_decode "$val"
       [[ -n $_BC_TI ]] || continue
@@ -649,6 +658,7 @@ endwin() {
   if (( BC_MOUSE_ENABLED )); then
     _bc_mouse_enable 0
   fi
+  [[ -n $BC_RMKX ]] && printf '%s' "$BC_RMKX"
   printf '\e[?25h\e[0m\e[?1049l'
   if [[ -n $BC_OLDSTTY ]]; then
     stty "$BC_OLDSTTY" 2>/dev/null
@@ -1823,6 +1833,7 @@ ungetch() { # $1 ch to push back
 wgetch() { # win -> sets global key; 0 if read, 1 if ERR
   local w=${1:-$BC_CURR}
   local c s="" t
+  wrefresh "$w"
   while :; do
     if [[ -n $BC_PENDING_IN ]]; then
       key=${BC_PENDING_IN:0:1}
