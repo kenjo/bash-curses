@@ -323,17 +323,17 @@ dialog_box() { # w h title -> creates centered window, returns bc_win in $dw
   local w=$1 h=$2 title=$3
   local y=$(( (LINES - h) / 2 )) x=$(( (COLS - w) / 2 ))
   (( y < 1 )) && y=1; (( x < 1 )) && x=1
-  newwin h w "$y" "$x"
+  newwin "$h" "$w" "$y" "$x"
   dw=$bc_win
-  werase dw; box dw
+  werase "$dw"; box "$dw"
   # title bar
   local tlen=${#title} tx
   tx=$(( (w - tlen) / 2 ))
   (( tx < 2 )) && tx=2
-  wattrset dw 1 9
-  mvwhline dw 0 1 "$ACS_HLINE" "$(( w - 2 ))"
-  mvwaddstr dw 0 "$tx" "$title"
-  wattrset dw 0 1
+  wattrset "$dw" 1 9
+  mvwhline "$dw" 0 1 "$ACS_HLINE" "$(( w - 2 ))"
+  mvwaddstr "$dw" 0 "$tx" "$title"
+  wattrset "$dw" 0 1
 }
 
 # generic modal dialogs ---------------------------------------------
@@ -346,18 +346,18 @@ message_dialog() { # title line1 [line2 ...]
   dialog_box "$w" "$h" "$title"
   local i
   for (( i = 0; i < ${#lines[@]}; i++ )); do
-    mvwaddstr dw 2 "$i" 2 "${lines[$i]:0:$(( w - 4 ))}"
+    mvwaddstr "$dw" "$(( i + 2 ))" 2 "${lines[$i]:0:$(( w - 4 ))}"
   done
-  wattrset dw 0 1
-  mvwaddstr dw "$(( h - 2 ))" $(( (w - 18) / 2 )) "[ OK ]   [ Cancel ]"
-  wrefresh dw
+  wattrset "$dw" 0 1
+  mvwaddstr "$dw" "$(( h - 2 ))" $(( (w - 18) / 2 )) "[ OK ]   [ Cancel ]"
+  wrefresh "$dw"
   while :; do
-    wgetch dw || break
+    wgetch "$dw" || break
     case $key in
       $'\r'|$'q'|$'Q'|$'\x1b') break ;;
     esac
   done
-  delwin dw
+  delwin "$dw"
 }
 
 input_dialog() { # title prompt default -> DLG_RESULT; 0 ok / 1 cancel
@@ -368,22 +368,22 @@ input_dialog() { # title prompt default -> DLG_RESULT; 0 ok / 1 cancel
   (( w < 40 )) && w=40; (( w > COLS - 8 )) && w=$(( COLS - 8 ))
   local h=9
   dialog_box "$w" "$h" "$title"
-  mvwaddstr dw 2 2 "${prompt:0:$(( w - 4 ))}"
+  mvwaddstr "$dw" 2 2 "${prompt:0:$(( w - 4 ))}"
   local row=4
-  wrefresh dw
+  wrefresh "$dw"
   local redraw=1
   while :; do
     if (( redraw )); then
-      wmove dw "$row" 2
-      wclrtoeol dw
-      waddstr dw "$buf"
-      wrefresh dw
+      wmove "$dw" "$row" 2
+      wclrtoeol "$dw"
+      waddstr "$dw" "$buf"
+      wrefresh "$dw"
       redraw=0
     fi
-    wgetch dw || break
+    wgetch "$dw" || break
     case $key in
-      $'\r') DLG_RESULT="$buf"; delwin dw; return 0 ;;
-      $'\x1b') delwin dw; return 1 ;;
+      $'\r') DLG_RESULT="$buf"; delwin "$dw"; return 0 ;;
+      $'\x1b') delwin "$dw"; return 1 ;;
       $'\x7f'|$'\x08') buf=${buf:0:-1}; redraw=1 ;;
       *)
         if [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then
@@ -392,7 +392,7 @@ input_dialog() { # title prompt default -> DLG_RESULT; 0 ok / 1 cancel
         ;;
     esac
   done
-  delwin dw
+  delwin "$dw"
   return 1
 }
 
@@ -401,51 +401,62 @@ confirm_dialog() { # title prompt -> DLG_RESULT y/n; 0 yes / 1 no
   local w=46 h=8
   (( w > COLS - 8 )) && w=$(( COLS - 8 ))
   dialog_box "$w" "$h" "$title"
-  mvwaddstr dw 2 2 "${prompt:0:$(( w - 4 ))}"
-  mvwaddstr dw 4 2 "Are you sure? [y]es or [n]o:"
-  wrefresh dw
+  mvwaddstr "$dw" 2 2 "${prompt:0:$(( w - 4 ))}"
+  mvwaddstr "$dw" 4 2 "Are you sure? [y]es or [n]o:"
+  wrefresh "$dw"
   while :; do
-    wgetch dw || break
+    wgetch "$dw" || break
     case $key in
-      y|Y) DLG_RESULT=y; delwin dw; return 0 ;;
-      n|N|$'\x1b'|$'\r') DLG_RESULT=n; delwin dw; return 1 ;;
+      y|Y) DLG_RESULT=y; delwin "$dw"; return 0 ;;
+      n|N|$'\x1b'|$'\r') DLG_RESULT=n; delwin "$dw"; return 1 ;;
     esac
   done
-  delwin dw
+  delwin "$dw"
   return 1
 }
 
-menu_dialog() { # menuindex -> DLG_RESULT = selected item index (0..n) or -1
-  local mi=$1
-  local -n items
-  local name=${MENUNAMES[$mi]}
-  local arr="MENU_${name/ /_}"
-  local -n items=$arr 2>/dev/null || items=()
-  local n=${#items[@]}
-  local sel=0
-  local w=28 h=$(( n + 5 ))
-  (( w < 24 )) && w=24; (( w > COLS - 8 )) && w=$(( COLS - 8 ))
-  (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-  dialog_box "$w" "$h" "$name"
+# populate MITEMS[] / MN from the mi-th top-level menu
+load_menu_items() { # mi
+  local name=${MENUNAMES[$1]} arr
+  arr="MENU_${name/ /_}"
+  local -n ref=$arr
+  MITEMS=("${ref[@]}")
+  MN=${#MITEMS[@]}
+}
+
+# interactive menu bar: Left/Right switch top-level menu, Up/Down move the
+# item, Enter selects (MENU_SEL = menu, DLG_RESULT = item), Esc cancels.
+menu_bar() {
+  MENU_SEL=${1:-0}
+  local sel=0 n dw_win=0 built=-1
+  load_menu_items "$MENU_SEL"; n=$MN
   while :; do
+    if (( built != MENU_SEL )); then
+      [[ $dw_win ]] && delwin "$dw_win"
+      local w=$(( n + 5 )); (( w < 24 )) && w=24; (( w > COLS - 8 )) && w=$(( COLS - 8 ))
+      local h=$(( n + 4 )); (( h > LINES - 4 )) && h=$(( LINES - 4 ))
+      dialog_box "$w" "$h" "${MENUNAMES[$MENU_SEL]}"
+      dw_win=$dw; built=$MENU_SEL
+    fi
     local i mark
     for (( i = 0; i < n; i++ )); do
-      mark="  "
-      (( i == sel )) && mark="->"
-      wattrset dw $(( i == sel ? 1 : 0 )) $(( i == sel ? 9 : 1 ))
-      mvwaddstr dw "$(( i + 2 ))" 2 "${mark} ${items[$i]}"
+      mark="  "; (( i == sel )) && mark="->"
+      wattrset "$dw_win" $(( i == sel ? 1 : 0 )) $(( i == sel ? 9 : 1 ))
+      mvwaddstr "$dw_win" "$(( i + 2 ))" 2 "${mark} ${MITEMS[$i]}"
     done
-    wattrset dw 0 1
-    wrefresh dw
-    wgetch dw || break
+    wattrset "$dw_win" 0 1
+    wrefresh "$dw_win"
+    wgetch "$dw_win" || break
     case $key in
-      $KEY_UP) sel=$(( (sel - 1 + n) % n )) ;;
-      $KEY_DOWN) sel=$(( (sel + 1) % n )) ;;
-      $'\r') DLG_RESULT=$sel; delwin dw; return 0 ;;
-      $'\x1b') DLG_RESULT=-1; delwin dw; return 1 ;;
+      $KEY_LEFT)  MENU_SEL=$(( (MENU_SEL + 5) % 6 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
+      $KEY_RIGHT) MENU_SEL=$(( (MENU_SEL + 1) % 6 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
+      $KEY_UP)    sel=$(( (sel - 1 + n) % n )) ;;
+      $KEY_DOWN)  sel=$(( (sel + 1) % n )) ;;
+      $'\r')      DLG_RESULT=$sel; [[ $dw_win ]] && delwin "$dw_win"; return 0 ;;
+      $'\x1b')    [[ $dw_win ]] && delwin "$dw_win"; return 1 ;;
     esac
   done
-  delwin dw
+  [[ $dw_win ]] && delwin "$dw_win"
   return 1
 }
 
@@ -572,11 +583,10 @@ about_mc() {
     "Dual panels, command line, F-key actions."
 }
 
-run_menu() { # menuindex
-  local mi=$1
-  menu_dialog "$mi" || return
-  local sel=$DLG_RESULT
-  local -n items
+run_menu() {
+  MENU_SEL=0
+  menu_bar || return
+  local sel=$DLG_RESULT mi=$MENU_SEL
   local name=${MENUNAMES[$mi]}
   local arr="MENU_${name/ /_}"
   local -n items=$arr 2>/dev/null || items=()
@@ -702,14 +712,14 @@ main() {
       $KEY_LEFT)   CUR=$(( 1 - CUR )) ;;
       $KEY_RIGHT)  CUR=$(( 1 - CUR )) ;;
       $'\t')       CUR=$(( 1 - CUR )) ;;
-      $'\r')       do_open ;;
+      $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
       $KEY_HOME)   POS[$CUR]=0 ;;
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )) ;;
       $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - 20 )) ;;
       $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + 20 )) ;;
       $KEY_F1)    fkey_help ;;
-      $KEY_F2)    run_menu 0 ;;
+      $KEY_F2)    run_menu ;;
       $KEY_F3)    do_view ;;
       $KEY_F4)    message_dialog "Edit" "No editor configured." ;;
       $KEY_F5)    do_copy ;;
@@ -718,7 +728,13 @@ main() {
       $KEY_F8)    do_delete ;;
       $KEY_F9)    do_view ;;
       $KEY_F10)   STOP=1 ;;
-      $'\x1b')    : ;;
+      $'\x1b')    [[ -n $CMD_LINE ]] && CMD_LINE="" ;;
+      $'\x7f' | $'\x08')
+        CMD_LINE=${CMD_LINE:0:-1}
+        draw_cmdline
+        doupdate
+        continue
+        ;;
       *)
         if [[ ${#k} == 1 && ${k:0:1} == [[:print:]] ]]; then
           CMD_LINE+=$k
