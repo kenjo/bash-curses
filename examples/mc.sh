@@ -468,32 +468,29 @@ menu_dd_close() {
   MENU_WIN=0; MENU_PANEL=0
 }
 
-draw_bottom() {
-  local clear
+redraw_hint() { # bottom hint line, context-dependent like real MC
+  local clear hint
   printf -v clear ' %.0s' $(seq 1 "$COLS")
   clear=${clear:1}
-  # hint: default colors
+  if [[ -n $CMD_LINE ]]; then
+    hint="To change directory halfway through typing a command, use M-c."
+  else
+    hint="Tab changes your current panel."
+  fi
   wattrset 0 0 0
   mvwaddstr 0 "$HINTY" 0 "$clear"
-  mvwaddstr 0 "$HINTY" 0 "Hint: Tab switch panel, Enter open, F2 menu, F10 quit, or type 'quit'+Enter (no F-key)."
-  # command line: default colors, ~ abbreviated path
-  wattrset 0 0 0
-  mvwaddstr 0 "$CMY" 0 "$clear"
-  local cwd=${DIR[$CUR]}
-  local scwd=$cwd
-  if [[ $cwd == "$HOME" ]]; then scwd="~"
-  elif [[ $cwd == "$HOME"/* ]]; then scwd="~${cwd#"$HOME"}"
-  fi
-  local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
-  mvwaddstr 0 "$CMY" 0 "$prompt"
-  mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
-  # button bar: bright-white numbers on black, black labels on cyan
+  mvwaddstr 0 "$HINTY" 0 "Hint: $hint"
+}
+
+draw_buttonbar() { # 10 button labels (empty allowed); number always, label if set
+  local -a bl=("$@")
+  local clear x=0 num last=$(( ${#bl[@]} - 1 )) n
+  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  clear=${clear:1}
+  # bright-white numbers on black, black labels on cyan
   wattrset 0 0 0
   mvwaddstr 0 "$BTNY" 0 "$clear"
-  local -a bl=(Help Menu View Edit Copy RenMov Mkdir Delete PullDn Quit)
-  local x=0 num last=$(( ${#bl[@]} - 1 ))
   for num in "${!bl[@]}"; do
-    local n
     printf -v n '%2d' "$(( num + 1 ))"
     wattrset 0 0 15
     mvwaddstr 0 "$BTNY" "$x" "$n"
@@ -505,6 +502,29 @@ draw_bottom() {
     fi
     x=$(( x + 10 ))
   done
+}
+
+draw_bottom() {
+  local clear
+  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  clear=${clear:1}
+  # hint: default colors (context-dependent)
+  redraw_hint
+  # command line: default colors, ~ abbreviated path
+  wattrset 0 0 0
+  mvwaddstr 0 "$CMY" 0 "$clear"
+  local cwd=${DIR[$CUR]}
+  local scwd=$cwd
+  if [[ $cwd == "$HOME" ]]; then scwd="~"
+  elif [[ $cwd == "$HOME"/* ]]; then scwd="~${cwd#"$HOME"}"
+  fi
+  local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
+  mvwaddstr 0 "$CMY" 0 "$prompt"
+  mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
+  # MC draws a fixed [^] cursor marker at the far right of the command line
+  wattrset 0 0 7
+  mvwaddstr 0 "$CMY" "$(( COLS - 3 ))" "[^]"
+  draw_buttonbar Help Menu View Edit Copy RenMov Mkdir Delete PullDn Quit
 }
 
 draw_all() {
@@ -655,6 +675,7 @@ drain_panel_nav() {
 }
 
 draw_cmdline() {
+  redraw_hint
   local clear
   printf -v clear ' %.0s' $(seq 1 "$COLS")
   clear=${clear:1}
@@ -668,6 +689,8 @@ draw_cmdline() {
   local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
   mvwaddstr 0 "$CMY" 0 "$prompt"
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
+  wattrset 0 0 7
+  mvwaddstr 0 "$CMY" "$(( COLS - 3 ))" "[^]"
   move "$CMY" "$(( ${#prompt} + ${#CMD_LINE} ))"
 }
 
@@ -1047,12 +1070,135 @@ do_reverse() {
 }
 
 fkey_help() {
-  message_dialog "F-keys" \
-    "F1 Help   F2 Menu   F3 View   F4 Edit" \
-    "F5 Copy   F6 RenMov F7 Mkdir  F8 Delete" \
-    "F9 PullDn  F10 Quit" \
-    "Arrows move, Tab/Left/Right switch panel" \
-    "Enter open, r refresh, type to run command"
+  # MC "Help" dialog: the MC logo + version + intro text, centered over the panels.
+  # (MC's interactive help browser opened by Enter is out of scope for this port.)
+  local -a c=(
+" ┌─┬─┐     ┐           ┐                                                        "
+" │ │ │ .   │     .     │                                                        "
+" │ │ │ ┐ ┌─┤ ┬─┐ ┐ ┌─┬ ├─┐ ┼                                                    "
+" │ │ │ │ │ │ │ │ │ │ │ │ │ │                                                    "
+" ┴   ┴ ┴ └─┴ ┴ ┴ ┴ └─┤ ┴ ┴ └┘                                                   "
+"     ──────Commander─┘ 4.8.33                                                   "
+"                                                                                "
+"This is the main help screen for GNU Midnight Commander.                        "
+"                                                                                "
+"To learn more on how to use the interactive help facility just press Enter.     "
+"You may want to go directly to the help contents.                               "
+"                                                                                "
+"GNU Midnight Commander is written by its authors.                               "
+"                                                                                "
+"GNU Midnight Commander comes with ABSOLUTELY NO WARRANTY. This is free          "
+"software, and you are welcome to redistribute it under terms of GNU General     "
+"Public License.                                                                 "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+  )
+  local h=$(( ${#c[@]} + 2 )) w=82 x y hw i
+  x=$(( (COLS - w) / 2 )); y=$(( 1 + (PH - h) / 2 ))
+  (( x < 1 )) && x=1; (( y < 1 )) && y=1
+  (( w > COLS - 2 )) && w=$(( COLS - 2 ))
+  (( h > 1 + PH )) && h=$(( 1 + PH ))
+  # button bar switches to the Help context while the dialog is up
+  draw_buttonbar Help Index Prev "" "" "" "" "" "" Quit
+  wrefresh 0
+  newwin "$h" "$w" "$y" "$x"; hw=$bc_win
+  # MC draws the whole Help dialog on a white background: black border/text,
+  # blue title and the "Commander" word in the logo.
+  wattrset "$hw" 0 13
+  werase "$hw"; box "$hw"
+  wattrset "$hw" 0 20
+  mvwaddstr "$hw" 0 "$(( (w - 6) / 2 ))" " Help "
+  wattrset "$hw" 0 13
+  for (( i = 0; i < ${#c[@]}; i++ )); do
+    mvwaddstr "$hw" "$(( i + 1 ))" 1 "${c[$i]:0:$(( w - 2 ))}"
+  done
+  # the "Commander" word in the logo is blue (logo bottom row is content index 5)
+  local prefix=${c[5]%%Commander*}
+  wattrset "$hw" 0 20
+  mvwaddstr "$hw" 6 "$(( 1 + ${#prefix} ))" "Commander"
+  # the first "GNU Midnight Commander" (intro line, content index 7) is blue
+  local p7=${c[7]%%GNU Midnight Commander*}
+  mvwaddstr "$hw" 8 "$(( 1 + ${#p7} ))" "GNU Midnight Commander"
+  # Emphasized words in the help body, matching mc's help-text colours:
+  # the "Enter" key is bright-cyan/blue (pair 21); the other highlighted
+  # words are black-on-cyan (pair 6).
+  local _li _pre
+  _hl() { _li=$1 _pre=${c[$1]%%"$2"*}; wattrset "$hw" 0 "$3"; mvwaddstr "$hw" "$((_li + 1))" "$(( 1 + ${#_pre} ))" "$2"; }
+  _hl 9  "Enter"          21
+  _hl 10 "contents"       6
+  _hl 12 "authors"        6
+  _hl 14 "WARRANTY"       6
+  _hl 15 "GNU General "   6
+  _hl 16 "Public License" 6
+  wattrset "$hw" 0 13
+  wrefresh "$hw"
+  wgetch "$hw" || :
+  delwin "$hw"
+}
+
+user_menu() {
+  # MC "User menu" dialog (F2): a centered list of user-defined commands.
+  # Border is bright-white/cyan (pair 16), title bright-cyan/cyan (pair 17),
+  # the cursor item bright-cyan/black (pair 19), other items pair 16.
+  # MC opens the cursor on the 4th item (index 3). Button bar/hint unchanged.
+  local -a items=(
+    "@ Do something on the current file"
+    "0 Edit a bug report and send it to root"
+    "2 Call the info hypertext browser"
+    "3 Compress the current subdirectory (tar.gz)"
+    "4 Compress the current subdirectory (tar.bz2)"
+    "5 Compress the current subdirectory (tar.7z)"
+    "6 Compress the current subdirectory (tar.xz)"
+    "7 Compress the current subdirectory (tar.zst)"
+    "8 Compress the current subdirectory (tar.lzo)"
+    "m View manual page"
+    "n Inspect gzip'ed newsbatch file"
+    "h Strip headers from current newsarticle"
+    "r Copy file to remote host"
+    "y Gzip or gunzip current file"
+    "b Bzip2 or bunzip2 current file"
+    "o Open next a free console"
+  )
+  local n=${#items[@]} w=64 x y hw cur=3 i mk desc line
+  local h=$(( n + 2 ))
+  x=$(( (COLS - w) / 2 )); y=$(( (LINES - 3 - h) / 2 ))
+  (( x < 1 )) && x=1; (( y < 1 )) && y=1
+  (( w > COLS - 2 )) && w=$(( COLS - 2 ))
+  (( h > 1 + PH )) && h=$(( 1 + PH ))
+  newwin "$h" "$w" "$y" "$x"; hw=$bc_win
+  while :; do
+    wattrset "$hw" 0 16
+    werase "$hw"; box "$hw"
+    wattrset "$hw" 0 17
+    mvwaddstr "$hw" 0 "$(( (w - 11) / 2 ))" " User menu "
+    for (( i = 0; i < n; i++ )); do
+      mk=${items[i]%% *}; desc=${items[i]#* }
+      # Leading margin space always in the normal item colour.
+      wattrset "$hw" 0 16
+      mvwaddch "$hw" "$(( i + 1 ))" 1 " "
+      if (( i == cur )); then
+        # Selected item: mnemonic + description, padded to the right border,
+        # in the highlight colour (pair 19).
+        wattrset "$hw" 0 19
+        line="${mk}       ${desc}"
+        while (( ${#line} < w - 4 )); do line+=" "; done
+        mvwaddstr "$hw" "$(( i + 1 ))" 2 "$line"
+      else
+        wattrset "$hw" 0 16
+        mvwaddstr "$hw" "$(( i + 1 ))" 2 "${mk}       ${desc}"
+      fi
+    done
+    wrefresh "$hw"
+    wgetch "$hw" || break
+    case $key in
+      $KEY_UP)      (( cur > 0 )) && cur=$(( cur - 1 )) ;;
+      $KEY_DOWN)    (( cur < n - 1 )) && cur=$(( cur + 1 )) ;;
+      $'\r'|$'\x1b'|"q"|"Q") break ;;
+      *) : ;;
+    esac
+  done
+  delwin "$hw"
 }
 
 about_mc() {
@@ -1130,7 +1276,7 @@ run_menu() {
       case $label in
         "Swap panels")  CUR=$(( 1 - CUR )); draw_all; doupdate ;;
         "Command line") focus_cmdline ;;
-        "User menu")    message_dialog "User menu" "Not implemented." ;;
+        "User menu")    user_menu ;;
         *)              message_dialog "Command" "Not implemented: $label" ;;
       esac ;;
     Options)
@@ -1231,6 +1377,8 @@ main() {
   init_pair 17 11 "$COLOR_CYAN"               # mnemonic letter (unselected)
   init_pair 18 15 "$COLOR_BLACK"              # highlighted item text
   init_pair 19 11 "$COLOR_BLACK"              # highlighted item mnemonic
+  init_pair 20 "$COLOR_BLUE"  "$COLOR_WHITE"  # F1 Help dialog: blue title/"Commander" on white
+  init_pair 21 11 "$COLOR_BLUE"               # F1 Help: "Enter" key word (bright cyan on blue)
 
   init_ui || { endwin; exit 1; }
 
@@ -1259,7 +1407,7 @@ main() {
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
       $KEY_F1)    fkey_help ;;
-      $KEY_F2)    run_menu ;;
+      $KEY_F2)    user_menu ;;
       $KEY_F3)    do_view ;;
       $KEY_F4)    message_dialog "Edit" "No editor configured." ;;
       $KEY_F5)    do_copy ;;
@@ -1268,7 +1416,7 @@ main() {
       $KEY_F8)    do_delete ;;
       $KEY_F9)    run_menu ;;
       $KEY_F10)   STOP=1 ;;
-      $'\x1b')    [[ -n $CMD_LINE ]] && CMD_LINE="" ;;
+      $'\x1b')    if [[ -n $CMD_LINE ]]; then CMD_LINE=""; draw_cmdline; doupdate; fi ;;
       $'\x7f' | $'\x08')
         CMD_LINE=${CMD_LINE:0:-1}
         draw_cmdline

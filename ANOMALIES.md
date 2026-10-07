@@ -1,93 +1,116 @@
-# ANOMALIES — Midnight Commander (reference) vs. this bash clone
+# ANOMALIES
 
-This is the persistent log of visual/behavioural differences between the
-reference `mc` and `examples/mc.sh`, discovered by the discovery harness
-(`tests/visual_diff.sh`, run manually — it is slow and not part of
-`tests/run.sh`). Each entry: what MC does, what the clone does, and status.
+Divergences between real `mc` (4.8.33) and the bash clone (`examples/mc.sh`),
+found by `tests/visual_diff.sh`: both apps are driven in tmux with an identical
+key sequence over a controlled tree (`tmp/vd/tree`), and each step is compared
+per-cell (character + fg + bg + attributes) via `tests/lib/screen.sh`.
 
-Reproduce:
-    bash tests/visual_diff.sh                 # full run -> tmp/vd/REPORT.txt
-    bash tests/visual_diff.sh menu_f9 menu_f9_down   # a subset
+Capture artefacts: `tmp/vd/{mc,clone}/NN_<label>.{plain,sgr}`; full report
+`tmp/vd/REPORT.txt`. Steps: initial, F9 menu bar (menu_f9*), F2 (menu_f2*),
+panel_tab, nav_down2, open_alpha, viewer_txt, f1_help.
 
-## Fixed
+> **Reading caveat — 16-colour vs 256-colour SGR.** `mc` emits 16-colour ANSI
+> codes (`\e[30m`, `\e[9x`); the clone emits 256-colour codes (`\e[38;5;N`).
+> For N=0..15 the two render to the *same* colour, so the per-cell diff counts
+> are inflated by pure SGR-encoding differences that are visually identical
+> (directories, command line, panel header, most listing cells). Findings below
+> are only those where the rendered colour/content actually differs, or where
+> the behaviour differs. The encoding gap itself is tracked as LOW #8.
 
-### F9/F2 auto-opened the wrong dropdown
-- **MC:** F9 highlights the first menu-bar item ("Left") and opens no
-  dropdown; Down (or Enter) opens the dropdown for the highlighted item.
-- **Clone (was):** F9 and F2 both immediately opened the *File* dropdown.
-- **Status:** FIXED — F9/F2 now highlight "Left" with no dropdown; Down/Enter
-  opens the dropdown for the highlighted item.
+---
 
-### Menu dropdown position, transparency and colors
-- **MC:** dropdown is drawn directly under its menu-bar item (Left at col 0,
-  File at col 11, ...), fully opaque, bright-white-on-cyan (SGR 97/46) border
-  and text, with the mnemonic letter in bright yellow (SGR 93).
-- **Clone (was):** dropdown always at col 11, overlapping the panel,
-  semi-transparent (panel text showed through), wrong colors.
-- **Status:** FIXED — positioned under the bar item, opaque, cyan/white/yellow.
+## Resolved
 
-### Menu groups, separators, shortcuts, mnemonics
-- **MC:** each dropdown groups related items with `├────┤` separators,
-  right-aligns the keyboard shortcut, and colors the mnemonic letter yellow.
-  All five menus (Left, File, Command, Options, Right) are present.
-- **Clone (was):** no separators, shortcuts glued to the label, no mnemonic
-  coloring, and only 3 of the 5 bar items were functional.
-- **Status:** FIXED — separators, right-aligned shortcuts, yellow mnemonics,
-  all five menus present and navigable.
+Items closed since the original discovery pass. Each was verified per-cell
+(`tests/lib/screen.sh`) against a real-`mc` capture to **0 differing cells**, or
+by direct text inspection.
 
-### Menu bar not always shown; Esc did not close the dropdown
-- **MC:** the menu bar (Left File Command Options Right) is always visible
-  on row 0; the highlight only appears once the menu is active (F9). Esc
-  closes the active dropdown.
-- **Clone (was):** `draw_menu` returned early unless the menu was open, so
-  the bar was invisible until F9; and a lone Esc sometimes failed to close
-  the dropdown because the test sent the literal string "Esc" (three chars)
-  instead of the 0x1b byte.
-- **Status:** FIXED — bar is always drawn (all cyan), highlight only when
-  active, and Esc (0x1b) closes the dropdown. Regressed by `tests/mc_menu.sh`.
+### R1. F2 (User menu) — was H1
+F2 now opens the centred **"User menu"** dialog (`examples/mc.sh` `user_menu`),
+geometry x=18 y=4 w=64 h=18, items and title matching `mc`. Cursor-item
+highlighting matches: leading margin space (window-col 1) stays pair 16, the
+mnemonic + description padded to `w-4` (window-cols 2..79) is pair 19, and the
+trailing margin cell (window-col 62) stays pair 16. Verified **0 differing
+cells** (span y4-21 x18-81). Down/Up move the highlight correctly.
 
-### Modify-time column format
-- **MC:** `MON  DD  YYYY` for files older than ~6 months, `MON  DD HH:MM`
-  for recent files (e.g. `jan  2  2020` vs `okt  7 20:31`).
-- **Clone (was):** always `MON  DD HH:MM` (showed the time, never the year).
-- **Status:** FIXED — age-based, matches MC (year for old, time for recent).
+### R2. F1 (Help) — was H2
+F1 now opens the large centred **"Help"** main screen (`examples/mc.sh`
+`fkey_help`): ASCII MC logo, "Commander 4.8.33", help text, keybar `2Index`.
+Geometry x=9 y=3 w=82 h=22. Emphasised words match `mc`'s colours: the "Enter"
+key is bright-cyan/blue (pair 21); "contents", "authors", "WARRANTY",
+"GNU General " (incl. its trailing end-of-line space), and "Public License" are
+black-on-cyan (pair 6); the logo "Commander" and first "GNU Midnight Commander"
+are blue (pair 20). Verified **0 differing cells** (span y3-24 x9-90).
 
-### Executable name marker
-- **MC:** executable regular files are prefixed `*` in the Name column
-  (e.g. `*c.sh`); plain files have a leading space.
-- **Clone (was):** always a leading space (no `*` for executables).
-- **Status:** FIXED — executables now show `*name`.
+### R3. `[^]` command-line cursor marker — was M4
+The subshell/command-line row now renders `[^]` at the far right, matching `mc`.
 
-## Open (known differences, not yet matched)
+### R4. Context-sensitive hint line — was L3
+The bottom hint line now rotates context-sensitive hints (`redraw_hint`),
+e.g. "Hint: Tab changes your current panel.", matching `mc`'s style instead of
+one static line.
 
-### F2 = User menu
-- **MC:** F2 opens a separate "User menu" dialog (a configurable custom
-  menu), distinct from the F9 menu bar.
-- **Clone:** F2 opens the menu bar (same as F9).
-- **Status:** OPEN — user-menu dialog not implemented.
+### R5. Exact mnemonic letters in menu dropdowns
+Dropdown hot-key letters now match `mc`'s choices (commit `77f13bb`).
 
-### Context-dependent hint line
-- **MC:** the bottom hint line changes with context (e.g. "Tab changes your
-  current panel", "To change directory halfway through typing a command,
-  use M-c", "Are some of your keys not working? Look at Options/Learn
-  keys?").
-- **Clone:** a single static hint ("Tab switch panel, Enter open, F2 menu,
-  F10 quit, or type 'quit'+Enter (no F-key).").
-- **Status:** OPEN — hint is static.
+---
 
-### Command-line cursor indicator
-- **MC:** the focused command line shows a `[^]` cursor marker at its end.
-- **Clone:** no cursor marker on the command line.
-- **Status:** OPEN — minor cosmetic difference.
+## HIGH — wrong content / behaviour
 
-### F1 help dialog
-- **MC:** F1 shows a large "Help" dialog containing the MC logo and version
-  ("4.8.33").
-- **Clone:** F1 shows a small "F-keys" reference dialog.
-- **Status:** OPEN — different help content.
+### H3. Panel status line shows a type label, not the entry name
+The panel's status row (just above the disk-usage row) should name the selected
+entry.
+- **mc**: `..` → `UP--DIR`; a directory → its **name** (`/beta`); a file → its
+  name.
+- **clone**: `..` → `UP--DIR` (matches); a directory → literal **`dir`**; a
+  file → `file <N> bytes` (does **not** match).
+- Source: `examples/mc.sh:348-353` (`status="dir"` / `"file N bytes"`).
+- Evidence: `tmp/vd/{mc,clone}/10.nav_down2.plain` (cursor on `/beta`).
 
-### Exact mnemonic letter choice
-- **MC:** mnemonic letters are the per-item hotkeys and are not always the
-  first letter (e.g. "FTP link" highlights the P).
-- **Clone:** mnemonics are the first letter of each item.
-- **Status:** OPEN — structurally present, exact letters may differ.
+---
+
+## MEDIUM — visible colour differences
+
+### M1. Menu bar colour
+- **mc**: entire bar is **black on cyan** (`\e[30m` + `\e[46m`), uniform.
+- **clone**: hot-key letters (L/F/C/O/R) in **bright yellow** (`38;5;11`) and
+  the rest in **bright white** (`38;5;15`), on cyan.
+- Raw: `tmp/vd/mc/01.initial.sgr` line 0 vs `tmp/vd/clone/01.initial.sgr` line 0.
+
+### M2. Regular-file colour
+- **mc**: **yellow** (`\e[33m`, index 3).
+- **clone**: **default/white** foreground (no explicit yellow).
+- Raw: grep `a.txt` in `tmp/vd/{mc,clone}/01.initial.sgr`.
+
+### M3. Executable colour
+- **mc**: **bright green** (`\e[92m`, index 10).
+- **clone**: **cyan** (`\e[36m`, index 6).
+- Raw: grep `c.sh` in `tmp/vd/{mc,clone}/01.initial.sgr`.
+
+---
+
+## LOW — systematic / cosmetic / known simplifications
+
+### L1. SGR encoding: 16-colour (mc) vs 256-colour (clone)
+Visually identical for indices 0-15 but changes the emitted bytes, inflates the
+per-cell diff, and reduces terminal fidelity/efficiency. Affects directories,
+command line, panel header, and most listing cells. (See reading caveat.)
+
+### L2. Parent entry (`..`) size column: `DIR` (mc) vs `UP--DIR` (clone).
+Minor wording difference in the size field. Evidence: `07.menu_f2.plain`.
+
+---
+
+## No divergence (verified matching)
+
+- **F9 menu-bar navigation** (menu_f9, _down, _down2, _right, _right_down):
+  menu-bar text and highlight *position* are identical; only SGR/colour differs
+  (M1/L1).
+- **F2 (User menu)** and **F1 (Help)**: now match `mc` exactly (see R1/R2).
+- **panel_tab** (Tab): panel activation matches; only SGR/colour differs (L1).
+- **open_alpha** (Enter on `/alpha`): both navigate into `…/tree/alpha$`;
+  only SGR/colour differs (L1).
+- **viewer_txt**: viewer content and prompt (`…/tree/beta$`) match; only
+  SGR/colour differs (L1).
+- **initial**: file listing content, columns, `..` status row (`UP--DIR`),
+  `[^]`, and hint line all match; differences are M1-M3 + L1-L2.
