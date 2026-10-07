@@ -312,23 +312,12 @@ draw_panel() {
 draw_menu() {
   local -a names=(Left File Command Options Right)
   local -a pos=(2 11 20 32 44)
-  local i barw=0 r
-  for (( i = 0; i < 5; i++ )); do
-    r=$(( pos[i] + ${#names[i]} ))
-    (( r > barw )) && barw=$r
-  done
-  local clear rest
-  printf -v clear ' %.0s' $(seq 1 "$barw")
-  clear=${clear:1}
-  printf -v rest ' %.0s' $(seq 1 $(( COLS - barw )))
-  rest=${rest:1}
-  # menu bar is black-on-cyan (pair 6) only across the item area; the rest of
-  # the row is default, matching real MC
+  local i full
+  printf -v full ' %.0s' $(seq 1 "$COLS")
+  full=${full:1}
+  # menu bar is black-on-cyan (pair 6) across the full row; menu items drawn on top
   wattrset 0 0 6
-  mvwaddstr 0 0 0 "$clear"
-  wattrset 0 0 0
-  mvwaddstr 0 0 "$barw" "$rest"
-  wattrset 0 0 6
+  mvwaddstr 0 0 0 "$full"
   for (( i = 0; i < 5; i++ )); do
     mvwaddstr 0 0 "${pos[$i]}" "${names[$i]}"
   done

@@ -2185,7 +2185,9 @@ _bc_chgat_impl() { # w y x n attr pair
   local ay=$(( BC_WY[$w] + y ))
   local buf=${BC_WBUF[$w]}
   local i k bk ch mk
-  for (( i = x; i <= end; i++ )); do
+  local ax0=$(( BC_WX[$w] + x ))
+  local ax1=$(( BC_WX[$w] + end ))
+  for (( i = ax0; i <= ax1; i++ )); do
     k="$ay $i"
     bk="$buf/$k"
     ch=${BC_C[$bk]:-${BC_WBG[$w]}}
