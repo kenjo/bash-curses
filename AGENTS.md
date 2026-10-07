@@ -26,9 +26,39 @@ run. ALWAYS:
 - pick a session name unlikely to collide (e.g. `bc-<task>`), and clean up
   only your own session when done.
 
+## Test suite
+- `bash tests/run.sh` — full suite: headless unit tests, then tmux integration.
+  This is what you run after changes. Individual files can be run directly.
+- Headless (no tmux, fast): `tests/unit.sh` (library behaviour), `tests/unit_screen.sh`
+  (the SGR parser, per-cell grid model, and the raw cursor tracker).
+- tmux (need a real tty): `tests/integration.sh`, `tests/mc_nav.sh`,
+  `tests/mc_menu.sh`, `tests/mc_view.sh`.
+
+### Per-cell screen model — `tests/lib/screen.sh`
+Source it to parse `tmux capture-pane -e` (SGR) captures into a per-cell grid
+(char + fg + bg + attributes), for assertions and rich diffs:
+
+```bash
+source tests/lib/screen.sh
+screen_load <file> <W> <H>          # fill the grid from an SGR capture
+cell <row> <col>                   # -> "char<TAB>fg<TAB>bg<TAB>attrs"
+screen_diff <a> <b> <W> <H>        # per-cell diff; rc 0 iff identical
+```
+
+Color/attr tokens: fg/bg are `16:N`, `256:N`, `rgb:R,G,B`, or `d` (default);
+attrs are comma-joined (`bold,dim,reverse,underline,blink,conceal,strike,italic`).
+It tracks cumulative SGR state across lines (tmux re-asserts per line).
+For raw PTY streams captured via `script`, use `cursor_from_raw <raw> <W> <H>`.
+
+### MC-vs-clone discovery — `tests/visual_diff.sh`
+Slow interactive harness (NOT in run.sh): drives real `mc` and the clone in the
+same controlled tree, feeds identical keys, and reports per-cell divergences to
+`tmp/vd/REPORT.txt`. Run one step: `bash tests/visual_diff.sh initial`. Record
+findings in `ANOMALIES.md`.
+
 ## Temporary files
  - /tmp is not to be used. Use tmp in workspace insterad.
- 
+  
 ## git
  commit often and use good descriptions.
  

@@ -16,6 +16,8 @@
 #   diff_<n>_<label>.txt          raw diff for the (first) differing step, if any
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# per-cell SGR grid parser (text + fg + bg + attrs) for rich color diffs
+source "$REPO/tests/lib/screen.sh"
 ROOT="$REPO/tmp/vd"
 TREE="$ROOT/tree"
 SOCKM="$ROOT/mc.sock";  SESSM=vdmcm
@@ -133,11 +135,17 @@ run_step() { # label keys...
       >> "$ROOT/REPORT.txt"
     cp "$ROOT/REPORT.txt" "$ROOT/diff_$n.$label.txt" 2>/dev/null
   fi
-  # colors: compare SGR captures (surfaces coloring differences the plain diff misses)
-  if diff -q "$mps" "$cps" >/dev/null 2>&1; then
-    :
-  else
-    echo "   .. $label: SGR (colors) differ" >> "$ROOT/REPORT.txt"
+  # colors: per-cell comparison via the SGR grid parser (surfaces fg/bg/attr
+  # differences a raw line-diff can't show, down to the exact cell)
+  if [[ -s $mps && -s $cps ]]; then
+    local sgr_report sgr_rc=0
+    sgr_report="$(screen_diff "$mps" "$cps" "$X" "$Y" 2>&1)" || sgr_rc=$?
+    if (( sgr_rc != 0 )); then
+      {
+        echo "   .. $label: per-cell SGR differences (mc<  vs  clone>):"
+        printf '%s\n' "$sgr_report"
+      } >> "$ROOT/REPORT.txt"
+    fi
   fi
 }
 
