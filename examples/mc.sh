@@ -30,23 +30,20 @@ STOP=0
 DLG_RESULT=""
 
 # column widths
-SIZEW=8
-TIMEW=15
+SIZEW=7
+TIMEW=12
 
-MO=(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
+MO=(jan feb mars apr maj juni juli aug sep okt nov dec)
 
-# menus and their items
-MENUNAMES=(File Search Command Disk Options Help)
+# menus and their items (top-level bar: Left, File, Command, Options, Right)
+MENUNAMES=(File Command Options)
 MENU_File=(
   "File listing" "Quick view C-x q" "Info C-x i" "Tree" "Listing format..."
   "Sort order..." "Filter..." "Encoding... M-e" "FTP link..." "Shell link..."
   "SFTP link..." "Panelize" "Rescan C-r"
 )
-MENU_Search=("Find file" "Exchange panels")
 MENU_Command=("Directory menu" "Command line")
-MENU_Disk=("Exchange panels")
 MENU_Options=("Sort by name" "Sort by size" "Sort by date" "Reverse sort")
-MENU_Help=("About mc" "F-key help" "Quit")
 MENU_ACTIVE=-1   # which top-level menu has its dropdown open (-1 = none)
 
 # ------------------------------------------------------------------ helpers
@@ -72,8 +69,7 @@ list_dir() {
   if [[ -n $out ]]; then
     while IFS='|' read -r t s mode y mo dd h mi name; do
       [[ -z $name ]] && continue
-      disp=$name
-      [[ $t == d ]] && disp="/$name"
+      if [[ $t == d ]]; then disp="/$name"; else disp=" $name"; fi
       ex=0
       [[ $t != d && $t != l && $mode =~ ^[0-7]+$ ]] && (( (8#$mode) & 0111 )) && ex=1
       nm+=("$disp"); ty+=("$t"); sz+=("$s"); rk+=("$name"); xx+=("$ex")
@@ -129,7 +125,7 @@ list_dir() {
   fi
 
   local -a f_nn=() f_tt=() f_ss=() f_tm=() f_rr=() f_xx=()
-  f_nn+=(".."); f_tt+=(d); f_ss+=("UP--DIR"); f_tm+=("$parent_time"); f_rr+=(".."); f_xx+=(0)
+  f_nn+=("/.."); f_tt+=(d); f_ss+=("UP--DIR"); f_tm+=("$parent_time"); f_rr+=(".."); f_xx+=(0)
   for i in "${order[@]}"; do
     f_nn+=("${nm[$i]}"); f_tt+=("${ty[$i]}"); f_ss+=("${sz[$i]}")
     f_tm+=("${tm[$i]}"); f_rr+=("${rk[$i]}"); f_xx+=("${xx[$i]}")
@@ -141,13 +137,22 @@ list_dir() {
 
 type_color() { # p idx -> pair (assumes not the current/highlighted row)
   local p=$1 i=$2
-  local -n TT=TYPES_$p XX=EXEC_$p
-  case ${TT[$i]} in
+  local -n TT=TYPES_$p RR=REALS_$p XX=EXEC_$p
+  local t=${TT[$i]} rn=${RR[$i]}
+  case $t in
     d) echo 2 ;;
     l) echo 4 ;;
     c|b|p|s) echo 5 ;;
     *)
-      if (( XX[$i] )); then echo 3; else echo 11; fi
+      case $rn in
+        *.sh)                 echo 14 ;;  # scripts -> cyan
+        *.md|*.json)          echo 11 ;;  # docs -> yellow
+        .*)                   echo 7 ;;   # dotfiles -> default
+        *.log)                echo 7 ;;   # logs -> default
+        *)
+          if (( XX[$i] )); then echo 3; else echo 7; fi
+          ;;
+      esac
       ;;
   esac
 }
@@ -161,7 +166,7 @@ name_width() { # w -> name column width
 
 draw_panel() {
   local p=$1
-  local -n NN=NAMES_$p SS=SIZES_$p TM=TIMES_$p
+  local -n NN=NAMES_$p SS=SIZES_$p TM=TIMES_$p TT=TYPES_$p
   local win=${WIN[$p]}
   local w h
   getmaxyx "$win"; h=$BC_GMY; w=$BC_GMX
@@ -187,42 +192,46 @@ draw_panel() {
   elif [[ $path == "$HOME"/* ]]; then dp="~${path#"$HOME"}"
   fi
   local top="<─ ${dp:0:$(( w - 8 ))} "
-  local fill=$(( w - 2 - ${#top} - 3 ))
+  local fill=$(( w - 2 - ${#top} - 5 ))
   (( fill < 0 )) && fill=0
   printf -v dstr '─%.0s' $(seq 1 "$fill")
-  top+="$dstr. >"
+  top+="$dstr.[^]>"
   top=${top:0:$(( w - 2 ))}
   mvwaddstr "$win" 0 1 "$top"
-  wattrset "$win" 0 13
-  mvwaddstr "$win" 0 4 "${dp:0:$(( w - 8 ))}"
+  # path highlight (pair 13, black-on-white) covers the path plus one space on
+  # each side; only the active panel gets it (the inactive path stays border
+  # color), matching real MC
+  if (( active )); then
+    wattrset "$win" 0 13
+    mvwaddstr "$win" 0 3 " ${dp:0:$(( w - 8 ))} "
+  fi
 
-  # header row
+  # header row: blue bg like the panel; column titles in bright yellow (pair 12),
+  # inner dividers and the left border in white (pair 7 / border color).
   local NAMEW
   NAMEW=$(name_width "$w")
-  local SD=$(( 1 + NAMEW + 1 ))
-  local TD=$(( SD + SIZEW + 1 ))
-  local ind
-  case ${SORT[$p]} in size) ind=s ;; date) ind=d ;; *) ind=n ;; esac
-  (( REV[$p] )) && ind="^$ind"
+  local SD=$(( 1 + NAMEW ))
+  local skey ind
+  case ${SORT[$p]} in size) skey=s ;; date) skey=d ;; *) skey=n ;; esac
+  if (( REV[$p] )); then ind="^$skey"; else ind=".$skey"; fi
   local hname hsize htime
-  hname=$(printf '%-*s' "$NAMEW" "  $ind  Name")
-  hsize=$(printf '%*s' "$SIZEW" "Size")
-  htime=$(printf '%-*s' "$TIMEW" "Modify time")
-  # column titles in bright yellow (pair 12); the │ dividers keep the border color
+  hname=$(printf '%-12sName%*s' "$ind" "$(( NAMEW - 16 ))" "")
+  hsize=$(printf ' Size%*s' "$(( SIZEW - 5 ))" "")
+  htime=$(printf 'Modify time%*s' "$(( TIMEW - 11 ))" "")
   wattrset "$win" 0 "$bp"
   mvwaddch "$win" 1 0 "│"
-  wattrset "$win" 1 12
+  wattrset "$win" 0 12
   mvwaddstr "$win" 1 1 "$hname"
-  wattrset "$win" 0 "$bp"
-  mvwaddch "$win" 1 $(( 1 + NAMEW )) "│"
-  wattrset "$win" 1 12
-  mvwaddstr "$win" 1 $(( 2 + NAMEW )) "$hsize"
-  wattrset "$win" 0 "$bp"
-  mvwaddch "$win" 1 $(( 2 + NAMEW + SIZEW )) "│"
-  wattrset "$win" 1 12
-  mvwaddstr "$win" 1 $(( 3 + NAMEW + SIZEW )) "$htime"
-  wattrset "$win" 0 "$bp"
-  mvwaddch "$win" 1 $(( 3 + NAMEW + SIZEW + TIMEW )) "│"
+  wattrset "$win" 0 7
+  mvwaddch "$win" 1 "$SD" "│"
+  wattrset "$win" 0 12
+  mvwaddstr "$win" 1 $(( SD + 1 )) "$hsize"
+  wattrset "$win" 0 7
+  mvwaddch "$win" 1 $(( SD + SIZEW + 1 )) "│"
+  wattrset "$win" 0 12
+  mvwaddstr "$win" 1 $(( SD + SIZEW + 2 )) "$htime"
+  wattrset "$win" 0 7
+  mvwaddch "$win" 1 $(( SD + SIZEW + TIMEW + 2 )) "│"
 
   # entry rows: │ dividers keep the border color, entry text uses its type color;
   # the selected row (active panel only) is a full cyan strip in black.
@@ -232,15 +241,16 @@ draw_panel() {
     (( idx >= cnt )) && break
     row=$(( y + 2 ))
     if (( idx == pos && active )); then
-      wmove "$win" "$row" 0
-      wchgat "$win" "$w" 0 6
+      # interior (cols 1..w-2) is a black-on-cyan strip; the border columns
+      # (0 and w-1) keep the border color drawn by box()
+      wmove "$win" "$row" 1
+      wchgat "$win" $(( w - 2 )) 0 6
       wattrset "$win" 0 6
       mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
       mvwaddch "$win" "$row" "$SD" "│"
       mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
       mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
       mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
-      mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
     else
       cpair=$(type_color "$p" "$idx")
       wattrset "$win" 0 "$cpair"
@@ -258,6 +268,17 @@ draw_panel() {
     fi
   done
 
+  # inner column dividers on the empty rows below the listing (MC draws them)
+  local ey
+  for (( ey = 0; ey < rows; ey++ )); do
+    if (( off + ey >= cnt )); then
+      row=$(( ey + 2 ))
+      wattrset "$win" 0 7
+      mvwaddch "$win" "$row" "$SD" "│"
+      mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
+    fi
+  done
+
   # separator, status, bottom
   local sy=$(( h - 3 ))
   wattrset "$win" 0 "$bp"
@@ -269,8 +290,7 @@ draw_panel() {
   if (( pos == 0 )); then
     status="UP--DIR"
   else
-    local et=${NN[$pos]:0:1}
-    if [[ ${NN[$pos]} == /.* ]]; then status="dir"; else status="file ${SS[$pos]} bytes"; fi
+    if [[ ${TT[$pos]} == d ]]; then status="dir"; else status="file ${SS[$pos]} bytes"; fi
   fi
   wattrset "$win" 0 7
   mvwprintw "$win" "$(( h - 2 ))" 1 '%s' "${status:0:$(( w - 2 ))}"
@@ -290,29 +310,33 @@ draw_panel() {
 }
 
 draw_menu() {
-  local clear
-  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  local -a names=(Left File Command Options Right)
+  local -a pos=(2 11 20 32 44)
+  local i barw=0 r
+  for (( i = 0; i < 5; i++ )); do
+    r=$(( pos[i] + ${#names[i]} ))
+    (( r > barw )) && barw=$r
+  done
+  local clear rest
+  printf -v clear ' %.0s' $(seq 1 "$barw")
   clear=${clear:1}
-  wattrset 0 0 1
+  printf -v rest ' %.0s' $(seq 1 $(( COLS - barw )))
+  rest=${rest:1}
+  # menu bar is black-on-cyan (pair 6) only across the item area; the rest of
+  # the row is default, matching real MC
+  wattrset 0 0 6
   mvwaddstr 0 0 0 "$clear"
-  local -a names=(Left File Search Command Disk Options Help)
-  local -a pos=(2 12 22 32 42 52 62)
-  local i
-  for (( i = 0; i < 7; i++ )); do
+  wattrset 0 0 0
+  mvwaddstr 0 0 "$barw" "$rest"
+  wattrset 0 0 6
+  for (( i = 0; i < 5; i++ )); do
     mvwaddstr 0 0 "${pos[$i]}" "${names[$i]}"
   done
-  mvwaddstr 0 0 "$(( COLS - 6 ))" "Right"
-  local ax aname ai
+  # highlight the top-level item whose dropdown is open (bar index MENU_ACTIVE+1)
   if (( MENU_ACTIVE >= 0 )); then
-    ai=$(( MENU_ACTIVE + 1 ))            # names[0]=Left, so menu i sits at index i+1
+    local bi=$(( MENU_ACTIVE + 1 ))
     wattrset 0 0 9
-    mvwaddstr 0 0 "${pos[$ai]}" "${names[$ai]}"
-    wattrset 0 0 1
-  else
-    if (( CUR == 0 )); then ax=2; aname=Left; else ax=$(( COLS - 6 )); aname=Right; fi
-    wattrset 0 1 9
-    mvwaddstr 0 0 "$ax" "$aname"
-    wattrset 0 0 1
+    mvwaddstr 0 0 "${pos[$bi]}" "${names[$bi]}"
   fi
 }
 
@@ -320,28 +344,38 @@ draw_bottom() {
   local clear
   printf -v clear ' %.0s' $(seq 1 "$COLS")
   clear=${clear:1}
-  # hint
-  wattrset 0 0 1
+  # hint: default colors
+  wattrset 0 0 0
   mvwaddstr 0 "$HINTY" 0 "$clear"
   mvwaddstr 0 "$HINTY" 0 "Hint: Tab switch panel, Enter open, F2 menu, F10 quit, or type 'quit'+Enter (no F-key)."
-  # command line
+  # command line: default colors, ~ abbreviated path
+  wattrset 0 0 0
   mvwaddstr 0 "$CMY" 0 "$clear"
   local cwd=${DIR[$CUR]}
-  local scwd=${cwd/#$HOME/~}
+  local scwd=$cwd
+  if [[ $cwd == "$HOME" ]]; then scwd="~"
+  elif [[ $cwd == "$HOME"/* ]]; then scwd="~${cwd#"$HOME"}"
+  fi
   local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
   mvwaddstr 0 "$CMY" 0 "$prompt"
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
-  # button bar
+  # button bar: bright-white numbers on black, black labels on cyan
+  wattrset 0 0 0
   mvwaddstr 0 "$BTNY" 0 "$clear"
   local -a bl=(Help Menu View Edit Copy RenMov Mkdir Delete PullDn Quit)
-  local x=1 num
+  local x=0 num last=$(( ${#bl[@]} - 1 ))
   for num in "${!bl[@]}"; do
-    local n=$(( num + 1 ))
-    wattrset 0 1 1
+    local n
+    printf -v n '%2d' "$(( num + 1 ))"
+    wattrset 0 0 15
     mvwaddstr 0 "$BTNY" "$x" "$n"
-    wattrset 0 0 1
-    mvwaddstr 0 "$BTNY" "$(( x + ${#n} ))" "${bl[$num]}    "
-    x=$(( x + ${#n} + ${#bl[$num]} + 4 ))
+    wattrset 0 0 6
+    if (( num == last )); then
+      mvwaddstr 0 "$BTNY" "$(( x + 2 ))" "${bl[$num]}"
+    else
+      mvwaddstr 0 "$BTNY" "$(( x + 2 ))" "$(printf '%-8s' "${bl[$num]}")"
+    fi
+    x=$(( x + 10 ))
   done
 }
 
@@ -365,18 +399,20 @@ draw_entry_row() { # p idx hl
   (( row < 2 )) && return
   local NAMEW SD cpair
   NAMEW=$(name_width "$w")
-  SD=$(( 1 + NAMEW + 1 ))
+  SD=$(( 1 + NAMEW ))
   if (( hl )); then
-    wmove "$win" "$row" 0
-    wchgat "$win" "$w" 0 6
+    # interior only; border columns keep the border color drawn by box()
+    wmove "$win" "$row" 1
+    wchgat "$win" $(( w - 2 )) 0 6
     wattrset "$win" 0 6
     mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
     mvwaddch "$win" "$row" "$SD" "│"
     mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
     mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
     mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
-    mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
   else
+    wmove "$win" "$row" 1
+    wchgat "$win" $(( w - 2 )) 0 7
     cpair=$(type_color "$p" "$idx")
     wattrset "$win" 0 "$cpair"
     mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
@@ -388,8 +424,6 @@ draw_entry_row() { # p idx hl
     mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
     wattrset "$win" 0 "$cpair"
     mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
-    wattrset "$win" 0 7
-    mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
   fi
 }
 
@@ -408,11 +442,11 @@ update_selection() { # p oldpos
   (( newpos < off || newpos >= off + rows )) && return 1
   (( oldpos != newpos )) && draw_entry_row "$p" "$oldpos" 0
   draw_entry_row "$p" "$newpos" 1
-  local -n NN=NAMES_$p SS=SIZES_$p
+  local -n NN=NAMES_$p SS=SIZES_$p TT=TYPES_$p
   local status statusline
   if (( newpos == 0 )); then
     status="UP--DIR"
-  elif [[ ${NN[$newpos]} == /.* ]]; then
+  elif [[ ${TT[$newpos]} == d ]]; then
     status="dir"
   else
     status="file ${SS[$newpos]} bytes"
@@ -549,7 +583,7 @@ load_menu_items() { # mi
 menu_bar() { # drop-down menu, anchored under the active top-level item
   MENU_SEL=${1:-0}
   local sel=0 n dw_win=0 built=-1
-  local -a menux=(12 22 32 42 52 62)
+  local -a menux=(11 20 32)
   load_menu_items "$MENU_SEL"; n=$MN
   while :; do
     if (( built != MENU_SEL )); then
@@ -579,8 +613,8 @@ menu_bar() { # drop-down menu, anchored under the active top-level item
     wrefresh "$dw_win"
     wgetch "$dw_win" || break
     case $key in
-      $KEY_LEFT)  MENU_SEL=$(( (MENU_SEL + 5) % 6 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
-      $KEY_RIGHT) MENU_SEL=$(( (MENU_SEL + 1) % 6 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
+      $KEY_LEFT)  MENU_SEL=$(( (MENU_SEL + 2) % 3 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
+      $KEY_RIGHT) MENU_SEL=$(( (MENU_SEL + 1) % 3 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
       $KEY_UP)    sel=$(( (sel - 1 + n) % n )) ;;
       $KEY_DOWN)  sel=$(( (sel + 1) % n )) ;;
       $'\r')      DLG_RESULT=$sel; MENU_ACTIVE=-1; (( dw_win > 0 )) && delwin "$dw_win"; return 0 ;;
@@ -731,21 +765,10 @@ run_menu() {
         *)                  message_dialog "File menu" "Not implemented: $item" ;;
       esac
       ;;
-    Search)
-      case $item in
-        "Find file") message_dialog "Search" "Find is not implemented." ;;
-        "Exchange panels") do_exchange ;;
-      esac
-      ;;
     Command)
       case $item in
         "Directory menu") message_dialog "Command" "Directory menu not implemented." ;;
         "Command line") focus_cmdline ;;
-      esac
-      ;;
-    Disk)
-      case $item in
-        "Exchange panels") do_exchange ;;
       esac
       ;;
     Options)
@@ -754,13 +777,6 @@ run_menu() {
         "Sort by size") do_sort size ;;
         "Sort by date") do_sort date ;;
         "Reverse sort") do_reverse ;;
-      esac
-      ;;
-    Help)
-      case $item in
-        "About mc") about_mc ;;
-        "F-key help") fkey_help ;;
-        Quit) STOP=1 ;;
       esac
       ;;
   esac
@@ -829,9 +845,11 @@ main() {
   init_pair 8 "$COLOR_WHITE"   "$COLOR_BLUE"  # inactive border
   init_pair 9 "$COLOR_BLACK"   "$COLOR_YELLOW" # active menu item / selected menu entry
   init_pair 10 "$COLOR_BLACK"  "$COLOR_CYAN"  # dropdown bg/text
-  init_pair 11 "$COLOR_YELLOW" "$COLOR_BLUE"  # regular files
-  init_pair 12 11 "$COLOR_BLUE"               # column headers (bright yellow)
+  init_pair 11 "$COLOR_YELLOW" "$COLOR_BLUE"  # doc files (.md/.json)
+  init_pair 12 11 "$COLOR_BLUE"               # column header text (bright yellow on blue)
   init_pair 13 "$COLOR_BLACK"  "$COLOR_WHITE"  # directory path in top border
+  init_pair 14 "$COLOR_CYAN"   "$COLOR_BLUE"   # scripts (.sh)
+  init_pair 15 15 "$COLOR_BLACK"               # button-bar numbers (bright white on black)
 
   init_ui || { endwin; exit 1; }
 
