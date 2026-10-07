@@ -446,6 +446,42 @@ update_selection() { # p oldpos
   return 0
 }
 
+# redraw just the top border row (path + active path-highlight) of panel p.
+# The rest of the frame -- box, header, separator -- uses pairs 7/8, which render
+# identically, so it never changes when the active panel switches and is left alone.
+draw_panel_top() { # p
+  local p=$1
+  local win=${WIN[$p]} w active=0 bp path dp top fill dstr
+  getmaxyx "$win"; w=$BC_GMX
+  (( p == CUR )) && active=1
+  (( active )) && bp=7 || bp=8
+  path=${DIR[$p]}; dp=$path
+  if [[ $path == "$HOME" ]]; then dp="~"
+  elif [[ $path == "$HOME"/* ]]; then dp="~${path#"$HOME"}"
+  fi
+  top="<─ ${dp:0:$(( w - 8 ))} "
+  fill=$(( w - 2 - ${#top} - 5 )); (( fill < 0 )) && fill=0
+  printf -v dstr '─%.0s' $(seq 1 "$fill")
+  top+="$dstr.[^]>"; top=${top:0:$(( w - 2 ))}
+  wattrset "$win" 0 "$bp"
+  mvwaddstr "$win" 0 1 "$top"
+  (( active )) && { wattrset "$win" 0 13; mvwaddstr "$win" 0 3 " ${dp:0:$(( w - 8 ))} "; }
+}
+
+# Tab / left / right switch the active panel. Only three things change: the two
+# top-border path highlights, the two selection strips, and the command-line
+# prompt. Redraw just those and refresh -- no df fork, no full-panel row loops.
+switch_panel() { # old_cur
+  local old_cur=$1 new_cur
+  new_cur=$(( 1 - CUR ))
+  draw_panel_top 0
+  draw_panel_top 1
+  draw_entry_row "$old_cur" "${POS[$old_cur]}" 0
+  draw_entry_row "$new_cur" "${POS[$new_cur]}" 1
+  draw_cmdline
+  doupdate
+}
+
 # fold any navigation keys already buffered (e.g. a held-down arrow) into a
 # single POS step so one keypress batch triggers exactly one redraw.
 drain_panel_nav() {
@@ -481,7 +517,10 @@ draw_cmdline() {
   wattrset 0 0 1
   mvwaddstr 0 "$CMY" 0 "$clear"
   local cwd=${DIR[$CUR]}
-  local scwd=${cwd/#$HOME/~}
+  local scwd=$cwd
+  if [[ $cwd == "$HOME" ]]; then scwd="~"
+  elif [[ $cwd == "$HOME"/* ]]; then scwd="~${cwd#"$HOME"}"
+  fi
   local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
   mvwaddstr 0 "$CMY" 0 "$prompt"
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
@@ -1033,11 +1072,13 @@ main() {
   draw_all
   doupdate
 
-  local k nav
+  local k nav switched prev_cur
   while :; do
     local -n _CN=NAMES_$CUR
     local prev_pos=${POS[$CUR]}
+    prev_cur=$CUR
     nav=0
+    switched=0
     getch || break
     k=$key
     case $k in
@@ -1047,9 +1088,9 @@ main() {
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )); nav=1 ;;
       $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
       $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
-      $KEY_LEFT)   CUR=$(( 1 - CUR )) ;;
-      $KEY_RIGHT)  CUR=$(( 1 - CUR )) ;;
-      $'\t')       CUR=$(( 1 - CUR )) ;;
+      $KEY_LEFT)   CUR=$(( 1 - CUR )); switched=1 ;;
+      $KEY_RIGHT)  CUR=$(( 1 - CUR )); switched=1 ;;
+      $'\t')       CUR=$(( 1 - CUR )); switched=1 ;;
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
       $KEY_F1)    fkey_help ;;
@@ -1078,7 +1119,9 @@ main() {
         fi
         ;;
     esac
-    if (( nav )); then
+    if (( switched )); then
+      switch_panel "$prev_cur"
+    elif (( nav )); then
       drain_panel_nav
       update_selection "$CUR" "$prev_pos" || { draw_panel "$CUR"; wrefresh "${WIN[$CUR]}"; }
     else
