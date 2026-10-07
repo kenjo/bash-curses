@@ -42,50 +42,50 @@ MO=(jan feb mars apr maj juni juli aug sep okt nov dec)
 MENUNAMES=(Left File Command Options Right)
 MENU_X=(2 11 20 32 44)
 MENU_Left=(
-  "File listing|" "Quick view|C-x q" "Info|C-x i" "Tree|"
+  "File listing||g" "Quick view|C-x q|Q" "Info|C-x i|I" "Tree||T"
   "---"
-  "Listing format...|" "Sort order...|" "Filter...|" "Encoding...|M-e"
+  "Listing format...||L" "Sort order...||S" "Filter...||F" "Encoding...|M-e|E"
   "---"
-  "FTP link...|" "Shell link...|" "SFTP link...|" "Panelize|"
+  "FTP link...||P" "Shell link...||h" "SFTP link...||n" "Panelize||z"
   "---"
-  "Rescan|C-r"
+  "Rescan|C-r|R"
 )
 MENU_File=(
-  "View|F3" "View file...|" "Filtered view|M-!" "Edit|F4" "Copy|F5"
-  "Chmod|C-x c" "Link|C-x l" "Symlink|C-x s" "Relative symlink|C-x v"
-  "Edit symlink|C-x C-s" "Chown|C-x o" "Advanced chown|" "Chattr|C-x e"
-  "Rename/Move|F6" "Mkdir|F7" "Delete|F8" "Quick cd|M-c"
+  "View|F3|V" "View file...||w" "Filtered view|M-!|F" "Edit|F4|E" "Copy|F5|C"
+  "Chmod|C-x c|h" "Link|C-x l|L" "Symlink|C-x s|S" "Relative symlink|C-x v|k"
+  "Edit symlink|C-x C-s|y" "Chown|C-x o|o" "Advanced chown||A" "Chattr|C-x e|t"
+  "Rename/Move|F6|R" "Mkdir|F7|M" "Delete|F8|D" "Quick cd|M-c|Q"
   "---"
-  "Select group|+" "Unselect group|-" "Invert selection|*"
+  "Select group|+|g" "Unselect group|-|n" "Invert selection|*|I"
   "---"
-  "Exit|F10"
+  "Exit|F10|x"
 )
 MENU_Command=(
-  "User menu|F2" "Directory tree|" "Find file|M-?" "Swap panels|C-u"
-  "Switch panels on/off|C-o" "Compare directories|C-x d" "Compare files|C-x C-d"
-  "External panelize|C-x !" "Show directory sizes|C-Space"
+  "User menu|F2|U" "Directory tree||D" "Find file|M-?|F" "Swap panels|C-u|w"
+  "Switch panels on/off|C-o|p" "Compare directories|C-x d|C" "Compare files|C-x C-d|o"
+  "External panelize|C-x !|x" "Show directory sizes|C-Space|i"
   "---"
-  "Command history|M-h" "Viewed/edited files history|M-E" 'Directory hotlist|C-\'
-  "Active VFS list|C-x a" "Background jobs|C-x j" 'Screen list|M-`'
+  "Command history|M-h|h" "Viewed/edited files history|M-E|s" 'Directory hotlist|C-\|r'
+  "Active VFS list|C-x a|A" "Background jobs|C-x j|B" 'Screen list|M-`|t'
   "---"
-  "Undelete files (ext2fs only)|"
+  "Undelete files (ext2fs only)||U"
   "---"
-  "Edit extension file|" "Edit menu file|" "Edit highlighting group file|"
+  "Edit extension file||e" "Edit menu file||m" "Edit highlighting group file||g"
 )
 MENU_Options=(
-  "Configuration...|" "Layout...|" "Panel options...|" "Confirmation...|"
-  "Appearance...|" "Display bits...|" "Learn keys...|" "Virtual FS...|"
+  "Configuration...||C" "Layout...||L" "Panel options...||P" "Confirmation...||o"
+  "Appearance...||A" "Display bits...||D" "Learn keys...||k" "Virtual FS...||V"
   "---"
-  "Save setup|"
+  "Save setup||S"
 )
 MENU_Right=(
-  "File listing|" "Quick view|C-x q" "Info|C-x i" "Tree|"
+  "File listing||g" "Quick view|C-x q|Q" "Info|C-x i|I" "Tree||T"
   "---"
-  "Listing format...|" "Sort order...|" "Filter...|" "Encoding...|M-e"
+  "Listing format...||L" "Sort order...||S" "Filter...||F" "Encoding...|M-e|E"
   "---"
-  "FTP link...|" "Shell link...|" "SFTP link...|" "Panelize|"
+  "FTP link...||P" "Shell link...||h" "SFTP link...||n" "Panelize||z"
   "---"
-  "Rescan|C-r"
+  "Rescan|C-r|R"
 )
 menu_open=0      # menu bar visible
 menu_bar_sel=0   # highlighted bar item
@@ -399,7 +399,7 @@ menu_draw_dd() {
   local maxlen=0 maxsc=0 lab sc e nent=0
   for e in "${MI[@]}"; do
     if [[ $e == --- ]]; then (( nent++ )); continue; fi
-    lab=${e%|*}; sc=${e#*|}
+    lab=${e%%|*}; sc=${e#*|}; sc=${sc%|*}
     (( nent++ ))
     (( ${#lab} > maxlen )) && maxlen=${#lab}
     (( ${#sc} > maxsc )) && maxsc=${#sc}
@@ -433,14 +433,19 @@ menu_draw_dd() {
       wattrset "$MENU_WIN" 0 16
       mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$mid"
     else
-      lab=${e%|*}; sc=${e#*|}
+      lab=${e%%|*}; sc=${e#*|}; sc=${sc%|*}; mnem=${e##*|}
       local sel=0; (( itemidx == menu_sel )) && sel=1
-      local tp tp2
+      local tp tp2 mpos=0 i lc
       tp=$(( sel ? 18 : 16 )); tp2=$(( sel ? 19 : 17 ))
+      for (( i = 0; i < ${#lab}; i++ )); do
+        lc=${lab:i:1}; lc=${lc,,}
+        [[ $lc == "${mnem,,}" ]] && { mpos=$i; break; }
+      done
       wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 1 "$sp"
       wattrset "$MENU_WIN" 0 16;      mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "│"
-      wattrset "$MENU_WIN" 0 "$tp2";  mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 2 "${lab:0:1}"
-      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 3 "${lab:1}"
+      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 2 "${lab:0:mpos}"
+      wattrset "$MENU_WIN" 0 "$tp2";  mvwaddstr "$MENU_WIN" "$(( r + 1 ))" $(( 2 + mpos )) "${lab:mpos:1}"
+      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" $(( 3 + mpos )) "${lab:mpos+1}"
       if [[ -n $sc ]]; then
         wattrset "$MENU_WIN" 0 "$tp"
         mvwaddstr "$MENU_WIN" "$(( r + 1 ))" "$(( inner - maxsc + 1 ))" "$sc"
@@ -1085,8 +1090,7 @@ run_menu() {
         local ch=${key,,} ri ll lf
         if (( menu_dd == 1 )); then
           for (( ri = 0; ri < REALN; ri++ )); do
-            menu_entry_at "$menu_bar_sel" "$ri"; ll=${ENTRY%|*}
-            lf=${ll:0:1}; lf=${lf,,}
+            menu_entry_at "$menu_bar_sel" "$ri"; lf=${ENTRY##*|}; lf=${lf,,}
             [[ $lf == "$ch" ]] && { menu_sel=$ri; break; }
           done
         else
