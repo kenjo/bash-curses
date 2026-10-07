@@ -35,16 +35,62 @@ TIMEW=12
 
 MO=(jan feb mars apr maj juni juli aug sep okt nov dec)
 
-# menus and their items (top-level bar: Left, File, Command, Options, Right)
-MENUNAMES=(File Command Options)
-MENU_File=(
-  "File listing" "Quick view C-x q" "Info C-x i" "Tree" "Listing format..."
-  "Sort order..." "Filter..." "Encoding... M-e" "FTP link..." "Shell link..."
-  "SFTP link..." "Panelize" "Rescan C-r"
+# menus and their items (top-level bar: Left, File, Command, Options, Right).
+# Each entry is "LABEL|SHORTCUT" (shortcut may be empty); "---" is a group
+# separator. Bar items sit at MENU_X, and the dropdown opens 2 cols to the
+# left of the bar item (matching mc).
+MENUNAMES=(Left File Command Options Right)
+MENU_X=(2 11 20 32 44)
+MENU_Left=(
+  "File listing|" "Quick view|C-x q" "Info|C-x i" "Tree|"
+  "---"
+  "Listing format...|" "Sort order...|" "Filter...|" "Encoding...|M-e"
+  "---"
+  "FTP link...|" "Shell link...|" "SFTP link...|" "Panelize|"
+  "---"
+  "Rescan|C-r"
 )
-MENU_Command=("Directory menu" "Command line")
-MENU_Options=("Sort by name" "Sort by size" "Sort by date" "Reverse sort")
-MENU_ACTIVE=-1   # which top-level menu has its dropdown open (-1 = none)
+MENU_File=(
+  "View|F3" "View file...|" "Filtered view|M-!" "Edit|F4" "Copy|F5"
+  "Chmod|C-x c" "Link|C-x l" "Symlink|C-x s" "Relative symlink|C-x v"
+  "Edit symlink|C-x C-s" "Chown|C-x o" "Advanced chown|" "Chattr|C-x e"
+  "Rename/Move|F6" "Mkdir|F7" "Delete|F8" "Quick cd|M-c"
+  "---"
+  "Select group|+" "Unselect group|-" "Invert selection|*"
+  "---"
+  "Exit|F10"
+)
+MENU_Command=(
+  "User menu|F2" "Directory tree|" "Find file|M-?" "Swap panels|C-u"
+  "Switch panels on/off|C-o" "Compare directories|C-x d" "Compare files|C-x C-d"
+  "External panelize|C-x !" "Show directory sizes|C-Space"
+  "---"
+  "Command history|M-h" "Viewed/edited files history|M-E" 'Directory hotlist|C-\'
+  "Active VFS list|C-x a" "Background jobs|C-x j" 'Screen list|M-`'
+  "---"
+  "Undelete files (ext2fs only)|"
+  "---"
+  "Edit extension file|" "Edit menu file|" "Edit highlighting group file|"
+)
+MENU_Options=(
+  "Configuration...|" "Layout...|" "Panel options...|" "Confirmation...|"
+  "Appearance...|" "Display bits...|" "Learn keys...|" "Virtual FS...|"
+  "---"
+  "Save setup|"
+)
+MENU_Right=(
+  "File listing|" "Quick view|C-x q" "Info|C-x i" "Tree|"
+  "---"
+  "Listing format...|" "Sort order...|" "Filter...|" "Encoding...|M-e"
+  "---"
+  "FTP link...|" "Shell link...|" "SFTP link...|" "Panelize|"
+  "---"
+  "Rescan|C-r"
+)
+menu_open=0      # menu bar visible
+menu_bar_sel=0   # highlighted bar item
+menu_dd=0        # dropdown open
+menu_sel=0       # selected item (index over real, non-separator items)
 
 # ------------------------------------------------------------------ helpers
 hum() { # kb -> human
@@ -54,6 +100,18 @@ hum() { # kb -> human
   else printf '%dK' "$kb"; fi
 }
 
+# MC time column: "MON  DD  YYYY" for files older than ~6 months, else
+# "MON  DD HH:MM". NOW_Y/NOW_MO are set by list_dir before use.
+fmt_mtime() { # y mo dd h mi
+  local y=$1 mo=$2 dd=$3 h=$4 mi=$5
+  local age=$(( (NOW_Y - 10#$y) * 12 + (NOW_MO - 10#$mo) ))
+  if (( age >= 6 )); then
+    printf '%s %2d  %s' "${MO[$((10#$mo - 1))]}" "$((10#$dd))" "$((10#$y))"
+  else
+    printf '%s %2d %s:%s' "${MO[$((10#$mo - 1))]}" "$((10#$dd))" "$h" "$mi"
+  fi
+}
+
 # list a directory into the panel's arrays; ".." is always entry 0
 list_dir() {
   local p=$1
@@ -61,6 +119,7 @@ list_dir() {
   local d=${DIR[$p]}
   d=$(cd "$d" 2>/dev/null && pwd) || d="$HOME"
   DIR[$p]=$d
+  local now; now=$(date +%Y%-m); NOW_Y=${now:0:4}; NOW_MO=$((10#${now:4}))
 
   local -a nm=() ty=() sz=() tk=() tm=() rk=() xx=()
   local out t s mode y mo dd h mi name disp ex
@@ -69,11 +128,11 @@ list_dir() {
   if [[ -n $out ]]; then
     while IFS='|' read -r t s mode y mo dd h mi name; do
       [[ -z $name ]] && continue
-      if [[ $t == d ]]; then disp="/$name"; else disp=" $name"; fi
       ex=0
       [[ $t != d && $t != l && $mode =~ ^[0-7]+$ ]] && (( (8#$mode) & 0111 )) && ex=1
+      if [[ $t == d ]]; then disp="/$name"; elif (( ex )); then disp="*$name"; else disp=" $name"; fi
       nm+=("$disp"); ty+=("$t"); sz+=("$s"); rk+=("$name"); xx+=("$ex")
-      tm+=("$(printf '%s %2d %s:%s' "${MO[$((10#$mo - 1))]}" "$((10#$dd))" "$h" "$mi")")
+      tm+=("$(fmt_mtime "$y" "$mo" "$dd" "$h" "$mi")")
       tk+=("$(printf '%04d%02d%02d%02d%02d' "$((10#$y))" "$((10#$mo))" "$((10#$dd))" "$((10#$h))" "$((10#$mi))")")
     done <<< "$out"
   fi
@@ -121,7 +180,7 @@ list_dir() {
   pd=$( (cd "$(dirname "$d")" 2>/dev/null && find . -maxdepth 0 -printf '%TY|%Tm|%Td|%TH|%TM') 2>/dev/null )
   if [[ -n $pd ]]; then
     IFS='|' read -r y mo dd h mi <<< "$pd"
-    parent_time=$(printf '%s %2d %s:%s' "${MO[$((10#$mo - 1))]}" "$((10#$dd))" "$h" "$mi")
+    parent_time=$(fmt_mtime "$y" "$mo" "$dd" "$h" "$mi")
   fi
 
   local -a f_nn=() f_tt=() f_ss=() f_tm=() f_rr=() f_xx=()
@@ -309,23 +368,99 @@ draw_panel() {
   mvwaddstr "$win" "$(( h - 1 ))" 1 "$ld $fstr $rdstr"
 }
 
-draw_menu() {
-  local -a names=(Left File Command Options Right)
-  local -a pos=(2 11 20 32 44)
-  local i full
+  draw_menu() {
+   local i full
   printf -v full ' %.0s' $(seq 1 "$COLS")
-  # menu bar is black-on-cyan (pair 6) across the full row; menu items drawn on top
-  wattrset 0 0 6
+  # menu bar: bright-white-on-cyan (16); mnemonic bright-yellow (17); the
+  # highlighted item inverted to white-on-black (18), mnemonic (19).
+  wattrset 0 0 16
   mvwaddstr 0 0 0 "$full"
-  for (( i = 0; i < 5; i++ )); do
-    mvwaddstr 0 0 "${pos[$i]}" "${names[$i]}"
+  for (( i = 0; i < ${#MENUNAMES[@]}; i++ )); do
+    local name=${MENUNAMES[$i]} x=${MENU_X[$i]}
+    local mn=${name:0:1} rest=${name:1}
+    if (( i == menu_bar_sel && menu_open )); then
+      wattrset 0 0 19; mvwaddstr 0 0 "$x" "$mn"
+      wattrset 0 0 18; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
+    else
+      wattrset 0 0 17; mvwaddstr 0 0 "$x" "$mn"
+      wattrset 0 0 16; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
+    fi
   done
-  # highlight the top-level item whose dropdown is open (bar index MENU_ACTIVE+1)
-  if (( MENU_ACTIVE >= 0 )); then
-    local bi=$(( MENU_ACTIVE + 1 ))
-    wattrset 0 0 9
-    mvwaddstr 0 0 "${pos[$bi]}" "${names[$bi]}"
+}
+
+# The dropdown is its own top panel window so it composites over the file
+# panels (stdscr is below them). Geometry is cached in MENU_G*.
+MENU_WIN=0; MENU_PANEL=0; MENU_GX=0; MENU_GY=0; MENU_GW=0; MENU_GH=0
+
+menu_draw_dd() {
+  local bsel=$menu_bar_sel
+  local name=${MENUNAMES[$bsel]}
+  local -n MI="MENU_${name}"
+  local maxlen=0 maxsc=0 lab sc e nent=0
+  for e in "${MI[@]}"; do
+    if [[ $e == --- ]]; then (( nent++ )); continue; fi
+    lab=${e%|*}; sc=${e#*|}
+    (( nent++ ))
+    (( ${#lab} > maxlen )) && maxlen=${#lab}
+    (( ${#sc} > maxsc )) && maxsc=${#sc}
+  done
+  local inner=$(( 1 + maxlen + (maxsc > 0 ? 2 + maxsc : 0) ))
+  local bw=$(( inner + 2 ))
+  local h=$(( nent + 2 ))
+  local x0=$(( MENU_X[$bsel] - 2 ))
+  (( x0 < 0 )) && x0=0
+  (( x0 + bw > COLS )) && x0=$(( COLS - bw ))
+  local y0=1
+  (( h > HINTY - 1 - y0 )) && h=$(( HINTY - 1 - y0 ))
+  if (( MENU_WIN == 0 || MENU_GX != x0 || MENU_GY != y0 || MENU_GW != bw || MENU_GH != h )); then
+    (( MENU_WIN > 0 )) && { del_panel "$MENU_PANEL" 2>/dev/null; delwin "$MENU_WIN"; }
+    newwin "$h" "$bw" "$y0" "$x0"
+    MENU_WIN=$bc_win
+    new_panel "$MENU_WIN"; MENU_PANEL=$bc_panel
+    MENU_GX=$x0; MENU_GY=$y0; MENU_GW=$bw; MENU_GH=$h
+    werase "$MENU_WIN"
   fi
+  local top mid sp
+  printf -v top '─%.0s' $(seq 1 "$(( bw - 2 ))"); top="┌${top}┐"
+  printf -v mid '─%.0s' $(seq 1 "$(( bw - 2 ))"); mid="├${mid}┤"
+  printf -v sp ' %.0s' $(seq 1 "$inner")
+  wattrset "$MENU_WIN" 0 16
+  mvwaddstr "$MENU_WIN" 0 0 "$top"
+  local r=0 itemidx=0
+  for e in "${MI[@]}"; do
+    if (( 1 + r >= h )); then break; fi
+    if [[ $e == --- ]]; then
+      wattrset "$MENU_WIN" 0 16
+      mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$mid"
+    else
+      lab=${e%|*}; sc=${e#*|}
+      local sel=0; (( itemidx == menu_sel )) && sel=1
+      local tp tp2
+      tp=$(( sel ? 18 : 16 )); tp2=$(( sel ? 19 : 17 ))
+      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 1 "$sp"
+      wattrset "$MENU_WIN" 0 16;      mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "│"
+      wattrset "$MENU_WIN" 0 "$tp2";  mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 2 "${lab:0:1}"
+      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 3 "${lab:1}"
+      if [[ -n $sc ]]; then
+        wattrset "$MENU_WIN" 0 "$tp"
+        mvwaddstr "$MENU_WIN" "$(( r + 1 ))" "$(( inner - maxsc + 1 ))" "$sc"
+      fi
+      wattrset "$MENU_WIN" 0 16; mvwaddstr "$MENU_WIN" "$(( r + 1 ))" "$(( inner + 1 ))" "│"
+      (( itemidx++ ))
+    fi
+    (( r++ ))
+  done
+  if (( 1 + r < h )); then
+    local bot; printf -v bot '─%.0s' $(seq 1 "$(( bw - 2 ))"); bot="└${bot}┘"
+    wattrset "$MENU_WIN" 0 16
+    mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$bot"
+  fi
+  # doupdate (called by the caller) composites this top panel over the panels
+}
+
+menu_dd_close() {
+  (( MENU_WIN > 0 )) && { del_panel "$MENU_PANEL" 2>/dev/null; delwin "$MENU_WIN"; }
+  MENU_WIN=0; MENU_PANEL=0
 }
 
 draw_bottom() {
@@ -368,10 +503,10 @@ draw_bottom() {
 }
 
 draw_all() {
-  draw_menu
   draw_panel 0
   draw_panel 1
   draw_bottom
+  draw_menu
 }
 
 # redraw one list row of panel p (list index idx) in place; hl highlights it.
@@ -629,61 +764,30 @@ confirm_dialog() { # title prompt -> DLG_RESULT y/n; 0 yes / 1 no
 }
 
 # populate MITEMS[] / MN from the mi-th top-level menu
-load_menu_items() { # mi
-  local name=${MENUNAMES[$1]} arr
-  arr="MENU_${name/ /_}"
-  local -n ref=$arr
-  MITEMS=("${ref[@]}")
-  MN=${#MITEMS[@]}
+# set REALN to the number of real (non-separator) items in the menu bar_sel
+menu_real_n() { # bar_sel
+  local name=${MENUNAMES[$1]}
+  local -n MI="MENU_${name}"
+  local c=0 e
+  for e in "${MI[@]}"; do [[ $e != --- ]] && (( c++ )); done
+  REALN=$c
 }
 
-# interactive menu bar: Left/Right switch top-level menu, Up/Down move the
-# item, Enter selects (MENU_SEL = menu, DLG_RESULT = item), Esc cancels.
-menu_bar() { # drop-down menu, anchored under the active top-level item
-  MENU_SEL=${1:-0}
-  local sel=0 n dw_win=0 built=-1
-  local -a menux=(11 20 32)
-  load_menu_items "$MENU_SEL"; n=$MN
-  while :; do
-    if (( built != MENU_SEL )); then
-      (( dw_win > 0 )) && delwin "$dw_win"
-      MENU_ACTIVE=$MENU_SEL
-      draw_all; doupdate   # active-item highlight + restore panels beneath any previous dropdown
-      local x=${menux[$MENU_SEL]}
-      local maxlen=0 m
-      for m in "${MITEMS[@]}"; do (( ${#m} > maxlen )) && maxlen=${#m}; done
-      local w=$(( maxlen + 4 )); (( w < 14 )) && w=14; (( w > COLS - x - 1 )) && w=$(( COLS - x - 1 ))
-      local h=$(( n + 2 )); (( h > LINES - 2 )) && h=$(( LINES - 2 ))
-      newwin "$h" "$w" 1 "$x"
-      dw_win=$bc_win
-      werase "$dw_win"
-      wbkgd "$dw_win" 0 0 10
-      wattrset "$dw_win" 0 10
-      box "$dw_win"
-      built=$MENU_SEL
+# set ENTRY to the "LABEL|SHORTCUT" of the ri-th real item (0-based)
+menu_entry_at() { # bar_sel realidx
+  local name=${MENUNAMES[$1]}
+  local -n MI="MENU_${name}"
+  local ri=$2 c=0 e
+  for e in "${MI[@]}"; do
+    if [[ $e != --- ]]; then
+      if (( c == ri )); then ENTRY="$e"; return 0; fi
+      (( c++ ))
     fi
-    local i bg
-    for (( i = 0; i < n; i++ )); do
-      bg=$(( i == sel ? 9 : 10 ))
-      wattrset "$dw_win" $(( i == sel ? 1 : 0 )) "$bg"
-      mvwhline "$dw_win" "$(( i + 1 ))" 1 ' ' $(( w - 2 ))
-      mvwaddstr "$dw_win" "$(( i + 1 ))" 2 "  ${MITEMS[$i]}"
-    done
-    wrefresh "$dw_win"
-    wgetch "$dw_win" || break
-    case $key in
-      $KEY_LEFT)  MENU_SEL=$(( (MENU_SEL + 2) % 3 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
-      $KEY_RIGHT) MENU_SEL=$(( (MENU_SEL + 1) % 3 )); load_menu_items "$MENU_SEL"; n=$MN; sel=0 ;;
-      $KEY_UP)    sel=$(( (sel - 1 + n) % n )) ;;
-      $KEY_DOWN)  sel=$(( (sel + 1) % n )) ;;
-      $'\r')      DLG_RESULT=$sel; MENU_ACTIVE=-1; (( dw_win > 0 )) && delwin "$dw_win"; return 0 ;;
-      $'\x1b')    MENU_ACTIVE=-1; (( dw_win > 0 )) && delwin "$dw_win"; return 1 ;;
-    esac
   done
-  MENU_ACTIVE=-1
-  (( dw_win > 0 )) && delwin "$dw_win"
-  return 1
+  ENTRY=""
 }
+
+# (the interactive menu is driven by run_menu; draw_menu renders it)
 
 # ------------------------------------------------------------------ actions
 cur_real() { # real name of current entry in active panel
@@ -954,35 +1058,82 @@ about_mc() {
 }
 
 run_menu() {
-  MENU_SEL=0
-  menu_bar || return
-  local sel=$DLG_RESULT mi=$MENU_SEL
-  local name=${MENUNAMES[$mi]}
-  local arr="MENU_${name/ /_}"
-  local -n items=$arr 2>/dev/null || items=()
-  local item=${items[$sel]}
+  menu_open=1; menu_bar_sel=0; menu_dd=0; menu_sel=0
+  local nmb=${#MENUNAMES[@]} chosen=""
+  local prev_dd=0
+  while :; do
+    menu_real_n "$menu_bar_sel"
+    draw_all; (( menu_dd )) && menu_draw_dd; doupdate
+    wgetch 0 || break
+    prev_dd=$menu_dd
+    case $key in
+      $KEY_LEFT)  menu_bar_sel=$(( (menu_bar_sel + nmb - 1) % nmb )); menu_sel=0 ;;
+      $KEY_RIGHT) menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0 ;;
+      $KEY_DOWN)
+        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0
+        else menu_sel=$(( (menu_sel + 1) % REALN )); fi ;;
+      $KEY_UP)
+        if (( menu_dd == 1 )); then
+          (( menu_sel == 0 )) && menu_dd=0 || (( menu_sel-- ))
+        else menu_dd=1; menu_sel=0; fi ;;
+      $'\r')
+        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0
+        else menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
+             menu_open=0; menu_dd=0; break; fi ;;
+      $'\x1b') menu_open=0; menu_dd=0; break ;;
+      [a-zA-Z])
+        local ch=${key,,} ri ll lf
+        if (( menu_dd == 1 )); then
+          for (( ri = 0; ri < REALN; ri++ )); do
+            menu_entry_at "$menu_bar_sel" "$ri"; ll=${ENTRY%|*}
+            lf=${ll:0:1}; lf=${lf,,}
+            [[ $lf == "$ch" ]] && { menu_sel=$ri; break; }
+          done
+        else
+          for (( ri = 0; ri < nmb; ri++ )); do
+            lf=${MENUNAMES[ri]:0:1}; lf=${lf,,}
+            [[ $lf == "$ch" ]] && { menu_bar_sel=$ri; menu_sel=0; break; }
+          done
+        fi ;;
+    esac
+    (( menu_dd == 0 && prev_dd == 1 )) && menu_dd_close
+  done
+  menu_open=0; menu_dd=0
+  menu_dd_close
+  [[ -z $chosen ]] && return
+  local label=${chosen%|*} name=${MENUNAMES[$menu_bar_sel]}
   case $name in
+    Left|Right)
+      case $label in
+        "Quick view")    do_view ;;
+        "Rescan")        draw_all; doupdate ;;
+        "Sort order...") message_dialog "Sort order" "Not implemented." ;;
+        *)               message_dialog "$name" "Not implemented: $label" ;;
+      esac ;;
     File)
-      case $item in
-        "Quick view C-x q") do_view ;;
-        "Sort order...")    do_sort name ;;
-        *)                  message_dialog "File menu" "Not implemented: $item" ;;
-      esac
-      ;;
+      case $label in
+        "View")         do_view ;;
+        "Edit")         message_dialog "Edit" "No editor configured." ;;
+        "Copy")         do_copy ;;
+        "Rename/Move")  do_move ;;
+        "Mkdir")        do_mkdir ;;
+        "Delete")       do_delete ;;
+        "Quick cd")     focus_cmdline ;;
+        "Exit")         STOP=1 ;;
+        *)              message_dialog "File" "Not implemented: $label" ;;
+      esac ;;
     Command)
-      case $item in
-        "Directory menu") message_dialog "Command" "Directory menu not implemented." ;;
+      case $label in
+        "Swap panels")  CUR=$(( 1 - CUR )); draw_all; doupdate ;;
         "Command line") focus_cmdline ;;
-      esac
-      ;;
+        "User menu")    message_dialog "User menu" "Not implemented." ;;
+        *)              message_dialog "Command" "Not implemented: $label" ;;
+      esac ;;
     Options)
-      case $item in
-        "Sort by name") do_sort name ;;
-        "Sort by size") do_sort size ;;
-        "Sort by date") do_sort date ;;
-        "Reverse sort") do_reverse ;;
-      esac
-      ;;
+      case $label in
+        "Save setup") message_dialog "Options" "Save setup not implemented." ;;
+        *)            message_dialog "Options" "Not implemented: $label" ;;
+      esac ;;
   esac
 }
 
@@ -1070,6 +1221,12 @@ main() {
   init_pair 13 "$COLOR_BLACK"  "$COLOR_WHITE"  # directory path in top border
   init_pair 14 "$COLOR_CYAN"   "$COLOR_BLUE"   # scripts (.sh)
   init_pair 15 15 "$COLOR_BLACK"               # button-bar numbers (bright white on black)
+  # dedicated menu pairs (match mc: bright-white-on-cyan, yellow mnemonics,
+  # highlighted item inverted to white-on-black)
+  init_pair 16 15 "$COLOR_CYAN"               # menu bar + dropdown text/border
+  init_pair 17 11 "$COLOR_CYAN"               # mnemonic letter (unselected)
+  init_pair 18 15 "$COLOR_BLACK"              # highlighted item text
+  init_pair 19 11 "$COLOR_BLACK"              # highlighted item mnemonic
 
   init_ui || { endwin; exit 1; }
 
