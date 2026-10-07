@@ -314,7 +314,6 @@ draw_menu() {
   local -a pos=(2 11 20 32 44)
   local i full
   printf -v full ' %.0s' $(seq 1 "$COLS")
-  full=${full:1}
   # menu bar is black-on-cyan (pair 6) across the full row; menu items drawn on top
   wattrset 0 0 6
   mvwaddstr 0 0 0 "$full"
@@ -802,6 +801,22 @@ execute_cmd() {
   fi
 }
 
+# visible entry-row count for panel p (window height minus border/header/footer)
+page_rows() { # p -> rows
+  local win=${WIN[$1]}
+  getmaxyx "$win"; echo $(( BC_GMY - 5 ))
+}
+
+# clamp POS[p] into [0, entry count - 1]
+clamp_pos() { # p
+  local p=$1
+  local -n _NN=NAMES_$p
+  local n=${#_NN[@]}
+  (( POS[$p] < 0 )) && POS[$p]=0
+  (( POS[$p] > n - 1 )) && POS[$p]=$(( n - 1 ))
+  return 0
+}
+
 # ------------------------------------------------------------------ main
 init_ui() {
   (( LINES < 12 || COLS < 60 )) && { echo "Terminal too small" >&2; return 1; }
@@ -862,8 +877,8 @@ main() {
       "r")         list_dir "$CUR" ;;
       $KEY_HOME)   POS[$CUR]=0 ;;
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )) ;;
-      $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - 20 )) ;;
-      $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + 20 )) ;;
+      $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR" ;;
+      $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR" ;;
       $KEY_F1)    fkey_help ;;
       $KEY_F2)    run_menu ;;
       $KEY_F3)    do_view ;;
@@ -901,4 +916,6 @@ main() {
   endwin
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

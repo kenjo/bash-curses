@@ -238,6 +238,31 @@ check "_bc_mark_all count" "1920"        "$(scr '_bc_mark_all 0; n=0; for k in "
 check "def_prog_mode rc"   "0"           "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; def_prog_mode; printf "%s" "$?" ) )"
 check "reset_prog_mode redraw" "1920"    "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; reset_prog_mode >/dev/null 2>&1; n=0; for k in "${!BC_MK[@]}"; do [[ $k == "0/"* ]] && n=$((n+1)); done; printf "%s" "$n" ) )"
 
+# --- I. wchgat window x-offset (regression: changed cell must land at the
+#        window's absolute X, not at X=0 of the buffer) ---
+check "wchgat win x-offset attr" "9 0" "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; wmove 5 0 0; wchgat 5 -1 9 4; printf "%s %s" "${BC_A["5/2 3"]:-0}" "${BC_A["5/2 0"]:-0}" ) )"
+check "wchgat win x-offset pair" "4 0" "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; wmove 5 0 0; wchgat 5 -1 9 4; printf "%s %s" "${BC_P["5/2 3"]:-0}" "${BC_P["5/2 0"]:-0}" ) )"
+
+# --- J. examples/mc.sh headless regressions (sourced, no tty) ---
+# run $1 in a fresh subshell with mc.sh sourced and a 100x30 stdscr at origin
+mc() { ( source "$REPO/examples/mc.sh"; COLS=100 LINES=30
+         _bc_init_window 0 0 0 30 100; BC_CURR=0; eval "$1"; ); }
+# run $1 with mc.sh sourced plus a 26x50 panel window (WIN[0]) holding 50 entries
+mcnav() { ( source "$REPO/examples/mc.sh"; COLS=100 LINES=30
+            _bc_init_window 0 0 0 30 100; _bc_init_window 10 1 0 26 50;
+            WIN[0]=10; CUR=0; NAMES_0=( $(seq 0 49) ); eval "$1"; ); }
+
+# J1. menu bar is black-on-cyan (pair 6) across the full row width
+check "mc menu bar full-width cyan" "100" "$(mc 'MENU_ACTIVE=-1; draw_menu; n=0; for (( x = 0; x < COLS; x++ )); do [[ ${BC_P["0/0 $x"]:-0} == 6 ]] && n=$((n+1)); done; printf "%s" "$n"')"
+# J2. PageUp/PageDown must clamp POS into [0, count-1] (page_rows = 26-5 = 21)
+check "mc pgup at top"   "0"  "$(mcnav 'POS[0]=0;  POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
+check "mc pgup mid"      "0"  "$(mcnav 'POS[0]=5;  POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
+check "mc pgup within"   "19" "$(mcnav 'POS[0]=40; POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
+check "mc pgdn mid"      "21" "$(mcnav 'POS[0]=0;  POS[0]=$((POS[0]+$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
+check "mc pgdn bottom"   "49" "$(mcnav 'POS[0]=40; POS[0]=$((POS[0]+$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
+check "mc clamp high"    "49" "$(mcnav 'POS[0]=999; clamp_pos 0; printf "%s" "${POS[0]}"')"
+check "mc clamp low"     "0"  "$(mcnav 'POS[0]=-5;  clamp_pos 0; printf "%s" "${POS[0]}"')"
+
 echo
 if (( fail == 0 )); then echo "unit: $pass passed"; else echo "unit: $pass passed, $fail FAILED"; fi
 (( fail == 0 ))
