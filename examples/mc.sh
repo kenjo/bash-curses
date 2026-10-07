@@ -471,15 +471,19 @@ draw_panel_top() { # p
 # Tab / left / right switch the active panel. Only three things change: the two
 # top-border path highlights, the two selection strips, and the command-line
 # prompt. Redraw just those and refresh -- no df fork, no full-panel row loops.
-switch_panel() { # old_cur
-  local old_cur=$1 new_cur
-  new_cur=$(( 1 - CUR ))
+switch_panel() { # old_cur : CUR is already the newly-active panel
+  local old_cur=$1
   draw_panel_top 0
   draw_panel_top 1
   draw_entry_row "$old_cur" "${POS[$old_cur]}" 0
-  draw_entry_row "$new_cur" "${POS[$new_cur]}" 1
+  draw_entry_row "$CUR" "${POS[$CUR]}" 1
   draw_cmdline
-  doupdate
+  # Refresh only the windows that changed (cmdline on stdscr + the two panels).
+  # Using wrefresh/refresh keeps it to the dirty cells; doupdate would re-flush
+  # stdscr over the whole panel region and force a full-screen redraw.
+  refresh
+  wrefresh "${WIN[0]}"
+  wrefresh "${WIN[1]}"
 }
 
 # fold any navigation keys already buffered (e.g. a held-down arrow) into a
