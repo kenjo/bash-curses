@@ -177,13 +177,16 @@ draw_panel() {
 
   wbkgd "$win" ' ' 0 7
   werase "$win"
-  wattrset "$win" $(( active ? 1 : 0 )) "$bp"
+  wattrset "$win" 0 "$bp"
   box "$win"
 
   # top border: <- path ---- . >
   local path=${DIR[$p]}
-  local dp=${path/#$HOME/~}
-  local top="<- ${dp:0:$(( w - 8 ))} "
+  local dp=$path
+  if [[ $path == "$HOME" ]]; then dp="~"
+  elif [[ $path == "$HOME"/* ]]; then dp="~${path#"$HOME"}"
+  fi
+  local top="<─ ${dp:0:$(( w - 8 ))} "
   local fill=$(( w - 2 - ${#top} - 3 ))
   (( fill < 0 )) && fill=0
   printf -v dstr '─%.0s' $(seq 1 "$fill")
@@ -222,18 +225,17 @@ draw_panel() {
   mvwaddch "$win" 1 $(( 3 + NAMEW + SIZEW + TIMEW )) "│"
 
   # entry rows: │ dividers keep the border color, entry text uses its type color;
-  # the selected row is a full cyan strip (name in black, dividers/size/time in white).
+  # the selected row (active panel only) is a full cyan strip in black.
   local y idx cpair row
   for (( y = 0; y < rows; y++ )); do
     idx=$(( off + y ))
     (( idx >= cnt )) && break
     row=$(( y + 2 ))
-    if (( idx == pos )); then
+    if (( idx == pos && active )); then
       wmove "$win" "$row" 0
-      wchgat "$win" "$w" 0 14
+      wchgat "$win" "$w" 0 6
       wattrset "$win" 0 6
       mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
-      wattrset "$win" 0 14
       mvwaddch "$win" "$row" "$SD" "│"
       mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
       mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
@@ -258,7 +260,7 @@ draw_panel() {
 
   # separator, status, bottom
   local sy=$(( h - 3 ))
-  wattrset "$win" $(( active ? 1 : 0 )) "$bp"
+  wattrset "$win" 0 "$bp"
   mvwaddch "$win" "$sy" 0 "$ACS_LTEE"
   mvwhline "$win" "$sy" 1 "$ACS_HLINE" "$(( w - 2 ))"
   mvwaddch "$win" "$sy" "$(( w - 1 ))" "$ACS_RTEE"
@@ -278,11 +280,9 @@ draw_panel() {
   if [[ -n ${total_kb:-} ]]; then
     fstr="$(hum "$avail_kb") / $(hum "$total_kb") ($(( avail_kb * 100 / total_kb ))%)"
   fi
-  local blen=${#fstr} left
-  left=$(( (w - 2 - blen) / 2 ))
+  local blen=${#fstr} rd=1 left
+  left=$(( w - 5 - blen ))
   (( left < 0 )) && left=0
-  local rd=$(( w - 2 - left - blen - 2 ))
-  (( rd < 0 )) && rd=0
   printf -v ld '─%.0s' $(seq 1 "$left")
   printf -v rdstr '─%.0s' $(seq 1 "$rd")
   wattrset "$win" 0 7
@@ -368,10 +368,9 @@ draw_entry_row() { # p idx hl
   SD=$(( 1 + NAMEW + 1 ))
   if (( hl )); then
     wmove "$win" "$row" 0
-    wchgat "$win" "$w" 0 14
+    wchgat "$win" "$w" 0 6
     wattrset "$win" 0 6
     mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
-    wattrset "$win" 0 14
     mvwaddch "$win" "$row" "$SD" "│"
     mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
     mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
@@ -825,7 +824,7 @@ main() {
   init_pair 3 15 "$COLOR_BLUE"               # executables
   init_pair 4 15 "$COLOR_BLUE"               # symlinks
   init_pair 5 15 "$COLOR_BLUE"               # special files
-  init_pair 6 "$COLOR_BLACK"   "$COLOR_CYAN"  # selected entry: name
+  init_pair 6 "$COLOR_BLACK"   "$COLOR_CYAN"  # selected entry: full row (active panel)
   init_pair 7 "$COLOR_WHITE"   "$COLOR_BLUE"  # active border, dividers, status+size text
   init_pair 8 "$COLOR_WHITE"   "$COLOR_BLUE"  # inactive border
   init_pair 9 "$COLOR_BLACK"   "$COLOR_YELLOW" # active menu item / selected menu entry
@@ -833,7 +832,6 @@ main() {
   init_pair 11 "$COLOR_YELLOW" "$COLOR_BLUE"  # regular files
   init_pair 12 11 "$COLOR_BLUE"               # column headers (bright yellow)
   init_pair 13 "$COLOR_BLACK"  "$COLOR_WHITE"  # directory path in top border
-  init_pair 14 "$COLOR_WHITE"  "$COLOR_CYAN"   # selected entry: dividers/size/time
 
   init_ui || { endwin; exit 1; }
 
