@@ -446,6 +446,34 @@ update_selection() { # p oldpos
   return 0
 }
 
+# fold any navigation keys already buffered (e.g. a held-down arrow) into a
+# single POS step so one keypress batch triggers exactly one redraw.
+drain_panel_nav() {
+  local cur=$CUR
+  local -n _NN=NAMES_$cur
+  local max=$(( ${#_NN[@]} - 1 )); (( max < 0 )) && max=0
+  local pg; pg=$(page_rows "$cur")
+  local old=${BC_WDELAY[$BC_STDSCR]:-0}
+  BC_WDELAY[$BC_STDSCR]=1
+  local k
+  while :; do
+    wgetch "$BC_STDSCR" || break
+    k=$key
+    case $k in
+      $KEY_UP)    (( POS[$cur] > 0 )) && POS[$cur]=$(( POS[$cur] - 1 )) ;;
+      $KEY_DOWN)  (( POS[$cur] < max )) && POS[$cur]=$(( POS[$cur] + 1 )) ;;
+      $KEY_HOME)  POS[$cur]=0 ;;
+      $KEY_END)   POS[$cur]=$max ;;
+      $KEY_PPAGE) POS[$cur]=$(( POS[$cur] - pg )); clamp_pos "$cur" ;;
+      $KEY_NPAGE) POS[$cur]=$(( POS[$cur] + pg )); clamp_pos "$cur" ;;
+      *)          ungetch "$key"; break ;;
+    esac
+  done
+  BC_WDELAY[$BC_STDSCR]=$old
+  clamp_pos "$cur"
+  return 0
+}
+
 draw_cmdline() {
   local clear
   printf -v clear ' %.0s' $(seq 1 "$COLS")
@@ -620,10 +648,12 @@ cur_real() { # real name of current entry in active panel
   echo "${RR[${POS[$CUR]}]}"
 }
 do_open() {
-  local real
+  local real child="" old
   real=$(cur_real)
   if [[ $real == ".." ]]; then
-    DIR[$CUR]=$(dirname "${DIR[$CUR]}")
+    old="${DIR[$CUR]}"
+    [[ $old != "/" ]] && child=$(basename "$old")
+    DIR[$CUR]=$(dirname "$old")
   elif [[ -d "${DIR[$CUR]}/$real" ]]; then
     DIR[$CUR]="${DIR[$CUR]}/$real"
   elif [[ -f "${DIR[$CUR]}/$real" ]]; then
@@ -633,6 +663,130 @@ do_open() {
     return
   fi
   list_dir "$CUR"
+  # MC: when entering the parent, highlight the directory we came from
+  if [[ -n $child ]]; then
+    local -n RR=REALS_$CUR
+    local i
+    for (( i = 0; i < ${#RR[@]}; i++ )); do
+      [[ ${RR[$i]} == "$child" ]] && { POS[$CUR]=$i; break; }
+    done
+  fi
+}
+
+# ------------------------------------------------------------------ file viewer (F3)
+# Full-screen scrollable quick view, matching Midnight Commander's F3.
+# Globals: V_WIN V_N V_OFF V_PATH V_LINES. Color pairs reused from the main
+# palette: 6 (black-on-cyan), 7 (white-on-blue), 15 (bright-white-on-black).
+view_draw() { # paint the full-screen viewer window and refresh it
+  local win=$V_WIN
+  local rows=$(( LINES - 2 )); (( rows < 1 )) && rows=1
+  local maxoff=$(( V_N - rows )); (( maxoff < 0 )) && maxoff=0
+  (( V_OFF < 0 )) && V_OFF=0
+  (( V_OFF > maxoff )) && V_OFF=$maxoff
+  local total=${V_TOTAL:-0}; (( total < 0 )) && total=0
+
+  # byte offset of first visible line; MC clamps to total (100%) at the bottom
+  local off=${V_BTOFF[$V_OFF]:-0}
+  (( V_OFF >= maxoff && maxoff > 0 )) && off=$total
+  (( off < 0 )) && off=0
+  (( off > total )) && off=$total
+  local pct=0
+  (( total > 0 )) && pct=$(( (off * 100) / total ))
+
+  werase "$win"
+
+  # title bar (pair 6): full-width cyan; path left, offset/total + pct right
+  wattrset "$win" 0 6
+  local offsettotal="${off}/${total}" pctpart="${pct}%" pctfield left_raw gap left title
+  pctfield=$(printf '%17s' "$pctpart")
+  gap=$(( COLS - 17 - ${#V_PATH} - ${#offsettotal} ))
+  (( gap < 0 )) && gap=0
+  left_raw="${V_PATH}$(printf '%*s' "$gap" '')${offsettotal}"
+  left=$(printf '%-*s' "$((COLS - 17))" "$left_raw")
+  title="${left}${pctfield}"
+  mvwaddnstr "$win" 0 0 "$title" "$COLS"
+
+  # content (pair 7): full-width blue, rows 1 .. LINES-2
+  wattrset "$win" 0 7
+  local i idx line
+  for (( i = 1; i < LINES - 1; i++ )); do
+    idx=$(( V_OFF + i - 1 ))
+    line=""; (( idx < V_N )) && line="${V_LINES[$idx]}"
+    line="${line:0:$COLS}"
+    mvwaddnstr "$win" "$i" 0 "$(printf '%-*s' "$COLS" "$line")" "$COLS"
+  done
+
+  # function-key hint bar (numbers pair 15, labels pair 6)
+  view_fnbar "$win"
+
+  wrefresh "$win"
+}
+
+view_fnbar() { # win : MC-style function-key hints (10 slots; #6 has a blank label)
+  local win=$1
+  local -a label=("" "Help" "UnWrap" "Quit" "Hex" "Goto" "" "Search" "Raw" "Format" "Quit")
+  local i n numstr x
+  wattrset "$win" 0 6
+  mvwhline "$win" $(( LINES - 1 )) 0 ' ' "$COLS"
+  for (( i = 0; i < 10; i++ )); do
+    n=$(( i + 1 ))
+    x=$(( i * 10 ))
+    (( x >= COLS )) && break
+    printf -v numstr '%2d' "$n"
+    wattrset "$win" 0 15
+    mvwaddnstr "$win" $(( LINES - 1 )) "$x" "$numstr" 2
+    wattrset "$win" 0 6
+    mvwaddnstr "$win" $(( LINES - 1 )) $(( x + 2 )) "$(printf '%-8s' "${label[$n]}")" 8
+  done
+}
+
+drain_view_nav() { # fold any queued navigation keys into a single V_OFF step
+  local win=$V_WIN
+  local old=${BC_WDELAY[$win]:-0}
+  BC_WDELAY[$win]=1
+  local rows=$(( LINES - 2 )); (( rows < 1 )) && rows=1
+  local maxoff=$(( V_N - rows )); (( maxoff < 0 )) && maxoff=0
+  local k
+  while :; do
+    wgetch "$win" || break
+    k=$key
+    case $k in
+      $KEY_UP)    (( V_OFF > 0 )) && V_OFF=$(( V_OFF - 1 )) ;;
+      $KEY_DOWN)  (( V_OFF < maxoff )) && V_OFF=$(( V_OFF + 1 )) ;;
+      $KEY_HOME)  V_OFF=0 ;;
+      $KEY_END)   V_OFF=$maxoff ;;
+      $KEY_PPAGE) (( V_OFF >= rows )) && V_OFF=$(( V_OFF - rows )) || V_OFF=0 ;;
+      $KEY_NPAGE) (( V_OFF + rows <= maxoff )) && V_OFF=$(( V_OFF + rows )) || V_OFF=$maxoff ;;
+      *)          ungetch "$key"; break ;;
+    esac
+  done
+  BC_WDELAY[$win]=$old
+  (( V_OFF < 0 )) && V_OFF=0
+  (( V_OFF > maxoff )) && V_OFF=$maxoff
+}
+
+view_loop() { # modal key loop; returns 0 to close the viewer
+  local win=$V_WIN
+  local rows=$(( LINES - 2 )); (( rows < 1 )) && rows=1
+  local maxoff=$(( V_N - rows )); (( maxoff < 0 )) && maxoff=0
+  local k
+  while :; do
+    wgetch "$win" || return 0
+    k=$key
+    case $k in
+      $KEY_UP)    (( V_OFF > 0 )) && V_OFF=$(( V_OFF - 1 )) ;;
+      $KEY_DOWN)  (( V_OFF < maxoff )) && V_OFF=$(( V_OFF + 1 )) ;;
+      $KEY_HOME)  V_OFF=0 ;;
+      $KEY_END)   V_OFF=$maxoff ;;
+      $KEY_PPAGE) (( V_OFF >= rows )) && V_OFF=$(( V_OFF - rows )) || V_OFF=0 ;;
+      $KEY_NPAGE) (( V_OFF + rows <= maxoff )) && V_OFF=$(( V_OFF + rows )) || V_OFF=$maxoff ;;
+      "q"|"Q"|$'\x1b'|"$KEY_F3"|"$KEY_F10") return 0 ;;
+      *)          continue ;;
+    esac
+    drain_view_nav
+    view_draw
+  done
+  return 0
 }
 
 view_file() { # real name
@@ -642,12 +796,31 @@ view_file() { # real name
     message_dialog "View" "Cannot read $real"
     return
   fi
-  local lines
-  lines=$( (cat -- "$f" 2>/dev/null || echo "[binary or unreadable]") | head -100 )
-  local -a ll=()
-  while IFS= read -r ln; do ll+=("$ln"); done <<< "$lines"
-  (( ${#ll[@]} == 0 )) && ll+=("")
-  message_dialog "View: $real" "${ll[@]}"
+  local -a lines=() bto=()
+  local ln off=0
+  while IFS= read -r ln || [[ -n $ln ]]; do
+    bto+=("$off"); lines+=("$ln"); off=$(( off + ${#ln} + 1 ))
+  done < <(cat -- "$f" 2>/dev/null || echo "[binary or unreadable]")
+  (( ${#lines[@]} == 0 )) && { lines+=(""); bto+=(0); }
+  V_LINES=("${lines[@]}")
+  V_N=${#lines[@]}
+  V_OFF=0
+  V_PATH="$f"
+  V_BTOFF=("${bto[@]}")
+  V_TOTAL=$(wc -c < "$f" 2>/dev/null | tr -d ' \t')
+  [[ -z $V_TOTAL ]] && V_TOTAL=$off
+
+  local saved_esc=$ESCDELAY
+  ESCDELAY=80
+
+  newwin "$LINES" "$COLS" 0 0
+  V_WIN=$bc_win
+  view_draw
+  view_loop
+  delwin "$V_WIN"
+  ESCDELAY=$saved_esc
+  draw_all
+  doupdate
 }
 
 do_view() {
@@ -860,25 +1033,25 @@ main() {
   draw_all
   doupdate
 
-  local k cheap
+  local k nav
   while :; do
     local -n _CN=NAMES_$CUR
     local prev_pos=${POS[$CUR]}
-    cheap=0
+    nav=0
     getch || break
     k=$key
     case $k in
-      $KEY_UP)     (( POS[$CUR] > 0 )) && { POS[$CUR]=$(( POS[$CUR]-1 )); cheap=1; } ;;
-      $KEY_DOWN)   (( POS[$CUR] < ${#_CN[@]}-1 )) && { POS[$CUR]=$(( POS[$CUR]+1 )); cheap=1; } ;;
+      $KEY_UP)     (( POS[$CUR] > 0 )) && { POS[$CUR]=$(( POS[$CUR]-1 )); nav=1; } ;;
+      $KEY_DOWN)   (( POS[$CUR] < ${#_CN[@]}-1 )) && { POS[$CUR]=$(( POS[$CUR]+1 )); nav=1; } ;;
+      $KEY_HOME)   POS[$CUR]=0; nav=1 ;;
+      $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )); nav=1 ;;
+      $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
+      $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
       $KEY_LEFT)   CUR=$(( 1 - CUR )) ;;
       $KEY_RIGHT)  CUR=$(( 1 - CUR )) ;;
       $'\t')       CUR=$(( 1 - CUR )) ;;
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
-      $KEY_HOME)   POS[$CUR]=0 ;;
-      $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )) ;;
-      $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR" ;;
-      $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR" ;;
       $KEY_F1)    fkey_help ;;
       $KEY_F2)    run_menu ;;
       $KEY_F3)    do_view ;;
@@ -905,8 +1078,9 @@ main() {
         fi
         ;;
     esac
-    if (( cheap )); then
-      update_selection "$CUR" "$prev_pos" || { draw_all; doupdate; }
+    if (( nav )); then
+      drain_panel_nav
+      update_selection "$CUR" "$prev_pos" || { draw_panel "$CUR"; wrefresh "${WIN[$CUR]}"; }
     else
       draw_all
       doupdate
