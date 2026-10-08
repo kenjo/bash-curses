@@ -23,6 +23,7 @@ POS_0=0; POS_1=0; OFF_0=0; OFF_1=0
 SORT=(name name)
 REV=(0 0)
 WIN=()
+PANEL=()
 
 CUR=0                 # active panel (0 left, 1 right)
 CMD_LINE=""
@@ -979,6 +980,7 @@ view_loop() { # modal key loop; returns 0 to close the viewer
       $KEY_PPAGE) (( V_OFF >= rows )) && V_OFF=$(( V_OFF - rows )) || V_OFF=0 ;;
       $KEY_NPAGE) (( V_OFF + rows <= maxoff )) && V_OFF=$(( V_OFF + rows )) || V_OFF=$maxoff ;;
       "q"|"Q"|$'\x1b'|"$KEY_F3"|"$KEY_F10") return 0 ;;
+      $KEY_RESIZE) BC_WINCH=1; return 0 ;;
       *)          continue ;;
     esac
     drain_view_nav
@@ -1219,6 +1221,7 @@ user_menu() {
       $KEY_UP)      (( cur > 0 )) && cur=$(( cur - 1 )) ;;
       $KEY_DOWN)    (( cur < n - 1 )) && cur=$(( cur + 1 )) ;;
       $'\r'|$'\x1b'|"q"|"Q") break ;;
+      $KEY_RESIZE) BC_WINCH=1; break ;;
       *) : ;;
     esac
   done
@@ -1247,12 +1250,13 @@ run_menu() {
         draw_menu
         (( menu_dd )) && { menu_dd_close; menu_dd_open; }
         ;;
-      $KEY_RIGHT)
-        menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0
-        menu_real_n "$menu_bar_sel"
-        draw_menu
-        (( menu_dd )) && { menu_dd_close; menu_dd_open; }
-        ;;
+       $KEY_RIGHT)
+         menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0
+         menu_real_n "$menu_bar_sel"
+         draw_menu
+         (( menu_dd )) && { menu_dd_close; menu_dd_open; }
+         ;;
+       $KEY_RESIZE) do_resize ;;
       $KEY_DOWN)
         if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0; menu_dd_open
         else
@@ -1388,6 +1392,33 @@ clamp_pos() { # p
   return 0
 }
 
+# Handle a terminal resize (SIGWINCH -> KEY_RESIZE): re-read the size, tear
+# down and rebuild both panels at the new geometry, and force a full repaint.
+do_resize() {
+  local p vis
+  (( LINES < 5 || COLS < 20 )) && return 0
+  (( MENU_WIN > 0 )) && menu_dd_close
+  del_panel "${PANEL[0]}" 2>/dev/null; delwin "${WIN[0]}"
+  del_panel "${PANEL[1]}" 2>/dev/null; delwin "${WIN[1]}"
+  resizeterm
+  BC_DELRECTS=""
+  PH=$(( LINES - 4 )); (( PH < 2 )) && PH=2
+  PW=$(( COLS / 2 )); (( PW < 10 )) && PW=10
+  HINTY=$(( 1 + PH )); CMY=$(( 1 + PH + 1 )); BTNY=$(( 1 + PH + 2 ))
+  newwin "$PH" "$PW" 1 0; WIN[0]=$bc_win; new_panel "${WIN[0]}"; PANEL[0]=$bc_panel
+  newwin "$PH" "$PW" 1 "$PW"; WIN[1]=$bc_win; new_panel "${WIN[1]}"; PANEL[1]=$bc_panel
+  for p in 0 1; do
+    clamp_pos "$p"
+    vis=$(page_rows "$p"); (( vis < 1 )) && vis=1
+    (( POS[$p] < OFF[$p] )) && OFF[$p]=$(( POS[$p] ))
+    (( POS[$p] >= OFF[$p] + vis )) && OFF[$p]=$(( POS[$p] - vis + 1 ))
+    (( OFF[$p] < 0 )) && OFF[$p]=0
+  done
+  draw_all
+  BC_FORCEFULL=1
+  doupdate
+}
+
 # ------------------------------------------------------------------ main
 init_ui() {
   (( LINES < 12 || COLS < 60 )) && { echo "Terminal too small" >&2; return 1; }
@@ -1396,8 +1427,8 @@ init_ui() {
   HINTY=$(( 1 + PH ))
   CMY=$(( 1 + PH + 1 ))
   BTNY=$(( 1 + PH + 2 ))
-  newwin "$PH" "$PW" 1 0; WIN[0]=$bc_win; new_panel "${WIN[0]}"
-  newwin "$PH" "$PW" 1 "$PW"; WIN[1]=$bc_win; new_panel "${WIN[1]}"
+  newwin "$PH" "$PW" 1 0; WIN[0]=$bc_win; new_panel "${WIN[0]}"; PANEL[0]=$bc_panel
+  newwin "$PH" "$PW" 1 "$PW"; WIN[1]=$bc_win; new_panel "${WIN[1]}"; PANEL[1]=$bc_panel
   list_dir 0; list_dir 1
 }
 
@@ -1408,6 +1439,7 @@ main() {
   keypad 0 1
   start_color
   trap 'endwin' EXIT INT TERM
+  trap 'BC_WINCH=1' WINCH
   # Pairs 1,9,10 are the menu bar / dropdown (left unchanged).  The rest are the
   # main-window palette, matching real Midnight Commander's colors.
   init_pair 1 "$COLOR_WHITE"   "$COLOR_BLACK"   # menu bar, hint/cmdline/buttons
@@ -1456,9 +1488,10 @@ main() {
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )); nav=1 ;;
       $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
       $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
-      $KEY_LEFT)   CUR=$(( 1 - CUR )); switched=1 ;;
-      $KEY_RIGHT)  CUR=$(( 1 - CUR )); switched=1 ;;
-      $'\t')       CUR=$(( 1 - CUR )); switched=1 ;;
+       $KEY_LEFT)   CUR=$(( 1 - CUR )); switched=1 ;;
+       $KEY_RIGHT)  CUR=$(( 1 - CUR )); switched=1 ;;
+       $KEY_RESIZE) do_resize ;;
+       $'\t')       CUR=$(( 1 - CUR )); switched=1 ;;
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
       $KEY_F1)    fkey_help ;;

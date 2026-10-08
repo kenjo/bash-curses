@@ -259,6 +259,8 @@ BC_PAIRS=0
 BC_WN=1
 BC_STARTED=0
 BC_OLDSTTY=""
+BC_WINCH=0            # set by a SIGWINCH trap; consumed by wgetch as KEY_RESIZE
+BC_FORCEFULL=0       # when set, the next doupdate recomposites the whole screen
 
 # ncurses globals (mirrored by initscr / start_color)
 COLS=80
@@ -1186,6 +1188,20 @@ delwin() {
   return 0
 }
 
+# Re-read the terminal size, resize the standard window, and physically clear
+# the screen so no stale content from the old dimensions survives.
+resizeterm() {
+  local t
+  t=$(tput lines 2>/dev/null); [[ $t =~ ^[0-9]+$ ]] && (( t > 0 )) && BC_LINES=$t
+  t=$(tput cols 2>/dev/null); [[ $t =~ ^[0-9]+$ ]] && (( t > 0 )) && BC_COLS=$t
+  LINES=$BC_LINES; COLS=$BC_COLS
+  BC_WH[0]=$BC_LINES; BC_WW[0]=$BC_COLS
+  printf '%s[2J%s[H' "$BC_ESC" "$BC_ESC"
+  return 0
+}
+
+resizestdscr() { resizeterm "$@"; }
+
 move() { wmove "$BC_STDSCR" "$1" "$2"; }
 
 wmove() { # win y x
@@ -1806,10 +1822,9 @@ doupdate() {
   # the deleted window may have desynced BC_S via wrefresh, so a diff-based
   # skip could leave stale content showing through.
   if [[ -n ${BC_DELRECTS:-} ]]; then
-    local ry0 rx0 rh rww r saved_ifs=$IFS
-    IFS='|'
-    local -a delrects=(${BC_DELRECTS})
-    IFS=$saved_ifs
+    local ry0 rx0 rh rww r
+    local -a delrects
+    IFS='|' read -r -a delrects <<< "$BC_DELRECTS"
     for r in "${delrects[@]}"; do
       [[ -n $r ]] || continue
       read -r ry0 rx0 rh rww <<< "$r"
@@ -1821,8 +1836,11 @@ doupdate() {
       done
     done
   fi
-  # the very first composite rebuilds the whole screen
-  if (( ${#RC[@]} == 0 && ${#BC_S[@]} == 0 )); then
+  # the very first composite (or a forced full rebuild after a resize) repaints
+  # the whole screen: clear the last-composited model and recompute every cell
+  if (( ${#RC[@]} == 0 && ${#BC_S[@]} == 0 )) || (( BC_FORCEFULL )); then
+    BC_FORCEFULL=0
+    BC_S=(); BC_SA=(); BC_SP=()
     for (( ay = 0; ay < BC_LINES; ay++ )); do
       for (( ax = 0; ax < BC_COLS; ax++ )); do RC["$ay $ax"]=1; done
     done
@@ -2002,9 +2020,9 @@ scr_set() {
   while IFS= read -r line; do
     y=$(( y + 1 ))
     x=0
-    local old=$IFS
-    IFS=$'\x1f'
-    for cell in $line; do
+    local -a cells
+    IFS=$'\x1f' read -r -a cells <<< "$line"
+    for cell in "${cells[@]}"; do
       a=${cell%% *}; rest=${cell#* }; p=${rest%% *}; ch=${rest#* }
       [[ -z $ch ]] && ch=' '
       _bc_cell "$BC_STDSCR" "$y" "$x" "$ch" "$a" "$p"
@@ -2013,7 +2031,6 @@ scr_set() {
       BC_SP["$y $x"]=$p
       x=$(( x + 1 ))
     done
-    IFS=$old
   done < "$SCR_FILE"
   wrefresh "$BC_STDSCR"
   return 0
@@ -2025,15 +2042,14 @@ scr_restore() {
   while IFS= read -r line; do
     y=$(( y + 1 ))
     x=0
-    local old=$IFS
-    IFS=$'\x1f'
-    for cell in $line; do
+    local -a cells
+    IFS=$'\x1f' read -r -a cells <<< "$line"
+    for cell in "${cells[@]}"; do
       a=${cell%% *}; rest=${cell#* }; p=${rest%% *}; ch=${rest#* }
       [[ -z $ch ]] && ch=' '
       _bc_cell "$BC_STDSCR" "$y" "$x" "$ch" "$a" "$p"
       x=$(( x + 1 ))
     done
-    IFS=$old
   done < "$SCR_FILE"
   wrefresh "$BC_STDSCR"
   return 0
@@ -2077,6 +2093,11 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
   local c s="" t rc
   wrefresh "$w"
   while :; do
+    if (( BC_WINCH )); then
+      BC_WINCH=0
+      key=$KEY_RESIZE
+      return 0
+    fi
     if [[ -n $BC_PENDING_IN ]]; then
       key=${BC_PENDING_IN:0:1}
       BC_PENDING_IN=${BC_PENDING_IN:1}
@@ -2085,7 +2106,20 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
     if (( BC_WDELAY[$w] )); then
       IFS= read -rsn1 -t 0.001 c; rc=$?
     else
-      IFS= read -rsn1 c; rc=$?
+      # Short timeout so a SIGWINCH (trapped, deferred until this read
+      # completes) can be picked up as KEY_RESIZE instead of blocking forever.
+      IFS= read -rsn1 -t 0.05 c; rc=$?
+    fi
+    if (( BC_WINCH )); then
+      BC_WINCH=0
+      key=$KEY_RESIZE
+      return 0
+    fi
+    if (( rc > 128 )); then
+      # A timed-out read (rc > 128): nothing was read, so keep polling. A
+      # nodelay window reports ERR instead of looping.
+      (( BC_WDELAY[$w] )) && return 1
+      continue
     fi
     if (( rc )); then
       return 1

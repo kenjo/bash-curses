@@ -88,6 +88,31 @@ Verified: `initial` listing rows are per-cell exact matches (`a.txt` yellow,
 render. Verified: `menu_f9_down`/`_down2`/`_right_down` are **plain-text exact
 matches**.
 
+### R11. F9 → Down → Right corrupted the screen (arithmetic errors)
+Closing and reopening the menu dropdown (the `delwin` on a menu transition)
+corrupted the **IFS** that the composite `doupdate` uses to split its changed-
+cell keys: `saved_ifs=$IFS` captured `""` when IFS was *unset*, and
+`IFS=$saved_ifs` then set IFS to an *explicitly empty* string (not unset). An
+empty-IFS `read -r ay ax` does not split `"25 33"`, so the coordinate pair was
+fed whole into arithmetic → `((: 25 33: arithmetic syntax error)` and a garbled
+screen. Fixed in `lib/bc.sh` by replacing the persistent-IFS save/restore with a
+scoped split — `IFS='|' read -r -a delrects <<< "$BC_DELRECTS"` (and the same
+`old=$IFS; IFS=…; IFS=$old` pattern in `scr_set`/`scr_restore` → scoped
+`read -r -a`) — so the persistent IFS is never clobbered. Verified: F9→Down→
+Right now renders **identically to `mc`** with 0 arithmetic errors.
+
+### R12. Terminal resize (SIGWINCH) is now handled
+The clone previously ignored SIGWINCH, so the terminal just clipped the old
+render. Now: `main` traps `WINCH` (sets `BC_WINCH`); `wgetch` reads the first
+char with a 0.05 s timeout (bash defers a trapped WINCH until a `read` builtin
+completes, so a blocking read could never see it) and reports `KEY_RESIZE` when
+the flag is set; `resizeterm` re-reads the size and resizes the standard window;
+`do_resize` rebuilds both panels at the new geometry and forces a full repaint
+(`BC_FORCEFULL`). Resizing in the main loop, the menu, the viewer, and the help
+dialog all reflow (the modals close and the main UI is redrawn at the new size).
+Verified: `tests/mc_resize.sh` (shrink 100x30→80x24, grow →120x40; button bar
+stays on the last row, hint line reflows).
+
 ---
 
 ## Open
@@ -120,6 +145,13 @@ depends on redraw timing). E.g. after `open_alpha` / `viewer_txt`:
 `mc` shows "Want to do complex searches?…" / "M-t changes quickly the listing
 mode.", the clone shows "Tab changes your current panel." The rotation *style*
 matches `mc` (R4); the exact per-step text does not.
+
+### O3. A key that closes a modal can leak into the command line
+Pressing `q` to close the viewer (F3) leaves a `q` in the command line — the
+key is consumed by the modal and then also reaches the main loop, which appends
+printable keys to `CMD_LINE`. `mc` does not echo the closing key. Subtle,
+pre-existing, and unrelated to the resize work (R12); the normal F3→`q` flow
+reproduces it.
 
 ---
 
