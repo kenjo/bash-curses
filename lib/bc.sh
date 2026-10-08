@@ -170,7 +170,7 @@ readonly KEY_SUSPEND=407
 readonly KEY_UNDO=408
 readonly KEY_MOUSE=409
 readonly KEY_RESIZE=410
-readonly KEY_ALT_TAB=411   # Meta-Tab (ESC TAB) -- mc's "complete"/completer key
+readonly KEY_ALT_SH=411   # Alt-S-h / Alt-H (ESC H) -- mc's "show directory history" key (the 'v' button); what the dialog field's "[^]" completer opens
 readonly KEY_MAX=511
 readonly KEY_DELETE=330   # X/Open alias for KEY_DC
 
@@ -436,9 +436,10 @@ _bc_load_keytable() {
       BC_KEYVAL+=("${valmap[$cap]}")
     done
   done <<< "$out"
-  # Meta-Tab (Alt-Tab): ESC followed by TAB -- mc's "complete"/completer key.
+  # Alt-S-h / Alt-H: ESC followed by 'H' -- mc's "show directory history" key
+  # (the 'v' button), i.e. what a dialog field's "[^]" completer opens.
   # Not a terminfo capability, so map it explicitly.
-  BC_KEYSEQ+=($'\x1b\t'); BC_KEYVAL+=($KEY_ALT_TAB)
+  BC_KEYSEQ+=($'\x1bH'); BC_KEYVAL+=($KEY_ALT_SH)
   return 0
 }
 

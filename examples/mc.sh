@@ -1267,7 +1267,7 @@ copy_move_dialog() { # verb
         esac; cm_draw ;;
       $KEY_HOME) case ${ET[$fi]} in src) sc=0;; dst) dc=0;; esac; cm_draw ;;
       $KEY_END)  case ${ET[$fi]} in src) sc=${#src};; dst) dc=${#dst};; esac; cm_draw ;;
-      $KEY_ALT_TAB)
+      $KEY_ALT_SH)
         case ${ET[$fi]} in
           src) field_history_popup "$anchor" && { src="$HIST_RESULT"; sc=${#src}; } ;;
           dst) field_history_popup "$anchor" && { dst="$HIST_RESULT"; dc=${#dst}; } ;;
