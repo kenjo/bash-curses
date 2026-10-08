@@ -29,6 +29,8 @@ CUR=0                 # active panel (0 left, 1 right)
 CMD_LINE=""
 STOP=0
 DLG_RESULT=""
+DIRHIST=()            # directory history, most-recent-first (for the completer)
+HIST_RESULT=""
 
 # column widths
 SIZEW=7
@@ -119,6 +121,13 @@ list_dir() {
   local -n NN=NAMES_$p TT=TYPES_$p SS=SIZES_$p TM=TIMES_$p RR=REALS_$p XX=EXEC_$p
   local d=${DIR[$p]}
   d=$(cd "$d" 2>/dev/null && pwd) || d="$HOME"
+  # record the directory in the history (most-recent-first, deduped, capped).
+  # Always run: list_dir is the choke point every directory change flows
+  # through, and DIR[$p] is already the new path by the time we get here.
+  local -a nh=("$d") e
+  for e in "${DIRHIST[@]}"; do [[ $e != "$d" ]] && nh+=("$e"); done
+  (( ${#nh[@]} > 50 )) && nh=("${nh[@]:0:50}")
+  DIRHIST=("${nh[@]}")
   DIR[$p]=$d
   local now; now=$(date +%Y%-m); NOW_Y=${now:0:4}; NOW_MO=$((10#${now:4}))
 
@@ -784,19 +793,21 @@ dlg_divider() { # row [pair]
   mvwaddch "$dw" "$row" $(( w - 1 )) "$ACS_RTEE"
 }
 
-# Input field: cyan background (pair 25), bright-black text, and a "[^]" caret
-# at the given caret position when focused.
+# Input field: cyan background (pair 25), bright-black text, and a completer
+# button "[^]" (bright-white on blue, pair 28) at the right end. The focused
+# field parks the hardware cursor at the caret position.
 dlg_field() { # row col width text caret focused
   local row=$1 col=$2 width=$3 text=$4 caret=$5 focused=$6
   (( caret > ${#text} )) && caret=${#text}; (( caret < 0 )) && caret=0
   wattrset "$dw" 0 25
   mvwhline "$dw" "$row" "$col" ' ' "$width"
-  mvwaddnstr "$dw" "$row" "$col" "$text" "$width"
+  mvwaddnstr "$dw" "$row" "$col" "$text" "$(( width - 3 ))"
+  wattrset "$dw" 0 28
+  mvwaddstr "$dw" "$row" $(( col + width - 3 )) "[^]"
+  wattrset "$dw" 0 25
   if (( focused )); then
-    (( caret + 3 > width )) && caret=$(( width - 3 )); (( caret < 0 )) && caret=0
-    wattrset "$dw" 0 7
-    mvwaddstr "$dw" "$row" $(( col + caret )) "[^]"
-    wattrset "$dw" 0 25
+    (( caret > width - 4 )) && caret=$(( width - 4 )); (( caret < 0 )) && caret=0
+    wmove "$dw" "$row" $(( col + caret ))
   fi
 }
 
@@ -1130,6 +1141,62 @@ do_view() {
   fi
 }
 
+# Directory-history popup (the completer behind a field's "[^]" button). Shows
+# the recently-used directories most-recent-first; up/down/page/home/end to
+# browse, Enter to choose (result in HIST_RESULT), Esc/F10 to cancel. Returns
+# 0 if an entry was chosen, 1 otherwise. $1 is the row the box starts on.
+field_history_popup() { # anchor_row
+  local anchor=${1:-19}
+  local -a items=() e
+  for e in "${DIRHIST[@]}"; do [[ -n $e ]] && items+=("$e"); done
+  (( ${#items[@]} )) || items=("$PWD")
+  local n=${#items[@]} sel=0 top=0 maxl=0
+  for e in "${items[@]}"; do (( ${#e} > maxl )) && maxl=${#e}; done
+  local w=$(( maxl + 6 )); (( w < 40 )) && w=40; (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  local maxh=$(( LINES - anchor )); (( maxh < 4 )) && maxh=4
+  local h=$(( n + 2 )); (( h > maxh )) && h=$maxh
+  local visible=$(( h - 2 ))
+  local y=$anchor x=$(( (COLS - w) / 2 )); (( x < 1 )) && x=1
+  newwin "$h" "$w" "$y" "$x"; local hw=$bc_win
+  hist_draw() {
+    wattrset "$hw" 0 23; werase "$hw"; box "$hw"
+    local tstr=" History " tx=$(( (w - ${#tstr}) / 2 )); (( tx < 1 )) && tx=1
+    wattrset "$hw" 0 24; mvwaddstr "$hw" 0 "$tx" "$tstr"
+    local i row idx e2
+    for (( i = 0; i < visible; i++ )); do
+      row=$(( i + 1 )); idx=$(( top + i ))
+      (( idx >= n )) && continue
+      e2=${items[idx]}
+      if (( idx == sel )); then
+        wattrset "$hw" 0 22
+        mvwaddnstr "$hw" "$row" 1 "$e2" "$(( w - 2 ))"
+        mvwhline "$hw" "$row" $(( 1 + ${#e2} )) ' ' "$(( w - 2 - ${#e2} ))"
+      else
+        wattrset "$hw" 0 23
+        mvwaddnstr "$hw" "$row" 1 "$e2" "$(( w - 2 ))"
+      fi
+    done
+    wrefresh "$hw"
+  }
+  hist_draw
+  while :; do
+    wgetch "$hw" || break
+    case $key in
+      $KEY_UP)    (( sel > 0 )) && { sel=$(( sel - 1 )); (( sel < top )) && top=$sel; } ;;
+      $KEY_DOWN)  (( sel < n - 1 )) && { sel=$(( sel + 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )); } ;;
+      $KEY_HOME)  sel=0; top=0 ;;
+      $KEY_END)   sel=$(( n - 1 )); if (( n > visible )); then top=$(( n - visible )); else top=0; fi ;;
+      $KEY_PPAGE) sel=$(( sel - visible )); (( sel < 0 )) && sel=0; (( sel < top )) && top=$sel ;;
+      $KEY_NPAGE) sel=$(( sel + visible )); (( sel > n - 1 )) && sel=$(( n - 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )) ;;
+      $'\r')      HIST_RESULT=${items[sel]}; delwin "$hw"; return 0 ;;
+      $'\x1b'|$KEY_F10) delwin "$hw"; return 1 ;;
+    esac
+    hist_draw
+  done
+  delwin "$hw"
+  return 1
+}
+
 # MC-style Copy/Move dialog: source-mask field, five checkboxes, destination
 # field, and OK/Background/Cancel. Returns 0 (OK) / 1 (cancel); results in
 # CM_SRC / CM_DST / CM_SHELL / CM_FOLLOW / CM_DIVE / CM_PRESERVE / CM_STABLE.
@@ -1146,6 +1213,8 @@ copy_move_dialog() { # verb
   local w=66 h=12
   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
   mc_dialog "$w" "$h" "$verb" 0
+  # the history popup opens just below the dialog
+  local anchor=$(( (PH - h) / 2 + h ))
 
   cm_draw() {
     wattrset "$dw" 0 23
@@ -1165,6 +1234,15 @@ copy_move_dialog() { # verb
     dlg_button 10 25 "Background" plain 0
     dlg_button 10 40 "Cancel" plain 0
     wrefresh "$dw"
+  }
+
+  # full redraw of the whole dialog (frame + title + contents); used to restore
+  # it after the history popup has painted over part of the screen.
+  cm_redraw_full() {
+    werase "$dw"; box "$dw"
+    local tstr=" $verb " tx=$(( (w - ${#tstr}) / 2 )); (( tx < 1 )) && tx=1
+    wattrset "$dw" 0 24; mvwaddstr "$dw" 0 "$tx" "$tstr"; wattrset "$dw" 0 23
+    cm_draw
   }
 
   cm_draw
@@ -1189,6 +1267,12 @@ copy_move_dialog() { # verb
         esac; cm_draw ;;
       $KEY_HOME) case ${ET[$fi]} in src) sc=0;; dst) dc=0;; esac; cm_draw ;;
       $KEY_END)  case ${ET[$fi]} in src) sc=${#src};; dst) dc=${#dst};; esac; cm_draw ;;
+      $KEY_ALT_TAB)
+        case ${ET[$fi]} in
+          src) field_history_popup "$anchor" && { src="$HIST_RESULT"; sc=${#src}; } ;;
+          dst) field_history_popup "$anchor" && { dst="$HIST_RESULT"; dc=${#dst}; } ;;
+        esac
+        draw_all; doupdate; cm_redraw_full ;;
       $'\x7f'|$'\x08')
         case ${ET[$fi]} in
           src) if (( sc > 0 )); then src="${src:0:sc-1}${src:sc}"; sc=$(( sc - 1 )); fi ;;
@@ -1806,6 +1890,7 @@ main() {
   init_pair 25 8 6                            # dialog input fields (bright-black on cyan)
   init_pair 26 15 1                           # destructive dialog frame/body (bright-white on red)
   init_pair 27 11 1                           # destructive dialog title (bright-yellow on red)
+  init_pair 28 15 "$COLOR_BLUE"              # input-field completer button (bright-white on blue)
 
   init_ui || { endwin; exit 1; }
 
