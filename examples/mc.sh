@@ -396,44 +396,48 @@ draw_panel() {
 # panels (stdscr is below them). Geometry + per-row data are cached so only the
 # changed rows need redrawing during navigation.
 MENU_WIN=0; MENU_PANEL=0; MENU_GX=0; MENU_GY=0; MENU_GW=0; MENU_GH=0
-MENU_INNER=0; MENU_MAXSC=0; MENU_BW=0
+MENU_INNER=0; MENU_MAXSC=0; MENU_BW=0; MENU_TOP=0; MENU_VIS=0
+MENU_NROWS=0; MENU_SELROW=0
 
-# Compute the dropdown geometry and the string + display-row for every real
-# item of the current bar entry.
+# Build the dropdown row list (each "SEP" or an item string) + geometry for
+# the current bar entry, and the row index of the selected item.
 menu_dd_prep() { # bar_sel
   local name=${MENUNAMES[$1]}
   local -n MI="MENU_${name}"
-  local maxlen=0 maxsc=0 lab sc e nent=0
+  local maxlen=0 maxsc=0 lab sc e
   for e in "${MI[@]}"; do
-    if [[ $e == --- ]]; then (( nent++ )); continue; fi
+    if [[ $e == --- ]]; then continue; fi
     lab=${e%%|*}; sc=${e#*|}; sc=${sc%|*}
-    (( nent++ ))
     (( ${#lab} > maxlen )) && maxlen=${#lab}
     (( ${#sc} > maxsc )) && maxsc=${#sc}
   done
   MENU_INNER=$(( 1 + maxlen + (maxsc > 0 ? 2 + maxsc : 0) ))
   MENU_MAXSC=$maxsc
   MENU_BW=$(( MENU_INNER + 2 ))
-  MENU_GH=$(( nent + 2 ))
-  MENU_GW=$MENU_BW
   MENU_GX=$(( MENU_X[$1] - 2 )); (( MENU_GX < 0 )) && MENU_GX=0
   (( MENU_GX + MENU_BW > COLS )) && MENU_GX=$(( COLS - MENU_BW ))
   MENU_GY=1
-  (( MENU_GH > HINTY - 1 - MENU_GY )) && MENU_GH=$(( HINTY - 1 - MENU_GY ))
-  local -a it=() drow=()
-  local r=1 ri=0
+  MENU_VIS=$(( HINTY - 3 )); (( MENU_VIS < 1 )) && MENU_VIS=1
+  local -a rows=()
+  local r=0 ri=0 selrow=-1
   for e in "${MI[@]}"; do
-    if [[ $e != --- ]]; then it+=("$e"); drow+=("$r"); (( ri++ )); fi
+    if [[ $e == --- ]]; then
+      rows+=("SEP")
+    else
+      rows+=("$e")
+      (( ri == menu_sel )) && selrow=$r
+      (( ri++ ))
+    fi
     (( r++ ))
   done
-  MENU_IT=("${it[@]}")
-  MENU_DROW=("${drow[@]}")
+  MENU_ROWS=("${rows[@]}")
+  MENU_NROWS=${#rows[@]}
+  MENU_SELROW=$selrow
 }
 
-# Draw a single dropdown item row (real index ri) as selected/unselected.
-menu_dd_row() { # ri sel
-  local ri=$1 sel=$2
-  local row=${MENU_DROW[$ri]} e=${MENU_IT[$ri]}
+# Draw one dropdown item at window row $1, selected (1) / not ($2).
+menu_dd_row() { # displayrow sel item
+  local row=$1 sel=$2 e=$3
   local lab=${e%%|*} mnem=${e##*|}
   local sc=${e#*|}; sc=${sc%|*}
   local tp tp2 sp mpos=0 i lc
@@ -452,38 +456,48 @@ menu_dd_row() { # ri sel
   wattrset "$MENU_WIN" 0 16; mvwaddstr "$MENU_WIN" "$row" $(( MENU_INNER + 1 )) "│"
 }
 
-# Open (fully draw) the dropdown for the current bar entry.
-menu_dd_open() { # bar_sel
-  menu_dd_prep "$menu_bar_sel"
-  if (( MENU_WIN == 0 )); then
-    newwin "$MENU_GH" "$MENU_BW" "$MENU_GY" "$MENU_GX"
-    MENU_WIN=$bc_win
-    new_panel "$MENU_WIN"; MENU_PANEL=$bc_panel
-    werase "$MENU_WIN"
-  fi
-  local -n MI="MENU_${MENUNAMES[$menu_bar_sel]}"
-  local top mid bot e
-  printf -v top '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); top="┌${top}┐"
+# Draw a separator line at window row $1.
+menu_dd_sep() { # displayrow
+  local row=$1 mid
   printf -v mid '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); mid="├${mid}┤"
-  printf -v bot '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); bot="└${bot}┘"
   wattrset "$MENU_WIN" 0 16
-  mvwaddstr "$MENU_WIN" 0 0 "$top"
-  local r=0 ri=0
-  for e in "${MI[@]}"; do
-    if (( 1 + r >= MENU_GH )); then break; fi
-    if [[ $e == --- ]]; then
-      wattrset "$MENU_WIN" 0 16
-      mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$mid"
-    else
-      menu_dd_row "$ri" 0
-    fi
-    (( r++ ))
-    [[ $e != --- ]] && (( ri++ ))
-  done
-  if (( 1 + r < MENU_GH )); then
-    wattrset "$MENU_WIN" 0 16
-    mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$bot"
+  mvwaddstr "$MENU_WIN" "$row" 0 "$mid"
+}
+
+# Open (fully draw) the dropdown, scrolling so the selected item is visible.
+menu_dd_open() {
+  menu_dd_prep "$menu_bar_sel"
+  local nshow=$(( MENU_NROWS < MENU_VIS ? MENU_NROWS : MENU_VIS ))
+  local top=$MENU_TOP
+  (( top < 0 )) && top=0
+  (( top > MENU_NROWS - nshow )) && top=$(( MENU_NROWS - nshow ))
+  (( MENU_SELROW >= 0 )) && {
+    (( MENU_SELROW < top )) && top=$MENU_SELROW
+    (( MENU_SELROW >= top + nshow )) && top=$(( MENU_SELROW - nshow + 1 ))
+  }
+  (( top < 0 )) && top=0
+  MENU_TOP=$top
+  local gh=$(( nshow + 2 ))
+  if (( MENU_WIN > 0 )); then
+    del_panel "$MENU_PANEL" 2>/dev/null; delwin "$MENU_WIN"
+    MENU_WIN=0; MENU_PANEL=0
   fi
+  newwin "$gh" "$MENU_BW" "$MENU_GY" "$MENU_GX"; MENU_WIN=$bc_win
+  new_panel "$MENU_WIN"; MENU_PANEL=$bc_panel
+  wattrset "$MENU_WIN" 0 16
+  werase "$MENU_WIN"
+  local topb botb
+  printf -v topb '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); topb="┌${topb}┐"
+  printf -v botb '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); botb="└${botb}┘"
+  mvwaddstr "$MENU_WIN" 0 0 "$topb"
+  local i drow e
+  for (( i = top; i < top + nshow; i++ )); do
+    e=${MENU_ROWS[$i]}
+    drow=$(( i - top + 1 ))
+    if [[ $e == SEP ]]; then menu_dd_sep "$drow"
+    else menu_dd_row "$drow" $(( i == MENU_SELROW ? 1 : 0 )) "$e"; fi
+  done
+  mvwaddstr "$MENU_WIN" "$gh" 0 "$botb"
 }
 
 menu_dd_close() {
@@ -735,20 +749,98 @@ dialog_box() { # w h title -> creates centered window, returns bc_win in $dw
   wattrset "$dw" 0 1
 }
 
+# ------------------------------------------------------------------ mc-style dialogs
+# A centered window with a colored frame and a centered title bar, matching
+# Midnight Commander's modal dialogs. danger=1 uses the red (destructive)
+# frame. Content is drawn on top afterwards. Sets the window id in $dw.
+mc_dialog() { # w h title danger
+  local w=$1 h=$2 title=$3 danger=${4:-0}
+  (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  (( h > LINES - 4 )) && h=$(( LINES - 4 ))
+  # center in the main/panel area (below the menu bar, above the button bar),
+  # matching mc rather than the whole screen
+  local y=$(( 1 + (PH - h) / 2 )) x=$(( (COLS - w) / 2 ))
+  (( y < 1 )) && y=1; (( x < 1 )) && x=1
+  local fp tp
+  (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
+  newwin "$h" "$w" "$y" "$x"; dw=$bc_win
+  wattrset "$dw" 0 "$fp"
+  werase "$dw"; box "$dw"
+  local tlen=${#title} tx=$(( (w - tlen) / 2 )); (( tx < 1 )) && tx=1
+  wattrset "$dw" 0 "$tp"
+  mvwaddstr "$dw" 0 "$tx" "$title"
+  wattrset "$dw" 0 "$fp"
+}
+
+# Horizontal divider inside a dialog (pair 23 by default): row [pair].
+dlg_divider() { # row [pair]
+  local row=$1 pair=${2:-23} w; getmaxyx "$dw"; w=$BC_GMX
+  wattrset "$dw" 0 "$pair"
+  mvwhline "$dw" "$row" 1 "$ACS_HLINE" "$(( w - 2 ))"
+  mvwaddch "$dw" "$row" 0 "$ACS_LTEE"
+  mvwaddch "$dw" "$row" $(( w - 1 )) "$ACS_RTEE"
+}
+
+# Input field: cyan background (pair 25), bright-black text, and a "[^]" caret
+# at the given caret position when focused.
+dlg_field() { # row col width text caret focused
+  local row=$1 col=$2 width=$3 text=$4 caret=$5 focused=$6
+  (( caret > ${#text} )) && caret=${#text}; (( caret < 0 )) && caret=0
+  wattrset "$dw" 0 25
+  mvwhline "$dw" "$row" "$col" ' ' "$width"
+  mvwaddnstr "$dw" "$row" "$col" "$text" "$width"
+  if (( focused )); then
+    (( caret + 3 > width )) && caret=$(( width - 3 )); (( caret < 0 )) && caret=0
+    wattrset "$dw" 0 7
+    mvwaddstr "$dw" "$row" $(( col + caret )) "[^]"
+    wattrset "$dw" 0 25
+  fi
+}
+
+# Checkbox "[x]"/"[ ]" with a mnemonic letter (index mnemidx into label).
+dlg_checkbox() { # row col on label mnemidx [fp [tp]]
+  local row=$1 col=$2 on=$3 label=$4 mcol=${5:-0} fp=${6:-23} tp=${7:-24}
+  wattrset "$dw" 0 "$fp"
+  if (( on )); then mvwaddstr "$dw" "$row" "$col" "[x] "
+  else mvwaddstr "$dw" "$row" "$col" "[ ] "; fi
+  mvwaddstr "$dw" "$row" $(( col + 4 )) "${label:0:mcol}"
+  wattrset "$dw" 0 "$tp"
+  mvwaddstr "$dw" "$row" $(( col + 4 + mcol )) "${label:mcol:1}"
+  wattrset "$dw" 0 "$fp"
+  mvwaddstr "$dw" "$row" $(( col + 4 + mcol + 1 )) "${label:mcol+1}"
+}
+
+# Button "[< label >]" (style ok) or "[ label ]" with a mnemonic letter.
+dlg_button() { # row col label style mnemidx [fp [tp]]
+  local row=$1 col=$2 label=$3 style=$4 mcol=${5:-0} fp=${6:-23} tp=${7:-24}
+  local pad tcol
+  wattrset "$dw" 0 "$fp"
+  if [[ $style == ok ]]; then mvwaddstr "$dw" "$row" "$col" "[< "; pad=3
+  else mvwaddstr "$dw" "$row" "$col" "[ "; pad=2; fi
+  tcol=$(( col + pad ))
+  mvwaddstr "$dw" "$row" "$tcol" "${label:0:mcol}"
+  wattrset "$dw" 0 "$tp"
+  mvwaddstr "$dw" "$row" $(( tcol + mcol )) "${label:mcol:1}"
+  wattrset "$dw" 0 "$fp"
+  mvwaddstr "$dw" "$row" $(( tcol + mcol + 1 )) "${label:mcol+1}"
+  if [[ $style == ok ]]; then mvwaddstr "$dw" "$row" $(( tcol + ${#label} )) " >]"
+  else mvwaddstr "$dw" "$row" $(( tcol + ${#label} )) " ]"; fi
+}
+
 # generic modal dialogs ---------------------------------------------
 message_dialog() { # title line1 [line2 ...]
   local title=$1; shift
   local -a lines=("$@")
-  local w=50 h=$(( ${#lines[@]} + 5 ))
+  local w=50 h=$(( ${#lines[@]} + 4 ))
   (( w < 40 )) && w=40; (( w > COLS - 8 )) && w=$(( COLS - 8 ))
   (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-  dialog_box "$w" "$h" "$title"
+  mc_dialog "$w" "$h" "$title" 0
   local i
   for (( i = 0; i < ${#lines[@]}; i++ )); do
-    mvwaddstr "$dw" "$(( i + 2 ))" 2 "${lines[$i]:0:$(( w - 4 ))}"
+    wattrset "$dw" 0 23
+    mvwaddstr "$dw" "$(( i + 1 ))" 2 "${lines[$i]:0:$(( w - 4 ))}"
   done
-  wattrset "$dw" 0 1
-  mvwaddstr "$dw" "$(( h - 2 ))" $(( (w - 18) / 2 )) "[ OK ]   [ Cancel ]"
+  dlg_button "$(( h - 2 ))" $(( (w - 9) / 2 )) "OK" ok 0
   wrefresh "$dw"
   while :; do
     wgetch "$dw" || break
@@ -1035,48 +1127,280 @@ do_view() {
   fi
 }
 
+# MC-style Copy/Move dialog: source-mask field, five checkboxes, destination
+# field, and OK/Background/Cancel. Returns 0 (OK) / 1 (cancel); results in
+# CM_SRC / CM_DST / CM_SHELL / CM_FOLLOW / CM_DIVE / CM_PRESERVE / CM_STABLE.
+copy_move_dialog() { # verb
+  local verb=$1
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return 1
+  local kind; [[ -d "${DIR[$CUR]}/$real" ]] && kind="directory" || kind="file"
+  local src=$real dst="${DIR[$(( 1 - CUR ))]}/"
+  local sc=${#src} dc=${#dst}
+  local c_shell=1 c_follow=0 c_dive=0 c_preserve=1 c_stable=0
+  local -a ET=(src shell dst follow dive preserve stable ok bg cancel)
+  local fi=0 cancelled=0
+  local w=66 h=12
+  (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  mc_dialog "$w" "$h" "$verb" 0
+
+  cm_draw() {
+    wattrset "$dw" 0 23
+    mvwaddstr "$dw" 1 6 "$verb $kind \"$real\" with source mask:"
+    dlg_field 2 6 58 "$src" "$sc" $(( fi == 0 ))
+    dlg_checkbox 3 37 "$c_shell" "Using shell patterns" 0
+    wattrset "$dw" 0 23
+    mvwaddstr "$dw" 4 6 "to:"
+    dlg_field 5 6 58 "$dst" "$dc" $(( fi == 2 ))
+    dlg_divider 6
+    dlg_checkbox 7 6  "$c_follow"   "Follow links" 7
+    dlg_checkbox 7 37 "$c_dive"     "Dive into subdir if exists" 2
+    dlg_checkbox 8 6  "$c_preserve" "Preserve attributes" 9
+    dlg_checkbox 8 37 "$c_stable"   "Stable symlinks" 0
+    dlg_divider 9
+    dlg_button 10 20 "OK" ok 0
+    dlg_button 10 29 "Background" plain 0
+    dlg_button 10 44 "Cancel" plain 0
+    wrefresh "$dw"
+  }
+
+  cm_draw
+  while :; do
+    wgetch "$dw" || break
+    case $key in
+      $KEY_RESIZE) BC_WINCH=1; break ;;
+      $'\x1b') cancelled=1; break ;;
+      $'\t') (( fi < 9 )) && fi=$(( fi + 1 )); cm_draw ;;
+      $KEY_UP)   (( fi > 0 )) && fi=$(( fi - 1 )); cm_draw ;;
+      $KEY_DOWN) (( fi < 9 )) && fi=$(( fi + 1 )); cm_draw ;;
+      $'\r') [[ ${ET[$fi]} == cancel ]] && cancelled=1; break ;;
+      $KEY_LEFT)
+        case ${ET[$fi]} in
+          src) (( sc > 0 )) && sc=$(( sc - 1 ));;
+          dst) (( dc > 0 )) && dc=$(( dc - 1 ));;
+        esac; cm_draw ;;
+      $KEY_RIGHT)
+        case ${ET[$fi]} in
+          src) (( sc < ${#src} )) && sc=$(( sc + 1 ));;
+          dst) (( dc < ${#dst} )) && dc=$(( dc + 1 ));;
+        esac; cm_draw ;;
+      $KEY_HOME) case ${ET[$fi]} in src) sc=0;; dst) dc=0;; esac; cm_draw ;;
+      $KEY_END)  case ${ET[$fi]} in src) sc=${#src};; dst) dc=${#dst};; esac; cm_draw ;;
+      $'\x7f'|$'\x08')
+        case ${ET[$fi]} in
+          src) if (( sc > 0 )); then src="${src:0:sc-1}${src:sc}"; sc=$(( sc - 1 )); fi ;;
+          dst) if (( dc > 0 )); then dst="${dst:0:dc-1}${dst:dc}"; dc=$(( dc - 1 )); fi ;;
+        esac; cm_draw ;;
+      *)
+        case ${ET[$fi]} in
+          shell)    [[ $key == " " ]] && c_shell=$(( 1 - c_shell )) ;;
+          follow)   [[ $key == " " ]] && c_follow=$(( 1 - c_follow )) ;;
+          dive)     [[ $key == " " ]] && c_dive=$(( 1 - c_dive )) ;;
+          preserve) [[ $key == " " ]] && c_preserve=$(( 1 - c_preserve )) ;;
+          stable)   [[ $key == " " ]] && c_stable=$(( 1 - c_stable )) ;;
+        esac
+        if [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then
+          case ${ET[$fi]} in
+            src) src="${src:0:sc}$key${src:sc}"; sc=$(( sc + 1 )) ;;
+            dst) dst="${dst:0:dc}$key${dst:dc}"; dc=$(( dc + 1 )) ;;
+          esac
+        fi
+        cm_draw ;;
+    esac
+  done
+  delwin "$dw"
+  CM_SRC=$src; CM_DST=$dst
+  CM_SHELL=$c_shell; CM_FOLLOW=$c_follow; CM_DIVE=$c_dive
+  CM_PRESERVE=$c_preserve; CM_STABLE=$c_stable
+  (( cancelled )) && return 1
+  return 0
+}
+
+# Generic single-line input dialog (mc white frame). Sets TF_TEXT. 0 ok / 1 cancel.
+text_field_dialog() { # title prompt default
+  local title=$1 prompt=$2 def=$3
+  local name="$def" caret=${#def} cancelled=0
+  local w=40 h=6
+  (( ${#prompt} + 8 > w )) && w=$(( ${#prompt} + 8 ))
+  (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  mc_dialog "$w" "$h" "$title" 0
+  tf_draw() {
+    wattrset "$dw" 0 23
+    mvwaddstr "$dw" 1 2 "$prompt"
+    dlg_field 2 2 $(( w - 4 )) "$name" "$caret" 1
+    dlg_divider 3
+    dlg_button 4 9 "OK" ok 0
+    dlg_button 4 18 "Cancel" plain 0
+    wrefresh "$dw"
+  }
+  tf_draw
+  while :; do
+    wgetch "$dw" || break
+    case $key in
+      $KEY_RESIZE) BC_WINCH=1; break ;;
+      $'\x1b') cancelled=1; break ;;
+      $'\r') break ;;
+      $KEY_LEFT)  (( caret > 0 )) && caret=$(( caret - 1 )) ;;
+      $KEY_RIGHT) (( caret < ${#name} )) && caret=$(( caret + 1 )) ;;
+      $KEY_HOME) caret=0 ;;
+      $KEY_END) caret=${#name} ;;
+      $'\x7f'|$'\x08') if (( caret > 0 )); then name="${name:0:caret-1}${name:caret}"; caret=$(( caret - 1 )); fi ;;
+      *) if [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then name="${name:0:caret}$key${name:caret}"; caret=$(( caret + 1 )); fi ;;
+    esac
+    tf_draw
+  done
+  delwin "$dw"
+  TF_TEXT=$name
+  (( cancelled )) && return 1
+  return 0
+}
+
+# MC-style Delete confirmation (red frame). kind = directory|file. 0 yes / 1 no.
+delete_dialog() { # kind real
+  local kind=$1 real=$2
+  local prompt; [[ $kind == directory ]] && prompt="Delete directory" || prompt="Delete file"
+  local name="\"$real\"?"
+  local w=21
+  (( ${#prompt} + 4 > w )) && w=$(( ${#prompt} + 4 ))
+  (( ${#name} + 6 > w )) && w=$(( ${#name} + 6 ))
+  (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  mc_dialog "$w" 6 "Delete" 1
+  dd_draw() {
+    wattrset "$dw" 0 26
+    mvwaddstr "$dw" 1 2 "$prompt"
+    mvwaddstr "$dw" 2 $(( (w - ${#name}) / 2 )) "$name"
+    dlg_divider 3 26
+    local c=$(( (w - 14) / 2 ))
+    dlg_button 4 "$c"     "Yes" plain 0 26 27
+    dlg_button 4 "$(( c + 8 ))" "No" plain 0 26 27
+    wrefresh "$dw"
+  }
+  dd_draw
+  local yes=0
+  while :; do
+    wgetch "$dw" || yes=1
+    case $key in
+      $KEY_RESIZE) yes=0; break ;;
+      $'\r'|y|Y) yes=1; break ;;
+      n|N|$'\x1b') yes=0; break ;;
+    esac
+  done
+  delwin "$dw"
+  (( yes )) && return 0
+  return 1
+}
+
 do_mkdir() {
-  input_dialog "Create directory" "Create directory:" "" || return
-  local name=$DLG_RESULT
+  text_field_dialog "Create a new Directory" "Enter directory name:" "" || return
+  local name=$TF_TEXT
   [[ -z $name ]] && return
   mkdir "${DIR[$CUR]}/$name" 2>/dev/null && list_dir "$CUR"
 }
 
 do_delete() {
-  local real
-  real=$(cur_real)
+  local real; real=$(cur_real)
   [[ $real == ".." ]] && return
-  confirm_dialog "Delete" "Delete '${DIR[$CUR]}/$real'?" || return
-  [[ $DLG_RESULT == y ]] || return
+  local kind; [[ -d "${DIR[$CUR]}/$real" ]] && kind="directory" || kind="file"
+  delete_dialog "$kind" "$real" || return
   rm -rf -- "${DIR[$CUR]}/$real" 2>/dev/null && list_dir "$CUR"
 }
 
 do_copy() {
-  local real
-  real=$(cur_real)
+  local real; real=$(cur_real)
   [[ $real == ".." ]] && return
-  local dest=${DIR[$(( 1 - CUR ))]}
-  input_dialog "Copy" "Copy to directory:" "$dest" || return
-  local d=$DLG_RESULT
-  [[ -z $d || ! -d $d ]] && { message_dialog "Copy" "Not a directory: $d"; return; }
-  cp -r -- "${DIR[$CUR]}/$real" "$d/" 2>/dev/null && list_dir "$(( 1 - CUR ))"
+  copy_move_dialog "Copy" || return
+  local d=${CM_DST/#~/$HOME}
+  [[ -z $d ]] && return
+  [[ -d $d ]] || { message_dialog "Copy" "Not a directory: $d"; return; }
+  local flags=" -r"
+  (( CM_PRESERVE )) && flags+=" -p"
+  (( CM_FOLLOW )) && flags+=" -L"
+  local src="${DIR[$CUR]}/${CM_SRC}"
+  local target="$d"
+  (( CM_DIVE )) && [[ -d "$d/$CM_SRC" ]] && target="$d/$CM_SRC/"
+  cp $flags -- "$src" "$target" 2>/dev/null
+  list_dir 0; list_dir 1
 }
 
 do_move() {
-  local real
-  real=$(cur_real)
+  local real; real=$(cur_real)
   [[ $real == ".." ]] && return
-  local dest=${DIR[$(( 1 - CUR ))]}
-  input_dialog "Rename / Move" "Rename/move to:" "$dest" || return
-  local d=$DLG_RESULT
+  copy_move_dialog "Move" || return
+  local d=${CM_DST/#~/$HOME}
   [[ -z $d ]] && return
-  if [[ $d == /* || $d == ~* ]]; then
-    d=${d/#~/$HOME}
-    [[ -d $d ]] || { message_dialog "Move" "Not a directory: $d"; return; }
-    mv -- "${DIR[$CUR]}/$real" "$d/" 2>/dev/null && list_dir "$CUR"
-  else
-    mv -- "${DIR[$CUR]}/$real" "${DIR[$CUR]}/$d" 2>/dev/null && list_dir "$CUR"
-  fi
+  [[ -d $d ]] || { message_dialog "Move" "Not a directory: $d"; return; }
+  local src="${DIR[$CUR]}/${CM_SRC}"
+  local target="$d"
+  (( CM_DIVE )) && [[ -d "$d/$CM_SRC" ]] && target="$d/$CM_SRC/"
+  mv -- "$src" "$target" 2>/dev/null
+  list_dir 0; list_dir 1
+}
+
+# File "Info" (C-x i): a quick stat dialog for the current entry.
+do_info() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  local f="${DIR[$CUR]}/$real" size="" mtime type
+  if [[ -d $f ]]; then type="directory"
+  elif [[ -L $f ]]; then type="symlink"
+  else type="regular file"; size=$(wc -c < "$f" 2>/dev/null | tr -d ' '); fi
+  mtime=$(stat -c '%y' "$f" 2>/dev/null)
+  local -a lines=("$real", "Type: $type")
+  [[ -n $size ]] && lines+=("Size: $size bytes")
+  [[ -n $mtime ]] && lines+=("Modified: ${mtime:0:19}")
+  message_dialog "Info" "${lines[@]}"
+}
+
+do_chmod() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  text_field_dialog "Chmod" "Mode (octal):" "0644" || return
+  local mode=$TF_TEXT
+  [[ $mode =~ ^[0-7]{3,4}$ ]] || { message_dialog "Chmod" "Invalid mode: $mode"; return; }
+  chmod "$mode" "${DIR[$CUR]}/$real" 2>/dev/null && list_dir "$CUR"
+}
+
+do_link() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  text_field_dialog "Link" "Name of the new link:" "" || return
+  local name=$TF_TEXT
+  [[ -z $name ]] && return
+  ln "$real" "${DIR[$CUR]}/$name" 2>/dev/null && list_dir "$CUR"
+}
+
+do_symlink() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  text_field_dialog "Symlink" "Name of the new symlink:" "" || return
+  local name=$TF_TEXT
+  [[ -z $name ]] && return
+  ln -s "$real" "${DIR[$CUR]}/$name" 2>/dev/null && list_dir "$CUR"
+}
+
+do_sort_cycle() { # Left/Right "Sort order...": cycle name -> size -> date
+  local cur=${SORT[$CUR]:-name}
+  case $cur in
+    name) SORT[$CUR]=size ;;
+    size) SORT[$CUR]=date ;;
+    date) SORT[$CUR]=name ;;
+    *)    SORT[$CUR]=name ;;
+  esac
+  list_dir "$CUR"
+}
+
+do_show_sizes() {
+  local kb
+  kb=$(du -sk "${DIR[$CUR]}" 2>/dev/null | awk '{print $1}')
+  message_dialog "Directory size" "${DIR[$CUR]}" "Total: $(hum "${kb:-0}")"
+}
+
+do_compare_dirs() {
+  local l=${DIR[0]} r=${DIR[1]}
+  local lc rc
+  lc=$(ls -1A "$l" 2>/dev/null | wc -l | tr -d ' ')
+  rc=$(ls -1A "$r" 2>/dev/null | wc -l | tr -d ' ')
+  message_dialog "Compare directories" "$l" "$r" "Entries: $lc (left) vs $rc (right)"
 }
 
 do_exchange() {
@@ -1245,107 +1569,113 @@ run_menu() {
     wgetch 0 || break
     case $key in
       $KEY_LEFT)
-        menu_bar_sel=$(( (menu_bar_sel + nmb - 1) % nmb )); menu_sel=0
+        menu_bar_sel=$(( (menu_bar_sel + nmb - 1) % nmb )); menu_sel=0; MENU_TOP=0
         menu_real_n "$menu_bar_sel"
         draw_menu
         (( menu_dd )) && { menu_dd_close; menu_dd_open; }
         ;;
        $KEY_RIGHT)
-         menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0
+         menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0; MENU_TOP=0
          menu_real_n "$menu_bar_sel"
          draw_menu
          (( menu_dd )) && { menu_dd_close; menu_dd_open; }
          ;;
-       $KEY_RESIZE) do_resize ;;
-      $KEY_DOWN)
-        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0; menu_dd_open
-        else
-          local old=$menu_sel
-          menu_sel=$(( (menu_sel + 1) % REALN ))
-          menu_dd_row "$old" 0; menu_dd_row "$menu_sel" 1
-        fi
-        ;;
-      $KEY_UP)
-        if (( menu_dd == 1 )); then
-          if (( menu_sel == 0 )); then menu_dd=0; menu_dd_close
-          else
-            local old=$menu_sel
-            menu_sel=$(( menu_sel - 1 ))
-            menu_dd_row "$old" 0; menu_dd_row "$menu_sel" 1
-          fi
-        else
-          menu_dd=1; menu_sel=0; menu_dd_open
-        fi
-        ;;
-      $'\r')
-        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0; menu_dd_open
-        else
-          menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
-          menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break
-        fi
-        ;;
-      $'\x1b') menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break ;;
-      [a-zA-Z])
-        local ch=${key,,} ri lf
-        if (( menu_dd == 1 )); then
-          local old=$menu_sel
-          for (( ri = 0; ri < REALN; ri++ )); do
-            menu_entry_at "$menu_bar_sel" "$ri"; lf=${ENTRY##*|}; lf=${lf,,}
-            [[ $lf == "$ch" ]] && { menu_sel=$ri; break; }
-          done
-          (( old != menu_sel )) && { menu_dd_row "$old" 0; menu_dd_row "$menu_sel" 1; }
-        else
-          for (( ri = 0; ri < nmb; ri++ )); do
-            lf=${MENUNAMES[ri]:0:1}; lf=${lf,,}
-            [[ $lf == "$ch" ]] && { menu_bar_sel=$ri; menu_sel=0; break; }
-          done
-          menu_real_n "$menu_bar_sel"
-          draw_menu
-        fi
-        ;;
+        $KEY_RESIZE) do_resize ;;
+       $KEY_DOWN)
+         if (( menu_dd == 0 )); then MENU_TOP=0; menu_dd=1; menu_sel=0; menu_dd_open
+         else
+           menu_sel=$(( (menu_sel + 1) % REALN ))
+           menu_dd_open
+         fi
+         ;;
+       $KEY_UP)
+         if (( menu_dd == 1 )); then
+           if (( menu_sel == 0 )); then menu_dd=0; menu_dd_close
+           else
+             menu_sel=$(( menu_sel - 1 ))
+             menu_dd_open
+           fi
+         else
+           MENU_TOP=0; menu_dd=1; menu_sel=0; menu_dd_open
+         fi
+         ;;
+       $'\r')
+         if (( menu_dd == 0 )); then MENU_TOP=0; menu_dd=1; menu_sel=0; menu_dd_open
+         else
+           menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
+           menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break
+         fi
+         ;;
+       $'\x1b') menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break ;;
+       [a-zA-Z])
+         local ch=${key,,} ri lf
+         if (( menu_dd == 1 )); then
+           local old=$menu_sel
+           for (( ri = 0; ri < REALN; ri++ )); do
+             menu_entry_at "$menu_bar_sel" "$ri"; lf=${ENTRY##*|}; lf=${lf,,}
+             [[ $lf == "$ch" ]] && { menu_sel=$ri; break; }
+           done
+           (( old != menu_sel )) && menu_dd_open
+         else
+           for (( ri = 0; ri < nmb; ri++ )); do
+             lf=${MENUNAMES[ri]:0:1}; lf=${lf,,}
+             [[ $lf == "$ch" ]] && { menu_bar_sel=$ri; menu_sel=0; MENU_TOP=0; break; }
+           done
+           menu_real_n "$menu_bar_sel"
+           draw_menu
+         fi
+         ;;
     esac
     doupdate
   done
   menu_open=0; menu_dd=0
   menu_dd_close
+  draw_all
+  doupdate
   [[ -z $chosen ]] && return
-  local label=${chosen%|*} name=${MENUNAMES[$menu_bar_sel]}
+  local label=${chosen%%|*} name=${MENUNAMES[$menu_bar_sel]}
   case $name in
     Left|Right)
       case $label in
         "Quick view")    do_view ;;
+        "Info")          do_info ;;
+        "Sort order...") do_sort_cycle ;;
         "Rescan")        draw_all; doupdate ;;
-        "Sort order...") message_dialog "Sort order" "Not implemented." ;;
         *)               message_dialog "$name" "Not implemented: $label" ;;
       esac ;;
     File)
       case $label in
-        "View")         do_view ;;
-        "Edit")         message_dialog "Edit" "No editor configured." ;;
-        "Copy")         do_copy ;;
-        "Rename/Move")  do_move ;;
-        "Mkdir")        do_mkdir ;;
-        "Delete")       do_delete ;;
-        "Quick cd")     focus_cmdline ;;
-        "Exit")         STOP=1 ;;
+        "View")          do_view ;;
+        "View file...")  do_view ;;
+        "Edit")          message_dialog "Edit" "No editor configured." ;;
+        "Copy")          do_copy ;;
+        "Chmod")         do_chmod ;;
+        "Link")          do_link ;;
+        "Symlink")       do_symlink ;;
+        "Rename/Move")   do_move ;;
+        "Mkdir")         do_mkdir ;;
+        "Delete")        do_delete ;;
+        "Quick cd")      focus_cmdline ;;
+        "Exit")          STOP=1 ;;
         *)              message_dialog "File" "Not implemented: $label" ;;
       esac ;;
     Command)
       case $label in
-        "Swap panels")  CUR=$(( 1 - CUR )); draw_all; doupdate ;;
-        "Command line") focus_cmdline ;;
-        "User menu")    user_menu ;;
-        *)              message_dialog "Command" "Not implemented: $label" ;;
+        "User menu")            user_menu ;;
+        "Swap panels")          CUR=$(( 1 - CUR )); draw_all; doupdate ;;
+        "Show directory sizes") do_show_sizes ;;
+        "Compare directories")  do_compare_dirs ;;
+        *)                     message_dialog "Command" "Not implemented: $label" ;;
       esac ;;
     Options)
       case $label in
         "Save setup") message_dialog "Options" "Save setup not implemented." ;;
         *)            message_dialog "Options" "Not implemented: $label" ;;
       esac ;;
-  esac
-}
+   esac
+ }
 
-focus_cmdline() { # F9: focus the command line (fresh line to type a command)
+ focus_cmdline() { # F9: focus the command line (fresh line to type a command)
   CMD_LINE=""
 }
 
@@ -1466,6 +1796,13 @@ main() {
   init_pair 20 "$COLOR_BLUE"  "$COLOR_WHITE"  # F1 Help dialog: blue title/"Commander" on white
   init_pair 21 11 "$COLOR_BLUE"               # F1 Help: "Enter" key word (bright cyan on blue)
   init_pair 22 "$COLOR_BLACK" "$COLOR_CYAN"   # menu bar, closed (black-on-cyan)
+  # mc-style modal dialogs: white frame / blue title / cyan input fields, and a
+  # red-framed variant for destructive (Delete) dialogs.
+  init_pair 23 0 7                            # dialog frame + body + button text (black on white)
+  init_pair 24 4 7                            # dialog title + mnemonics (blue on white)
+  init_pair 25 8 6                            # dialog input fields (bright-black on cyan)
+  init_pair 26 15 1                           # destructive dialog frame/body (bright-white on red)
+  init_pair 27 11 1                           # destructive dialog title (bright-yellow on red)
 
   init_ui || { endwin; exit 1; }
 
