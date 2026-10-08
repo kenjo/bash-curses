@@ -812,30 +812,35 @@ dlg_field() { # row col width text caret focused
 }
 
 # Checkbox "[x]"/"[ ]" with a mnemonic letter (index mnemidx into label).
-dlg_checkbox() { # row col on label mnemidx [fp [tp]]
-  local row=$1 col=$2 on=$3 label=$4 mcol=${5:-0} fp=${6:-23} tp=${7:-24}
-  wattrset "$dw" 0 "$fp"
+# focused draws the whole box+label on a cyan highlight (mc behavior).
+dlg_checkbox() { # row col on label mnemidx [fp [tp [focused]]]
+  local row=$1 col=$2 on=$3 label=$4 mcol=${5:-0} fp=${6:-23} tp=${7:-24} focused=${8:-0}
+  local bp mp
+  if (( focused )); then bp=29; mp=30; else bp=$fp; mp=$tp; fi
+  wattrset "$dw" 0 "$bp"
   if (( on )); then mvwaddstr "$dw" "$row" "$col" "[x] "
   else mvwaddstr "$dw" "$row" "$col" "[ ] "; fi
   mvwaddstr "$dw" "$row" $(( col + 4 )) "${label:0:mcol}"
-  wattrset "$dw" 0 "$tp"
+  wattrset "$dw" 0 "$mp"
   mvwaddstr "$dw" "$row" $(( col + 4 + mcol )) "${label:mcol:1}"
-  wattrset "$dw" 0 "$fp"
+  wattrset "$dw" 0 "$bp"
   mvwaddstr "$dw" "$row" $(( col + 4 + mcol + 1 )) "${label:mcol+1}"
 }
 
 # Button "[< label >]" (style ok) or "[ label ]" with a mnemonic letter.
-dlg_button() { # row col label style mnemidx [fp [tp]]
-  local row=$1 col=$2 label=$3 style=$4 mcol=${5:-0} fp=${6:-23} tp=${7:-24}
-  local pad tcol
-  wattrset "$dw" 0 "$fp"
+# focused draws the whole button on a cyan highlight (mc behavior).
+dlg_button() { # row col label style mnemidx [fp [tp [focused]]]
+  local row=$1 col=$2 label=$3 style=$4 mcol=${5:-0} fp=${6:-23} tp=${7:-24} focused=${8:-0}
+  local pad tcol bp mp
+  if (( focused )); then bp=29; mp=30; else bp=$fp; mp=$tp; fi
+  wattrset "$dw" 0 "$bp"
   if [[ $style == ok ]]; then mvwaddstr "$dw" "$row" "$col" "[< "; pad=3
   else mvwaddstr "$dw" "$row" "$col" "[ "; pad=2; fi
   tcol=$(( col + pad ))
   mvwaddstr "$dw" "$row" "$tcol" "${label:0:mcol}"
-  wattrset "$dw" 0 "$tp"
+  wattrset "$dw" 0 "$mp"
   mvwaddstr "$dw" "$row" $(( tcol + mcol )) "${label:mcol:1}"
-  wattrset "$dw" 0 "$fp"
+  wattrset "$dw" 0 "$bp"
   mvwaddstr "$dw" "$row" $(( tcol + mcol + 1 )) "${label:mcol+1}"
   if [[ $style == ok ]]; then mvwaddstr "$dw" "$row" $(( tcol + ${#label} )) " >]"
   else mvwaddstr "$dw" "$row" $(( tcol + ${#label} )) " ]"; fi
@@ -1208,8 +1213,10 @@ copy_move_dialog() { # verb
   local src='*' dst="${DIR[$(( 1 - CUR ))]}/"
   local sc=${#src} dc=${#dst}
   local c_shell=1 c_follow=0 c_dive=0 c_preserve=1 c_stable=0
-  local -a ET=(src shell dst follow dive preserve stable ok bg cancel)
-  local fi=0 cancelled=0
+  # focus order matches mc: fields top-to-bottom, then the checkboxes
+  # column-major (left column, then right column), then the buttons.
+  local -a ET=(src shell dst follow preserve dive stable ok bg cancel)
+  local fi=2 cancelled=0          # mc starts with the destination field focused
   local w=66 h=12
   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
   mc_dialog "$w" "$h" "$verb" 0
@@ -1220,19 +1227,19 @@ copy_move_dialog() { # verb
     wattrset "$dw" 0 23
     mvwaddstr "$dw" 1 2 "$verb $kind \"$real\" with source mask:"
     dlg_field 2 2 62 "$src" "$sc" $(( fi == 0 ))
-    dlg_checkbox 3 33 "$c_shell" "Using shell patterns" 0
+    dlg_checkbox 3 33 "$c_shell" "Using shell patterns" 0 23 24 $(( fi == 1 ))
     wattrset "$dw" 0 23
     mvwaddstr "$dw" 4 2 "to:"
     dlg_field 5 2 62 "$dst" "$dc" $(( fi == 2 ))
     dlg_divider 6
-    dlg_checkbox 7 2  "$c_follow"   "Follow links" 7
-    dlg_checkbox 7 33 "$c_dive"     "Dive into subdir if exists" 2
-    dlg_checkbox 8 2  "$c_preserve" "Preserve attributes" 9
-    dlg_checkbox 8 33 "$c_stable"   "Stable symlinks" 0
+    dlg_checkbox 7 2  "$c_follow"   "Follow links" 7 23 24 $(( fi == 3 ))
+    dlg_checkbox 7 33 "$c_dive"     "Dive into subdir if exists" 2 23 24 $(( fi == 5 ))
+    dlg_checkbox 8 2  "$c_preserve" "Preserve attributes" 9 23 24 $(( fi == 4 ))
+    dlg_checkbox 8 33 "$c_stable"   "Stable symlinks" 0 23 24 $(( fi == 6 ))
     dlg_divider 9
-    dlg_button 10 16 "OK" ok 0
-    dlg_button 10 25 "Background" plain 0
-    dlg_button 10 40 "Cancel" plain 0
+    dlg_button 10 16 "OK" ok 0 23 24 $(( fi == 7 ))
+    dlg_button 10 25 "Background" plain 0 23 24 $(( fi == 8 ))
+    dlg_button 10 40 "Cancel" plain 0 23 24 $(( fi == 9 ))
     wrefresh "$dw"
   }
 
@@ -1259,11 +1266,21 @@ copy_move_dialog() { # verb
         case ${ET[$fi]} in
           src) (( sc > 0 )) && sc=$(( sc - 1 ));;
           dst) (( dc > 0 )) && dc=$(( dc - 1 ));;
+          shell)    c_shell=$(( 1 - c_shell ));;
+          follow)   c_follow=$(( 1 - c_follow ));;
+          dive)     c_dive=$(( 1 - c_dive ));;
+          preserve) c_preserve=$(( 1 - c_preserve ));;
+          stable)   c_stable=$(( 1 - c_stable ));;
         esac; cm_draw ;;
       $KEY_RIGHT)
         case ${ET[$fi]} in
           src) (( sc < ${#src} )) && sc=$(( sc + 1 ));;
           dst) (( dc < ${#dst} )) && dc=$(( dc + 1 ));;
+          shell)    c_shell=$(( 1 - c_shell ));;
+          follow)   c_follow=$(( 1 - c_follow ));;
+          dive)     c_dive=$(( 1 - c_dive ));;
+          preserve) c_preserve=$(( 1 - c_preserve ));;
+          stable)   c_stable=$(( 1 - c_stable ));;
         esac; cm_draw ;;
       $KEY_HOME) case ${ET[$fi]} in src) sc=0;; dst) dc=0;; esac; cm_draw ;;
       $KEY_END)  case ${ET[$fi]} in src) sc=${#src};; dst) dc=${#dst};; esac; cm_draw ;;
@@ -1285,6 +1302,9 @@ copy_move_dialog() { # verb
           dive)     [[ $key == " " ]] && c_dive=$(( 1 - c_dive )) ;;
           preserve) [[ $key == " " ]] && c_preserve=$(( 1 - c_preserve )) ;;
           stable)   [[ $key == " " ]] && c_stable=$(( 1 - c_stable )) ;;
+          ok)       [[ $key == " " ]] && break ;;
+          bg)       [[ $key == " " ]] && break ;;
+          cancel)   [[ $key == " " ]] && { cancelled=1; break; } ;;
         esac
         if [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then
           case ${ET[$fi]} in
@@ -1891,6 +1911,8 @@ main() {
   init_pair 26 15 1                           # destructive dialog frame/body (bright-white on red)
   init_pair 27 11 1                           # destructive dialog title (bright-yellow on red)
   init_pair 28 15 "$COLOR_BLUE"              # input-field completer button (bright-white on blue)
+  init_pair 29 0 6                           # focused dialog checkbox/button (black on cyan)
+  init_pair 30 4 6                           # focused dialog mnemonic (blue on cyan)
 
   init_ui || { endwin; exit 1; }
 
