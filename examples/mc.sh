@@ -195,24 +195,16 @@ list_dir() {
 }
 
 type_color() { # p idx -> pair (assumes not the current/highlighted row)
+  # Colour the whole entry by type, like mc: directory bright white, regular
+  # file yellow, executable bright green (symlinks/specials bright white).
   local p=$1 i=$2
-  local -n TT=TYPES_$p RR=REALS_$p XX=EXEC_$p
-  local t=${TT[$i]} rn=${RR[$i]}
+  local -n TT=TYPES_$p XX=EXEC_$p
+  local t=${TT[$i]}
   case $t in
     d) echo 2 ;;
     l) echo 4 ;;
     c|b|p|s) echo 5 ;;
-    *)
-      case $rn in
-        *.sh)                 echo 14 ;;  # scripts -> cyan
-        *.md|*.json)          echo 11 ;;  # docs -> yellow
-        .*)                   echo 7 ;;   # dotfiles -> default
-        *.log)                echo 7 ;;   # logs -> default
-        *)
-          if (( XX[$i] )); then echo 3; else echo 7; fi
-          ;;
-      esac
-      ;;
+    *)  if (( XX[$i] )); then echo 3; else echo 11; fi ;;
   esac
 }
 
@@ -345,11 +337,13 @@ draw_panel() {
   mvwhline "$win" "$sy" 1 "$ACS_HLINE" "$(( w - 2 ))"
   mvwaddch "$win" "$sy" "$(( w - 1 ))" "$ACS_RTEE"
 
+  # status row names the selected entry (its listing name, with type prefix),
+  # or UP--DIR for the parent entry.
   local status
   if (( pos == 0 )); then
     status="UP--DIR"
   else
-    if [[ ${TT[$pos]} == d ]]; then status="dir"; else status="file ${SS[$pos]} bytes"; fi
+    status=${NN[$pos]}
   fi
   wattrset "$win" 0 7
   mvwprintw "$win" "$(( h - 2 ))" 1 '%s' "${status:0:$(( w - 2 ))}"
@@ -371,21 +365,30 @@ draw_panel() {
   draw_menu() {
    local i full
   printf -v full ' %.0s' $(seq 1 "$COLS")
-  # menu bar: bright-white-on-cyan (16); mnemonic bright-yellow (17); the
-  # highlighted item inverted to white-on-black (18), mnemonic (19).
-  wattrset 0 0 16
-  mvwaddstr 0 0 0 "$full"
-  for (( i = 0; i < ${#MENUNAMES[@]}; i++ )); do
-    local name=${MENUNAMES[$i]} x=${MENU_X[$i]}
-    local mn=${name:0:1} rest=${name:1}
-    if (( i == menu_bar_sel && menu_open )); then
-      wattrset 0 0 19; mvwaddstr 0 0 "$x" "$mn"
-      wattrset 0 0 18; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
-    else
-      wattrset 0 0 17; mvwaddstr 0 0 "$x" "$mn"
-      wattrset 0 0 16; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
-    fi
-  done
+  if (( menu_open )); then
+    # Open state: bright-white-on-cyan (16); mnemonic bright-yellow (17); the
+    # selected item inverted to white-on-black (18), mnemonic (19).
+    wattrset 0 0 16
+    mvwaddstr 0 0 0 "$full"
+    for (( i = 0; i < ${#MENUNAMES[@]}; i++ )); do
+      local name=${MENUNAMES[$i]} x=${MENU_X[$i]}
+      local mn=${name:0:1} rest=${name:1}
+      if (( i == menu_bar_sel )); then
+        wattrset 0 0 19; mvwaddstr 0 0 "$x" "$mn"
+        wattrset 0 0 18; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
+      else
+        wattrset 0 0 17; mvwaddstr 0 0 "$x" "$mn"
+        wattrset 0 0 16; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
+      fi
+    done
+  else
+    # Closed state: the whole bar is uniform black-on-cyan (22).
+    wattrset 0 0 22
+    mvwaddstr 0 0 0 "$full"
+    for (( i = 0; i < ${#MENUNAMES[@]}; i++ )); do
+      mvwaddstr 0 0 "${MENU_X[$i]}" "${MENUNAMES[$i]}"
+    done
+  fi
 }
 
 # The dropdown is its own top panel window so it composites over the file
@@ -430,7 +433,8 @@ menu_dd_prep() { # bar_sel
 menu_dd_row() { # ri sel
   local ri=$1 sel=$2
   local row=${MENU_DROW[$ri]} e=${MENU_IT[$ri]}
-  local lab=${e%%|*} sc=${e#*|} sc=${sc%|*} mnem=${e##*|}
+  local lab=${e%%|*} mnem=${e##*|}
+  local sc=${e#*|}; sc=${sc%|*}
   local tp tp2 sp mpos=0 i lc
   tp=$(( sel ? 18 : 16 )); tp2=$(( sel ? 19 : 17 ))
   for (( i = 0; i < ${#lab}; i++ )); do
@@ -608,14 +612,14 @@ update_selection() { # p oldpos
   (( newpos < off || newpos >= off + rows )) && return 1
   (( oldpos != newpos )) && draw_entry_row "$p" "$oldpos" 0
   draw_entry_row "$p" "$newpos" 1
-  local -n NN=NAMES_$p SS=SIZES_$p TT=TYPES_$p
+  local -n NN=NAMES_$p
   local status statusline
+  # status row names the selected entry (its listing name, with type prefix),
+  # or UP--DIR for the parent entry -- same as draw_panel.
   if (( newpos == 0 )); then
     status="UP--DIR"
-  elif [[ ${TT[$newpos]} == d ]]; then
-    status="dir"
   else
-    status="file ${SS[$newpos]} bytes"
+    status=${NN[$newpos]}
   fi
   wattrset "$win" 0 7
   printf -v statusline '%-*s' "$(( w - 2 ))" "$status"
@@ -1408,7 +1412,7 @@ main() {
   # main-window palette, matching real Midnight Commander's colors.
   init_pair 1 "$COLOR_WHITE"   "$COLOR_BLACK"   # menu bar, hint/cmdline/buttons
   init_pair 2 15 "$COLOR_BLUE"               # directories (bright white)
-  init_pair 3 15 "$COLOR_BLUE"               # executables
+  init_pair 3 10 "$COLOR_BLUE"               # executables (bright green)
   init_pair 4 15 "$COLOR_BLUE"               # symlinks
   init_pair 5 15 "$COLOR_BLUE"               # special files
   init_pair 6 "$COLOR_BLACK"   "$COLOR_CYAN"  # selected entry: full row (active panel)
@@ -1416,7 +1420,7 @@ main() {
   init_pair 8 "$COLOR_WHITE"   "$COLOR_BLUE"  # inactive border
   init_pair 9 "$COLOR_BLACK"   "$COLOR_YELLOW" # active menu item / selected menu entry
   init_pair 10 "$COLOR_BLACK"  "$COLOR_CYAN"  # dropdown bg/text
-  init_pair 11 "$COLOR_YELLOW" "$COLOR_BLUE"  # doc files (.md/.json)
+  init_pair 11 "$COLOR_YELLOW" "$COLOR_BLUE"  # regular files (yellow)
   init_pair 12 11 "$COLOR_BLUE"               # column header text (bright yellow on blue)
   init_pair 13 "$COLOR_BLACK"  "$COLOR_WHITE"  # directory path in top border
   init_pair 14 "$COLOR_CYAN"   "$COLOR_BLUE"   # scripts (.sh)
@@ -1429,6 +1433,7 @@ main() {
   init_pair 19 11 "$COLOR_BLACK"              # highlighted item mnemonic
   init_pair 20 "$COLOR_BLUE"  "$COLOR_WHITE"  # F1 Help dialog: blue title/"Commander" on white
   init_pair 21 11 "$COLOR_BLUE"               # F1 Help: "Enter" key word (bright cyan on blue)
+  init_pair 22 "$COLOR_BLACK" "$COLOR_CYAN"   # menu bar, closed (black-on-cyan)
 
   init_ui || { endwin; exit 1; }
 

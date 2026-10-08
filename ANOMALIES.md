@@ -9,13 +9,10 @@ Capture artefacts: `tmp/vd/{mc,clone}/NN_<label>.{plain,sgr}`; full report
 `tmp/vd/REPORT.txt`. Steps: initial, F9 menu bar (menu_f9*), F2 (menu_f2*),
 panel_tab, nav_down2, open_alpha, viewer_txt, f1_help.
 
-> **Reading caveat — 16-colour vs 256-colour SGR.** `mc` emits 16-colour ANSI
-> codes (`\e[30m`, `\e[9x`); the clone emits 256-colour codes (`\e[38;5;N`).
-> For N=0..15 the two render to the *same* colour, so the per-cell diff counts
-> are inflated by pure SGR-encoding differences that are visually identical
-> (directories, command line, panel header, most listing cells). Findings below
-> are only those where the rendered colour/content actually differs, or where
-> the behaviour differs. The encoding gap itself is tracked as LOW #8.
+> **Reading caveat — 16-colour SGR.** Both `mc` and the clone now emit 16-colour
+> ANSI codes (`\e[30m`, `\e[9x`, `\e[46m`, …) for palette colours 0-15, so the
+> per-cell diff no longer inflates on encoding differences. (This was the old
+> "256-colour" gap, now resolved — see R6.)
 
 ---
 
@@ -30,8 +27,9 @@ F2 now opens the centred **"User menu"** dialog (`examples/mc.sh` `user_menu`),
 geometry x=18 y=4 w=64 h=18, items and title matching `mc`. Cursor-item
 highlighting matches: leading margin space (window-col 1) stays pair 16, the
 mnemonic + description padded to `w-4` (window-cols 2..79) is pair 19, and the
-trailing margin cell (window-col 62) stays pair 16. Verified **0 differing
-cells** (span y4-21 x18-81). Down/Up move the highlight correctly.
+trailing margin cell (window-col 62) stays pair 16. The **dialog body** matches
+`mc` (span y4-21 x17-65). (The surrounding `..`-row/empty-row rendering is a
+separate, `mc`-side quirk — see open item O1.)
 
 ### R2. F1 (Help) — was H2
 F1 now opens the large centred **"Help"** main screen (`examples/mc.sh`
@@ -40,77 +38,98 @@ Geometry x=9 y=3 w=82 h=22. Emphasised words match `mc`'s colours: the "Enter"
 key is bright-cyan/blue (pair 21); "contents", "authors", "WARRANTY",
 "GNU General " (incl. its trailing end-of-line space), and "Public License" are
 black-on-cyan (pair 6); the logo "Commander" and first "GNU Midnight Commander"
-are blue (pair 20). Verified **0 differing cells** (span y3-24 x9-90).
+are blue (pair 20). The **dialog body** matches `mc` (span y3-24 x9-90).
 
 ### R3. `[^]` command-line cursor marker — was M4
 The subshell/command-line row now renders `[^]` at the far right, matching `mc`.
 
 ### R4. Context-sensitive hint line — was L3
 The bottom hint line now rotates context-sensitive hints (`redraw_hint`),
-e.g. "Hint: Tab changes your current panel.", matching `mc`'s style instead of
-one static line.
+e.g. "Hint: Tab changes your current panel.", matching `mc`'s *style* instead of
+one static line. (The *exact* hint at a given step is redraw-count dependent —
+see open item O2.)
 
 ### R5. Exact mnemonic letters in menu dropdowns
 Dropdown hot-key letters now match `mc`'s choices (commit `77f13bb`).
 
----
+### R6. 16-colour SGR encoding — was L1
+`lib/bc.sh` `_bc_sgr` emits 16-colour codes for palette 0-15 (`30+fg` /
+`90+(fg-8)` / `40+bg` / `100+(bg-8)`), matching `mc`. The clone no longer emits
+`\e[38;5;N` for in-range colours. Verified: `initial` is a **per-cell exact
+match** (`tests/visual_diff.sh`, 0 differing cells).
 
-## HIGH — wrong content / behaviour
+### R7. Panel status line names the entry — was H3
+Both redraw paths now show the selected entry's listing name (with its type
+prefix: `/beta`, ` a.txt`, `*c.sh`) or `UP--DIR` for the parent:
+`draw_panel` (full redraw) **and** `update_selection` (incremental selection
+move). Previously the incremental path hardcoded `dir` / `file N bytes`.
+Verified: `nav_down2` is a **plain-text exact match**.
 
-### H3. Panel status line shows a type label, not the entry name
-The panel's status row (just above the disk-usage row) should name the selected
-entry.
-- **mc**: `..` → `UP--DIR`; a directory → its **name** (`/beta`); a file → its
-  name.
-- **clone**: `..` → `UP--DIR` (matches); a directory → literal **`dir`**; a
-  file → `file <N> bytes` (does **not** match).
-- Source: `examples/mc.sh:348-353` (`status="dir"` / `"file N bytes"`).
-- Evidence: `tmp/vd/{mc,clone}/10.nav_down2.plain` (cursor on `/beta`).
+### R8. Menu-bar colour — was M1
+The **closed** menu bar is now uniform **black-on-cyan** (pair 22), matching
+`mc` (`\e[30m` on `\e[46m`); the old bright-white base + bright-yellow mnemonics
+is only used when a menu is **open** (where `mc` shows bright-white text,
+yellow mnemonics, and the selected item on a black background — pairs
+16/17/18/19, which already matched). Verified: `initial` row 0 is a
+per-cell exact match.
 
----
+### R9. File-entry colours — was M2 + M3
+Listing entries are coloured by **type**, not extension, matching `mc`:
+directory → bright white (pair 2); regular file → **yellow** (pair 11);
+executable → **bright green** (pair 3, fg 10); symlinks/specials → bright white.
+The whole row (name + size + time) takes the type colour; dividers stay white.
+Verified: `initial` listing rows are per-cell exact matches (`a.txt` yellow,
+`c.sh` bright green, dirs bright white).
 
-## MEDIUM — visible colour differences
-
-### M1. Menu bar colour
-- **mc**: entire bar is **black on cyan** (`\e[30m` + `\e[46m`), uniform.
-- **clone**: hot-key letters (L/F/C/O/R) in **bright yellow** (`38;5;11`) and
-  the rest in **bright white** (`38;5;15`), on cyan.
-- Raw: `tmp/vd/mc/01.initial.sgr` line 0 vs `tmp/vd/clone/01.initial.sgr` line 0.
-
-### M2. Regular-file colour
-- **mc**: **yellow** (`\e[33m`, index 3).
-- **clone**: **default/white** foreground (no explicit yellow).
-- Raw: grep `a.txt` in `tmp/vd/{mc,clone}/01.initial.sgr`.
-
-### M3. Executable colour
-- **mc**: **bright green** (`\e[92m`, index 10).
-- **clone**: **cyan** (`\e[36m`, index 6).
-- Raw: grep `c.sh` in `tmp/vd/{mc,clone}/01.initial.sgr`.
-
----
-
-## LOW — systematic / cosmetic / known simplifications
-
-### L1. SGR encoding: 16-colour (mc) vs 256-colour (clone)
-Visually identical for indices 0-15 but changes the emitted bytes, inflates the
-per-cell diff, and reduces terminal fidelity/efficiency. Affects directories,
-command line, panel header, and most listing cells. (See reading caveat.)
-
-### L2. Parent entry (`..`) size column: `DIR` (mc) vs `UP--DIR` (clone).
-Minor wording difference in the size field. Evidence: `07.menu_f2.plain`.
+### R10. Dropdown keyboard shortcuts
+`menu_dd_row` was dropping each item's shortcut (`C-x q`, `C-x i`, `M-e`,
+`C-r`, …) because `local sc=${e#*|} sc=${sc%|*}` read the *previous* (empty)
+`sc` in a single `local` statement. Split into two statements; shortcuts now
+render. Verified: `menu_f9_down`/`_down2`/`_right_down` are **plain-text exact
+matches**.
 
 ---
 
-## No divergence (verified matching)
+## Open
 
+Remaining differences found by the full `visual_diff` pass. Neither affects the
+core listing/navigation/menu behaviour; both are subtle `mc`-side rendering
+behaviours that the clone intentionally renders *consistently* instead.
+
+### O1. F1/F2 dialog: surrounding `..`-row and empty rows render differently
+With the F1 (Help) or F2 (User menu) dialog open, `mc` renders the panel rows
+that are *not* covered by the dialog — the `..` row and the empty rows below
+the listing — as a **single wide panel** (the right panel's name/size area is
+left blank/stale; the `..` size shows `DIR` at the far-right size column). The
+clone renders those same rows as **two consistent 50-col panels** (`UP--DIR` in
+each), which matches the initial state, the top border, and the column header
+row (all of which show two panels in `mc` too).
+
+- `mc` is internally inconsistent here (top border + header = two panels, but
+  `..`-row + empty rows = one wide panel). This looks like a `mc` redraw/clear
+  quirk around centred dialogs, not a layout the clone should imitate.
+- This also explains the old "L2" note (`..` size `DIR` vs `UP--DIR`): it is the
+  same `..`-row rendering, not a separate size-column difference.
+- Evidence: `tmp/vd/{mc,clone}/07.menu_f2.plain` (rows 4, 23) and
+  `tmp/vd/{mc,clone}/13.f1_help.plain` (rows 3, 25-26).
+
+### O2. Hint line: exact text at a step differs
+The hint line rotates in both, but the *specific* hint shown at a given step
+differs because it depends on how many times the hint has been redrawn (which
+depends on redraw timing). E.g. after `open_alpha` / `viewer_txt`:
+`mc` shows "Want to do complex searches?…" / "M-t changes quickly the listing
+mode.", the clone shows "Tab changes your current panel." The rotation *style*
+matches `mc` (R4); the exact per-step text does not.
+
+---
+
+## No divergence (verified matching, full screen)
+
+- **initial**: full per-cell exact match (listing, columns, `..` status row,
+  `[^]`, hint, menu bar, colours).
 - **F9 menu-bar navigation** (menu_f9, _down, _down2, _right, _right_down):
-  menu-bar text and highlight *position* are identical; only SGR/colour differs
-  (M1/L1).
-- **F2 (User menu)** and **F1 (Help)**: now match `mc` exactly (see R1/R2).
-- **panel_tab** (Tab): panel activation matches; only SGR/colour differs (L1).
-- **open_alpha** (Enter on `/alpha`): both navigate into `…/tree/alpha$`;
-  only SGR/colour differs (L1).
-- **viewer_txt**: viewer content and prompt (`…/tree/beta$`) match; only
-  SGR/colour differs (L1).
-- **initial**: file listing content, columns, `..` status row (`UP--DIR`),
-  `[^]`, and hint line all match; differences are M1-M3 + L1-L2.
+  plain-text exact match, including dropdown items **and their keyboard
+  shortcuts** (R10).
+- **nav_down2** (Down Down): status line names the entry (`/beta`) — exact
+  match (R7).
+- **panel_tab** (Tab): plain-text exact match.

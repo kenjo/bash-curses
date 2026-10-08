@@ -252,8 +252,8 @@ mcnav() { ( source "$REPO/examples/mc.sh"; COLS=100 LINES=30
             _bc_init_window 0 0 0 30 100; _bc_init_window 10 1 0 26 50;
             WIN[0]=10; CUR=0; NAMES_0=( $(seq 0 49) ); eval "$1"; ); }
 
-# J1. menu bar is cyan (pairs 16/17) across the full row width when not open
-check "mc menu bar full-width cyan" "100" "$(mc 'menu_open=0; draw_menu; n=0; for (( x = 0; x < COLS; x++ )); do p=${BC_P["0/0 $x"]:-0}; [[ $p == 16 || $p == 17 ]] && n=$((n+1)); done; printf "%s" "$n"')"
+# J1. closed menu bar is cyan (pair 22, black-on-cyan) across the full row width
+check "mc menu bar full-width cyan" "100" "$(mc 'menu_open=0; draw_menu; n=0; for (( x = 0; x < COLS; x++ )); do p=${BC_P["0/0 $x"]:-0}; [[ $p == 22 ]] && n=$((n+1)); done; printf "%s" "$n"')"
 # J2. PageUp/PageDown must clamp POS into [0, count-1] (page_rows = 26-5 = 21)
 check "mc pgup at top"   "0"  "$(mcnav 'POS[0]=0;  POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
 check "mc pgup mid"      "0"  "$(mcnav 'POS[0]=5;  POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
