@@ -55,7 +55,7 @@ main() {
   create_box 1
   while :; do
     getch
-    (( key == KEY_F1 )) && break
+    [[ $key == "$KEY_F1" ]] && break
     case $key in
       "$KEY_LEFT")  create_box 0; startx=$(( startx - 1 )); create_box 1 ;;
       "$KEY_RIGHT") create_box 0; startx=$(( startx + 1 )); create_box 1 ;;

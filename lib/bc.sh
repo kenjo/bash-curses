@@ -1923,6 +1923,26 @@ panel_userptr() { # p -> bc_panel_user
   return 0
 }
 
+# Mark a window's rectangle as changed so the next composite re-renders it.
+# Panel stacking changes (move/hide/show/reorder) do not dirty the individual
+# cells whose winner changes, so the affected region must be re-emitted.
+_bc_win_rect_dirty() { # w
+  [[ -n ${BC_WY[$1]:-} ]] && BC_DELRECTS+="|${BC_WY[$1]} ${BC_WX[$1]} ${BC_WH[$1]} ${BC_WW[$1]}"
+  return 0
+}
+
+# The region that can change when the stack is reordered is the union of every
+# visible panel's rectangle (the topmost winner can differ in any overlap).
+_bc_stack_dirty() {
+  local z w
+  for z in "${BC_PSTACK[@]}"; do
+    [[ ${BC_PHID[$z]} == 1 ]] && continue
+    w=${BC_PWIN[$z]}
+    _bc_win_rect_dirty "$w"
+  done
+  return 0
+}
+
 top_panel() { # p
   local p=$1 z
   local -a ns=()
@@ -1931,6 +1951,7 @@ top_panel() { # p
   done
   ns+=("$p")
   BC_PSTACK=("${ns[@]}")
+  _bc_stack_dirty
   return 0
 }
 
@@ -1941,16 +1962,21 @@ bottom_panel() { # p
     [[ $z != "$p" ]] && ns+=("$z")
   done
   BC_PSTACK=("${ns[@]}")
+  _bc_stack_dirty
   return 0
 }
 
 hide_panel() { # p
+  local w=${BC_PWIN[$1]}
   BC_PHID[$1]=1
+  _bc_win_rect_dirty "$w"
   return 0
 }
 
 show_panel() { # p
+  local w=${BC_PWIN[$1]}
   BC_PHID[$1]=0
+  _bc_win_rect_dirty "$w"
   return 0
 }
 
@@ -1976,6 +2002,9 @@ move_panel() { # p ny nx
       fi
     done
   done
+  # Remember the vacated old rectangle so the next composite re-renders it and
+  # reveals what lies underneath (otherwise the window leaves a ghost behind).
+  BC_DELRECTS+="|$oy $ox $h $ww"
   _bc_clear_marks "$w"
   unset "BC_WD[$w]"
   BC_WY[$w]=$ny

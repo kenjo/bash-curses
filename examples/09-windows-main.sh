@@ -29,7 +29,7 @@ main() {
   create_newwin "$height" "$width" "$starty" "$startx"
   while :; do
     getch
-    (( key == KEY_F1 )) && break
+    [[ $key == "$KEY_F1" ]] && break
     case $key in
       "$KEY_LEFT")  destroy_win "$my_win"; startx=$(( startx - 1 )); create_newwin "$height" "$width" "$starty" "$startx" ;;
       "$KEY_RIGHT") destroy_win "$my_win"; startx=$(( startx + 1 )); create_newwin "$height" "$width" "$starty" "$startx" ;;
