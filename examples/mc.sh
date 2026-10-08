@@ -211,7 +211,8 @@ type_color() { # p idx -> pair (assumes not the current/highlighted row)
 
 # ------------------------------------------------------------------ drawing
 name_width() { # w -> name column width
-  local w=$1 nw=$(( w - SIZEW - TIMEW - 4 ))
+  local w=$1
+  local nw=$(( w - SIZEW - TIMEW - 4 ))
   (( nw < 4 )) && nw=4
   echo "$nw"
 }
@@ -757,18 +758,20 @@ mc_dialog() { # w h title danger
   local w=$1 h=$2 title=$3 danger=${4:-0}
   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
   (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-  # center in the main/panel area (below the menu bar, above the button bar),
+  # center in the panel area (below the menu bar, above the button bar),
   # matching mc rather than the whole screen
-  local y=$(( 1 + (PH - h) / 2 )) x=$(( (COLS - w) / 2 ))
+  local y=$(( (PH - h) / 2 )) x=$(( (COLS - w) / 2 ))
   (( y < 1 )) && y=1; (( x < 1 )) && x=1
   local fp tp
   (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
   newwin "$h" "$w" "$y" "$x"; dw=$bc_win
   wattrset "$dw" 0 "$fp"
   werase "$dw"; box "$dw"
-  local tlen=${#title} tx=$(( (w - tlen) / 2 )); (( tx < 1 )) && tx=1
+  local tstr=" $title "
+  local tlen=${#tstr}
+  local tx=$(( (w - tlen) / 2 )); (( tx < 1 )) && tx=1
   wattrset "$dw" 0 "$tp"
-  mvwaddstr "$dw" 0 "$tx" "$title"
+  mvwaddstr "$dw" 0 "$tx" "$tstr"
   wattrset "$dw" 0 "$fp"
 }
 
@@ -1135,7 +1138,7 @@ copy_move_dialog() { # verb
   local real; real=$(cur_real)
   [[ $real == ".." ]] && return 1
   local kind; [[ -d "${DIR[$CUR]}/$real" ]] && kind="directory" || kind="file"
-  local src=$real dst="${DIR[$(( 1 - CUR ))]}/"
+  local src='*' dst="${DIR[$(( 1 - CUR ))]}/"
   local sc=${#src} dc=${#dst}
   local c_shell=1 c_follow=0 c_dive=0 c_preserve=1 c_stable=0
   local -a ET=(src shell dst follow dive preserve stable ok bg cancel)
@@ -1146,21 +1149,21 @@ copy_move_dialog() { # verb
 
   cm_draw() {
     wattrset "$dw" 0 23
-    mvwaddstr "$dw" 1 6 "$verb $kind \"$real\" with source mask:"
-    dlg_field 2 6 58 "$src" "$sc" $(( fi == 0 ))
-    dlg_checkbox 3 37 "$c_shell" "Using shell patterns" 0
+    mvwaddstr "$dw" 1 2 "$verb $kind \"$real\" with source mask:"
+    dlg_field 2 2 62 "$src" "$sc" $(( fi == 0 ))
+    dlg_checkbox 3 33 "$c_shell" "Using shell patterns" 0
     wattrset "$dw" 0 23
-    mvwaddstr "$dw" 4 6 "to:"
-    dlg_field 5 6 58 "$dst" "$dc" $(( fi == 2 ))
+    mvwaddstr "$dw" 4 2 "to:"
+    dlg_field 5 2 62 "$dst" "$dc" $(( fi == 2 ))
     dlg_divider 6
-    dlg_checkbox 7 6  "$c_follow"   "Follow links" 7
-    dlg_checkbox 7 37 "$c_dive"     "Dive into subdir if exists" 2
-    dlg_checkbox 8 6  "$c_preserve" "Preserve attributes" 9
-    dlg_checkbox 8 37 "$c_stable"   "Stable symlinks" 0
+    dlg_checkbox 7 2  "$c_follow"   "Follow links" 7
+    dlg_checkbox 7 33 "$c_dive"     "Dive into subdir if exists" 2
+    dlg_checkbox 8 2  "$c_preserve" "Preserve attributes" 9
+    dlg_checkbox 8 33 "$c_stable"   "Stable symlinks" 0
     dlg_divider 9
-    dlg_button 10 20 "OK" ok 0
-    dlg_button 10 29 "Background" plain 0
-    dlg_button 10 44 "Cancel" plain 0
+    dlg_button 10 16 "OK" ok 0
+    dlg_button 10 25 "Background" plain 0
+    dlg_button 10 40 "Cancel" plain 0
     wrefresh "$dw"
   }
 
@@ -1315,10 +1318,10 @@ do_copy() {
   local flags=" -r"
   (( CM_PRESERVE )) && flags+=" -p"
   (( CM_FOLLOW )) && flags+=" -L"
-  local src="${DIR[$CUR]}/${CM_SRC}"
   local target="$d"
-  (( CM_DIVE )) && [[ -d "$d/$CM_SRC" ]] && target="$d/$CM_SRC/"
-  cp $flags -- "$src" "$target" 2>/dev/null
+  (( CM_DIVE )) && [[ -d "$d/$real" ]] && target="$d/$real/"
+  if [[ $CM_SRC == '*' ]]; then cp $flags -- "${DIR[$CUR]}/$real" "$target" 2>/dev/null
+  else cp $flags -- ${DIR[$CUR]}/${CM_SRC} "$target" 2>/dev/null; fi
   list_dir 0; list_dir 1
 }
 
@@ -1329,10 +1332,10 @@ do_move() {
   local d=${CM_DST/#~/$HOME}
   [[ -z $d ]] && return
   [[ -d $d ]] || { message_dialog "Move" "Not a directory: $d"; return; }
-  local src="${DIR[$CUR]}/${CM_SRC}"
   local target="$d"
-  (( CM_DIVE )) && [[ -d "$d/$CM_SRC" ]] && target="$d/$CM_SRC/"
-  mv -- "$src" "$target" 2>/dev/null
+  (( CM_DIVE )) && [[ -d "$d/$real" ]] && target="$d/$real/"
+  if [[ $CM_SRC == '*' ]]; then mv -- "${DIR[$CUR]}/$real" "$target" 2>/dev/null
+  else mv -- ${DIR[$CUR]}/${CM_SRC} "$target" 2>/dev/null; fi
   list_dir 0; list_dir 1
 }
 
