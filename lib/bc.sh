@@ -1168,6 +1168,8 @@ subwin() { derwin "$@"; }
 
 delwin() {
   local w=$1
+  # remember the region so the next composite can reveal what is underneath it
+  [[ -n ${BC_WY[$w]:-} ]] && BC_DELRECTS+="|${BC_WY[$w]} ${BC_WX[$w]} ${BC_WH[$w]} ${BC_WW[$w]}"
   _bc_clear_marks "$w"
   unset "BC_WD[$w]" "BC_WBUF[$w]"
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
@@ -1760,49 +1762,104 @@ refresh() { wrefresh "$BC_STDSCR"; }
 
 wnoutrefresh() { wrefresh "$@"; }
 
-# flush every cell in a window's rect from its buffer (panel compositing)
-_bc_flush_full() { # w
-  local w=$1
-  local buf=${BC_WBUF[$w]}
-  local y0=${BC_WY[$w]} x0=${BC_WX[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]}
-  local bg=${BC_WBG[$w]}
-  local y x ay ax k ch a p out="" lasty=-1 lastx=-1
-  for (( y = 0; y < h; y++ )); do
-    ay=$(( y0 + y ))
-    for (( x = 0; x < ww; x++ )); do
-      ax=$(( x0 + x ))
-      k="$ay $ax"
-      ch=${BC_C["$buf/$k"]:-$bg}
-      a=${BC_A["$buf/$k"]:-0}
-      p=${BC_P["$buf/$k"]:-0}
-      if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$p" ]]; then
-        lasty=-1
-        continue
-      fi
-      _bc_sgr "$a" "$p"
-      if (( lasty != ay || lastx != ax - 1 )); then
-        out+="${BC_ESC}[$(( ay + 1 ));$(( ax + 1 ))H"
-      fi
-      out+="${BC_ESC}[0m${BC_ESC}[${BC_SGR}m"
-      out+=$ch
-      BC_S[$k]=$ch
-      BC_SA[$k]=$a
-      BC_SP[$k]=$p
-      lasty=$ay
-      lastx=$ax
-    done
+# Composite the visible content at one absolute cell: stdscr is the base, and
+# the topmost visible panel in the stack that covers the cell wins. Sets
+# _BC_CC / _BC_CA / _BC_CP.
+_bc_composite_cell() { # ay ax
+  local ay=$1 ax=$2 w buf p
+  buf=${BC_WBUF[$BC_STDSCR]}
+  _BC_CC=${BC_C["$buf/$ay $ax"]:-${BC_WBG[$BC_STDSCR]}}
+  _BC_CA=${BC_A["$buf/$ay $ax"]:-0}
+  _BC_CP=${BC_P["$buf/$ay $ax"]:-0}
+  for p in "${BC_PSTACK[@]}"; do
+    [[ ${BC_PHID[$p]} == 1 ]] && continue
+    w=${BC_PWIN[$p]}
+    if (( ay >= BC_WY[$w] && ay < BC_WY[$w] + BC_WH[$w] && ax >= BC_WX[$w] && ax < BC_WX[$w] + BC_WW[$w] )); then
+      buf=${BC_WBUF[$w]}
+      _BC_CC=${BC_C["$buf/$ay $ax"]:-${BC_WBG[$w]}}
+      _BC_CA=${BC_A["$buf/$ay $ax"]:-0}
+      _BC_CP=${BC_P["$buf/$ay $ax"]:-0}
+    fi
   done
-  [[ -n $out ]] && printf '%s' "$out"
   return 0
 }
 
+# Recomposite every cell that changed since the last update and emit only the
+# diffs. The changed set is the union of the dirty cells of every window and
+# the rectangles of any windows deleted since the last composite. BC_S (keyed
+# "y x") holds the last composited screen, so unchanged cells are never
+# re-emitted and the topmost window always wins at a cell.
 doupdate() {
-  _bc_flush_full "$BC_STDSCR"
-  local p
-  for p in "${BC_PSTACK[@]}"; do
-    [[ ${BC_PHID[$p]} == 1 ]] && continue
-    _bc_flush_full "${BC_PWIN[$p]}"
+  local ay ax k p w r y x
+  declare -A RC=()
+  local -a wins=("$BC_STDSCR")
+  for p in "${BC_PSTACK[@]}"; do wins+=("${BC_PWIN[$p]}"); done
+  # dirty cells of every window (stdscr base + all panels in the stack)
+  for w in "${wins[@]}"; do
+    [[ -n ${BC_WD[$w]:-} ]] || continue
+    local IFS=','
+    for k in ${BC_WD[$w]}; do [[ -n $k ]] && RC[$k]=1; done
+    unset IFS
   done
+  # reveal what lies under any window deleted since the last composite. The
+  # region must be unconditionally re-emitted (BC_S is cleared there), because
+  # the deleted window may have desynced BC_S via wrefresh, so a diff-based
+  # skip could leave stale content showing through.
+  if [[ -n ${BC_DELRECTS:-} ]]; then
+    local ry0 rx0 rh rww r saved_ifs=$IFS
+    IFS='|'
+    local -a delrects=(${BC_DELRECTS})
+    IFS=$saved_ifs
+    for r in "${delrects[@]}"; do
+      [[ -n $r ]] || continue
+      read -r ry0 rx0 rh rww <<< "$r"
+      for (( ay = ry0; ay < ry0 + rh; ay++ )); do
+        for (( ax = rx0; ax < rx0 + rww; ax++ )); do
+          RC["$ay $ax"]=1
+          unset "BC_S[$ay $ax]" "BC_SA[$ay $ax]" "BC_SP[$ay $ax]"
+        done
+      done
+    done
+  fi
+  # the very first composite rebuilds the whole screen
+  if (( ${#RC[@]} == 0 && ${#BC_S[@]} == 0 )); then
+    for (( ay = 0; ay < BC_LINES; ay++ )); do
+      for (( ax = 0; ax < BC_COLS; ax++ )); do RC["$ay $ax"]=1; done
+    done
+  fi
+  (( ${#RC[@]} == 0 )) && return 0
+
+  local out="" lasty=-1 lastx=-1 last_sgr="" ch a pp emitted=0
+  while read -r ay ax; do
+    _bc_composite_cell "$ay" "$ax"
+    ch=$_BC_CC; a=$_BC_CA; pp=$_BC_CP
+    k="$ay $ax"
+    if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$pp" ]]; then
+      lasty=-1
+      continue
+    fi
+    _bc_sgr "$a" "$pp"
+    if [[ $last_sgr != "$BC_SGR" ]]; then out+="${BC_ESC}[${BC_SGR}m"; last_sgr=$BC_SGR; fi
+    if (( lasty != ay || lastx != ax - 1 )); then
+      out+="${BC_ESC}[$(( ay + 1 ));$(( ax + 1 ))H"
+    fi
+    out+=$ch
+    BC_S[$k]=$ch; BC_SA[$k]=$a; BC_SP[$k]=$pp
+    lasty=$ay; lastx=$ax
+    emitted=$(( emitted + 1 ))
+  done < <(printf '%s\n' "${!RC[@]}" | sort -k1,1n -k2,2n)
+
+  [[ -n $out ]] && printf '%s' "$out"
+  printf '%s[%d;%dH' "$BC_ESC" "$(( BC_WAY[$BC_STDSCR] + 1 ))" "$(( BC_WAX[$BC_STDSCR] + 1 ))"
+  # clear the dirty marks for exactly the cells we flushed
+  for w in "${wins[@]}"; do
+    [[ -n ${BC_WD[$w]:-} ]] || continue
+    local IFS=','
+    for k in ${BC_WD[$w]}; do [[ -n $k ]] && unset "BC_MK[$w/$k]"; done
+    unset IFS
+    unset "BC_WD[$w]"
+  done
+  BC_DELRECTS=""
   return 0
 }
 

@@ -389,12 +389,15 @@ draw_panel() {
 }
 
 # The dropdown is its own top panel window so it composites over the file
-# panels (stdscr is below them). Geometry is cached in MENU_G*.
+# panels (stdscr is below them). Geometry + per-row data are cached so only the
+# changed rows need redrawing during navigation.
 MENU_WIN=0; MENU_PANEL=0; MENU_GX=0; MENU_GY=0; MENU_GW=0; MENU_GH=0
+MENU_INNER=0; MENU_MAXSC=0; MENU_BW=0
 
-menu_draw_dd() {
-  local bsel=$menu_bar_sel
-  local name=${MENUNAMES[$bsel]}
+# Compute the dropdown geometry and the string + display-row for every real
+# item of the current bar entry.
+menu_dd_prep() { # bar_sel
+  local name=${MENUNAMES[$1]}
   local -n MI="MENU_${name}"
   local maxlen=0 maxsc=0 lab sc e nent=0
   for e in "${MI[@]}"; do
@@ -404,63 +407,78 @@ menu_draw_dd() {
     (( ${#lab} > maxlen )) && maxlen=${#lab}
     (( ${#sc} > maxsc )) && maxsc=${#sc}
   done
-  local inner=$(( 1 + maxlen + (maxsc > 0 ? 2 + maxsc : 0) ))
-  local bw=$(( inner + 2 ))
-  local h=$(( nent + 2 ))
-  local x0=$(( MENU_X[$bsel] - 2 ))
-  (( x0 < 0 )) && x0=0
-  (( x0 + bw > COLS )) && x0=$(( COLS - bw ))
-  local y0=1
-  (( h > HINTY - 1 - y0 )) && h=$(( HINTY - 1 - y0 ))
-  if (( MENU_WIN == 0 || MENU_GX != x0 || MENU_GY != y0 || MENU_GW != bw || MENU_GH != h )); then
-    (( MENU_WIN > 0 )) && { del_panel "$MENU_PANEL" 2>/dev/null; delwin "$MENU_WIN"; }
-    newwin "$h" "$bw" "$y0" "$x0"
+  MENU_INNER=$(( 1 + maxlen + (maxsc > 0 ? 2 + maxsc : 0) ))
+  MENU_MAXSC=$maxsc
+  MENU_BW=$(( MENU_INNER + 2 ))
+  MENU_GH=$(( nent + 2 ))
+  MENU_GW=$MENU_BW
+  MENU_GX=$(( MENU_X[$1] - 2 )); (( MENU_GX < 0 )) && MENU_GX=0
+  (( MENU_GX + MENU_BW > COLS )) && MENU_GX=$(( COLS - MENU_BW ))
+  MENU_GY=1
+  (( MENU_GH > HINTY - 1 - MENU_GY )) && MENU_GH=$(( HINTY - 1 - MENU_GY ))
+  local -a it=() drow=()
+  local r=1 ri=0
+  for e in "${MI[@]}"; do
+    if [[ $e != --- ]]; then it+=("$e"); drow+=("$r"); (( ri++ )); fi
+    (( r++ ))
+  done
+  MENU_IT=("${it[@]}")
+  MENU_DROW=("${drow[@]}")
+}
+
+# Draw a single dropdown item row (real index ri) as selected/unselected.
+menu_dd_row() { # ri sel
+  local ri=$1 sel=$2
+  local row=${MENU_DROW[$ri]} e=${MENU_IT[$ri]}
+  local lab=${e%%|*} sc=${e#*|} sc=${sc%|*} mnem=${e##*|}
+  local tp tp2 sp mpos=0 i lc
+  tp=$(( sel ? 18 : 16 )); tp2=$(( sel ? 19 : 17 ))
+  for (( i = 0; i < ${#lab}; i++ )); do
+    lc=${lab:i:1}; lc=${lc,,}
+    [[ $lc == "${mnem,,}" ]] && { mpos=$i; break; }
+  done
+  printf -v sp ' %.0s' $(seq 1 "$MENU_INNER")
+  wattrset "$MENU_WIN" 0 16;      mvwaddstr "$MENU_WIN" "$row" 0 "│"
+  wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$row" 1 "$sp"
+  wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$row" 2 "${lab:0:mpos}"
+  wattrset "$MENU_WIN" 0 "$tp2";  mvwaddstr "$MENU_WIN" "$row" $(( 2 + mpos )) "${lab:mpos:1}"
+  wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$row" $(( 3 + mpos )) "${lab:mpos+1}"
+  [[ -n $sc ]] && { wattrset "$MENU_WIN" 0 "$tp"; mvwaddstr "$MENU_WIN" "$row" $(( MENU_INNER - MENU_MAXSC + 1 )) "$sc"; }
+  wattrset "$MENU_WIN" 0 16; mvwaddstr "$MENU_WIN" "$row" $(( MENU_INNER + 1 )) "│"
+}
+
+# Open (fully draw) the dropdown for the current bar entry.
+menu_dd_open() { # bar_sel
+  menu_dd_prep "$menu_bar_sel"
+  if (( MENU_WIN == 0 )); then
+    newwin "$MENU_GH" "$MENU_BW" "$MENU_GY" "$MENU_GX"
     MENU_WIN=$bc_win
     new_panel "$MENU_WIN"; MENU_PANEL=$bc_panel
-    MENU_GX=$x0; MENU_GY=$y0; MENU_GW=$bw; MENU_GH=$h
     werase "$MENU_WIN"
   fi
-  local top mid sp
-  printf -v top '─%.0s' $(seq 1 "$(( bw - 2 ))"); top="┌${top}┐"
-  printf -v mid '─%.0s' $(seq 1 "$(( bw - 2 ))"); mid="├${mid}┤"
-  printf -v sp ' %.0s' $(seq 1 "$inner")
+  local -n MI="MENU_${MENUNAMES[$menu_bar_sel]}"
+  local top mid bot e
+  printf -v top '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); top="┌${top}┐"
+  printf -v mid '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); mid="├${mid}┤"
+  printf -v bot '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); bot="└${bot}┘"
   wattrset "$MENU_WIN" 0 16
   mvwaddstr "$MENU_WIN" 0 0 "$top"
-  local r=0 itemidx=0
+  local r=0 ri=0
   for e in "${MI[@]}"; do
-    if (( 1 + r >= h )); then break; fi
+    if (( 1 + r >= MENU_GH )); then break; fi
     if [[ $e == --- ]]; then
       wattrset "$MENU_WIN" 0 16
       mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$mid"
     else
-      lab=${e%%|*}; sc=${e#*|}; sc=${sc%|*}; mnem=${e##*|}
-      local sel=0; (( itemidx == menu_sel )) && sel=1
-      local tp tp2 mpos=0 i lc
-      tp=$(( sel ? 18 : 16 )); tp2=$(( sel ? 19 : 17 ))
-      for (( i = 0; i < ${#lab}; i++ )); do
-        lc=${lab:i:1}; lc=${lc,,}
-        [[ $lc == "${mnem,,}" ]] && { mpos=$i; break; }
-      done
-      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 1 "$sp"
-      wattrset "$MENU_WIN" 0 16;      mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "│"
-      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 2 "${lab:0:mpos}"
-      wattrset "$MENU_WIN" 0 "$tp2";  mvwaddstr "$MENU_WIN" "$(( r + 1 ))" $(( 2 + mpos )) "${lab:mpos:1}"
-      wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$(( r + 1 ))" $(( 3 + mpos )) "${lab:mpos+1}"
-      if [[ -n $sc ]]; then
-        wattrset "$MENU_WIN" 0 "$tp"
-        mvwaddstr "$MENU_WIN" "$(( r + 1 ))" "$(( inner - maxsc + 1 ))" "$sc"
-      fi
-      wattrset "$MENU_WIN" 0 16; mvwaddstr "$MENU_WIN" "$(( r + 1 ))" "$(( inner + 1 ))" "│"
-      (( itemidx++ ))
+      menu_dd_row "$ri" 0
     fi
     (( r++ ))
+    [[ $e != --- ]] && (( ri++ ))
   done
-  if (( 1 + r < h )); then
-    local bot; printf -v bot '─%.0s' $(seq 1 "$(( bw - 2 ))"); bot="└${bot}┘"
+  if (( 1 + r < MENU_GH )); then
     wattrset "$MENU_WIN" 0 16
     mvwaddstr "$MENU_WIN" "$(( r + 1 ))" 0 "$bot"
   fi
-  # doupdate (called by the caller) composites this top panel over the panels
 }
 
 menu_dd_close() {
@@ -894,7 +912,8 @@ view_draw() { # paint the full-screen viewer window and refresh it
   # function-key hint bar (numbers pair 15, labels pair 6)
   view_fnbar "$win"
 
-  wrefresh "$win"
+  # the viewer is a top panel; doupdate composites it over the file panels
+  doupdate
 }
 
 view_fnbar() { # win : MC-style function-key hints (10 slots; #6 has a blank label)
@@ -990,11 +1009,12 @@ view_file() { # real name
 
   newwin "$LINES" "$COLS" 0 0
   V_WIN=$bc_win
+  new_panel "$V_WIN"; V_PANEL=$bc_panel
   view_draw
   view_loop
+  del_panel "$V_PANEL" 2>/dev/null
   delwin "$V_WIN"
   ESCDELAY=$saved_esc
-  draw_all
   doupdate
 }
 
@@ -1211,42 +1231,72 @@ about_mc() {
 run_menu() {
   menu_open=1; menu_bar_sel=0; menu_dd=0; menu_sel=0
   local nmb=${#MENUNAMES[@]} chosen=""
-  local prev_dd=0
+  menu_real_n 0
+  draw_menu
+  doupdate
   while :; do
-    menu_real_n "$menu_bar_sel"
-    draw_all; (( menu_dd )) && menu_draw_dd; doupdate
     wgetch 0 || break
-    prev_dd=$menu_dd
     case $key in
-      $KEY_LEFT)  menu_bar_sel=$(( (menu_bar_sel + nmb - 1) % nmb )); menu_sel=0 ;;
-      $KEY_RIGHT) menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0 ;;
+      $KEY_LEFT)
+        menu_bar_sel=$(( (menu_bar_sel + nmb - 1) % nmb )); menu_sel=0
+        menu_real_n "$menu_bar_sel"
+        draw_menu
+        (( menu_dd )) && { menu_dd_close; menu_dd_open; }
+        ;;
+      $KEY_RIGHT)
+        menu_bar_sel=$(( (menu_bar_sel + 1) % nmb )); menu_sel=0
+        menu_real_n "$menu_bar_sel"
+        draw_menu
+        (( menu_dd )) && { menu_dd_close; menu_dd_open; }
+        ;;
       $KEY_DOWN)
-        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0
-        else menu_sel=$(( (menu_sel + 1) % REALN )); fi ;;
+        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0; menu_dd_open
+        else
+          local old=$menu_sel
+          menu_sel=$(( (menu_sel + 1) % REALN ))
+          menu_dd_row "$old" 0; menu_dd_row "$menu_sel" 1
+        fi
+        ;;
       $KEY_UP)
         if (( menu_dd == 1 )); then
-          (( menu_sel == 0 )) && menu_dd=0 || (( menu_sel-- ))
-        else menu_dd=1; menu_sel=0; fi ;;
+          if (( menu_sel == 0 )); then menu_dd=0; menu_dd_close
+          else
+            local old=$menu_sel
+            menu_sel=$(( menu_sel - 1 ))
+            menu_dd_row "$old" 0; menu_dd_row "$menu_sel" 1
+          fi
+        else
+          menu_dd=1; menu_sel=0; menu_dd_open
+        fi
+        ;;
       $'\r')
-        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0
-        else menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
-             menu_open=0; menu_dd=0; break; fi ;;
-      $'\x1b') menu_open=0; menu_dd=0; break ;;
+        if (( menu_dd == 0 )); then menu_dd=1; menu_sel=0; menu_dd_open
+        else
+          menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
+          menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break
+        fi
+        ;;
+      $'\x1b') menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break ;;
       [a-zA-Z])
-        local ch=${key,,} ri ll lf
+        local ch=${key,,} ri lf
         if (( menu_dd == 1 )); then
+          local old=$menu_sel
           for (( ri = 0; ri < REALN; ri++ )); do
             menu_entry_at "$menu_bar_sel" "$ri"; lf=${ENTRY##*|}; lf=${lf,,}
             [[ $lf == "$ch" ]] && { menu_sel=$ri; break; }
           done
+          (( old != menu_sel )) && { menu_dd_row "$old" 0; menu_dd_row "$menu_sel" 1; }
         else
           for (( ri = 0; ri < nmb; ri++ )); do
             lf=${MENUNAMES[ri]:0:1}; lf=${lf,,}
             [[ $lf == "$ch" ]] && { menu_bar_sel=$ri; menu_sel=0; break; }
           done
-        fi ;;
+          menu_real_n "$menu_bar_sel"
+          draw_menu
+        fi
+        ;;
     esac
-    (( menu_dd == 0 && prev_dd == 1 )) && menu_dd_close
+    doupdate
   done
   menu_open=0; menu_dd=0
   menu_dd_close
