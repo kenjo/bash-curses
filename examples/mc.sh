@@ -22,6 +22,10 @@ DIR=("$PWD" "$PWD")
 POS_0=0; POS_1=0; OFF_0=0; OFF_1=0
 SORT=(name name)
 REV=(0 0)
+HIDE=(0 0)
+SHOWEXT=(1 1)
+FILTERS=("" "")
+declare -A SELSET_0=() SELSET_1=()
 WIN=()
 PANEL=()
 
@@ -31,6 +35,9 @@ STOP=0
 DLG_RESULT=""
 DIRHIST=()            # directory history, most-recent-first (for the completer)
 HIST_RESULT=""
+CMDHIST=()            # executed command history, most-recent-first
+FILEHIST=()           # viewed/edited file history, most-recent-first
+LIST_RESULT=""
 
 # column widths
 SIZEW=7
@@ -138,6 +145,8 @@ list_dir() {
   if [[ -n $out ]]; then
     while IFS='|' read -r t s mode y mo dd h mi name; do
       [[ -z $name ]] && continue
+      if (( HIDE[$p] )) && [[ $name == .* ]]; then continue; fi
+      if [[ -n ${FILTERS[$p]} ]] && [[ $name != ${FILTERS[$p]} ]]; then continue; fi
       ex=0
       [[ $t != d && $t != l && $mode =~ ^[0-7]+$ ]] && (( (8#$mode) & 0111 )) && ex=1
       if [[ $t == d ]]; then disp="/$name"; elif (( ex )); then disp="*$name"; else disp=" $name"; fi
@@ -201,6 +210,10 @@ list_dir() {
   done
   NN=("${f_nn[@]}"); TT=("${f_tt[@]}"); SS=("${f_ss[@]}")
   TM=("${f_tm[@]}"); RR=("${f_rr[@]}"); XX=("${f_xx[@]}")
+  case $p in
+    0) SELSET_0=() ;;
+    1) SELSET_1=() ;;
+  esac
   POS[$p]=0; OFF[$p]=0
 }
 
@@ -228,7 +241,7 @@ name_width() { # w -> name column width
 
 draw_panel() {
   local p=$1
-  local -n NN=NAMES_$p SS=SIZES_$p TM=TIMES_$p TT=TYPES_$p
+  local -n NN=NAMES_$p SS=SIZES_$p TM=TIMES_$p TT=TYPES_$p RR=REALS_$p SELARR=SELSET_$p
   local win=${WIN[$p]}
   local w h
   getmaxyx "$win"; h=$BC_GMY; w=$BC_GMX
@@ -315,6 +328,7 @@ draw_panel() {
       mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
     else
       cpair=$(type_color "$p" "$idx")
+      if [[ -n ${SELARR[${RR[$idx]}]:-} ]]; then cpair=31; fi
       wattrset "$win" 0 "$cpair"
       mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
       wattrset "$win" 0 7
@@ -1100,27 +1114,23 @@ view_loop() { # modal key loop; returns 0 to close the viewer
   return 0
 }
 
-view_file() { # real name
-  local real=$1
-  local f="${DIR[$CUR]}/$real"
-  if [[ ! -r $f ]]; then
-    message_dialog "View" "Cannot read $real"
-    return
-  fi
+view_load_text() { # title [total] ; reads lines from stdin into V_*
+  local title=$1 total=${2:-}
   local -a lines=() bto=()
   local ln off=0
   while IFS= read -r ln || [[ -n $ln ]]; do
     bto+=("$off"); lines+=("$ln"); off=$(( off + ${#ln} + 1 ))
-  done < <(cat -- "$f" 2>/dev/null || echo "[binary or unreadable]")
+  done
   (( ${#lines[@]} == 0 )) && { lines+=(""); bto+=(0); }
   V_LINES=("${lines[@]}")
   V_N=${#lines[@]}
   V_OFF=0
-  V_PATH="$f"
+  V_PATH="$title"
   V_BTOFF=("${bto[@]}")
-  V_TOTAL=$(wc -c < "$f" 2>/dev/null | tr -d ' \t')
-  [[ -z $V_TOTAL ]] && V_TOTAL=$off
+  V_TOTAL=${total:-$off}
+}
 
+view_show() { # open the viewer from the current V_* globals
   local saved_esc=$ESCDELAY
   ESCDELAY=80
 
@@ -1135,6 +1145,25 @@ view_file() { # real name
   doupdate
 }
 
+view_path() { # absolute or relative path
+  local f=$1
+  if [[ ! -r $f ]]; then
+    message_dialog "View" "Cannot read $f"
+    return
+  fi
+  local -a nh=("$f") e
+  for e in "${FILEHIST[@]}"; do [[ $e != "$f" ]] && nh+=("$e"); done
+  (( ${#nh[@]} > 50 )) && nh=("${nh[@]:0:50}")
+  FILEHIST=("${nh[@]}")
+  view_load_text "$f" "$(wc -c < "$f" 2>/dev/null | tr -d ' \t')" < "$f"
+  view_show
+}
+
+view_file() { # real name
+  local real=$1
+  view_path "${DIR[$CUR]}/$real"
+}
+
 do_view() {
   local real
   real=$(cur_real)
@@ -1144,6 +1173,29 @@ do_view() {
   else
     view_file "$real"
   fi
+}
+
+do_view_file() {
+  text_field_dialog "View file" "File name:" "" || return
+  local f=$TF_TEXT
+  [[ -z $f ]] && return
+  f=${f/#~/$HOME}
+  [[ $f != /* ]] && f="${DIR[$CUR]}/$f"
+  if [[ -d $f ]]; then
+    DIR[$CUR]="$f"; list_dir "$CUR"
+  else
+    view_path "$f"
+  fi
+}
+
+do_filtered_view() {
+  text_field_dialog "Filtered view" "Command:" "" || return
+  local cmd=$TF_TEXT
+  [[ -z $cmd ]] && return
+  local out
+  out=$( (cd "${DIR[$CUR]}" 2>/dev/null && eval "$cmd") 2>&1 )
+  view_load_text "Filtered view: $cmd" <<< "$out"
+  view_show
 }
 
 # Directory-history popup (the completer behind a field's "[^]" button). Shows
@@ -1199,6 +1251,59 @@ field_history_popup() { # anchor_row
     hist_draw
   done
   delwin "$hw"
+  return 1
+}
+
+# Generic centered list popup. Sets LIST_RESULT. 0 chosen / 1 cancel.
+list_dialog() { # title item...
+  local title=$1; shift
+  local -a items=("$@")
+  (( ${#items[@]} )) || { message_dialog "$title" "No entries."; return 1; }
+  local n=${#items[@]} sel=0 top=0 maxl=0 e
+  for e in "${items[@]}"; do (( ${#e} > maxl )) && maxl=${#e}; done
+  local w=$(( maxl + 6 )); (( w < 40 )) && w=40; (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  local maxh=$(( LINES - 4 )); (( maxh < 4 )) && maxh=4
+  local h=$(( n + 2 )); (( h > maxh )) && h=$maxh
+  local visible=$(( h - 2 )); (( visible < 1 )) && visible=1
+  local y=$(( (LINES - h) / 2 )); (( y < 1 )) && y=1
+  local x=$(( (COLS - w) / 2 )); (( x < 1 )) && x=1
+  newwin "$h" "$w" "$y" "$x"; local lw=$bc_win
+  ld_draw() {
+    wattrset "$lw" 0 23; werase "$lw"; box "$lw"
+    local tstr=" $title " tx=$(( (w - ${#tstr}) / 2 )); (( tx < 1 )) && tx=1
+    wattrset "$lw" 0 24; mvwaddstr "$lw" 0 "$tx" "$tstr"
+    local i row idx e2
+    for (( i = 0; i < visible; i++ )); do
+      row=$(( i + 1 )); idx=$(( top + i ))
+      (( idx >= n )) && continue
+      e2=${items[idx]}
+      if (( idx == sel )); then
+        wattrset "$lw" 0 22
+        mvwaddnstr "$lw" "$row" 1 "$e2" "$(( w - 2 ))"
+        mvwhline "$lw" "$row" $(( 1 + ${#e2} )) ' ' "$(( w - 2 - ${#e2} ))"
+      else
+        wattrset "$lw" 0 23
+        mvwaddnstr "$lw" "$row" 1 "$e2" "$(( w - 2 ))"
+      fi
+    done
+    wrefresh "$lw"
+  }
+  ld_draw
+  while :; do
+    wgetch "$lw" || break
+    case $key in
+      $KEY_UP)    (( sel > 0 )) && { sel=$(( sel - 1 )); (( sel < top )) && top=$sel; } ;;
+      $KEY_DOWN)  (( sel < n - 1 )) && { sel=$(( sel + 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )); } ;;
+      $KEY_HOME)  sel=0; top=0 ;;
+      $KEY_END)   sel=$(( n - 1 )); if (( n > visible )); then top=$(( n - visible )); else top=0; fi ;;
+      $KEY_PPAGE) sel=$(( sel - visible )); (( sel < 0 )) && sel=0; (( sel < top )) && top=$sel ;;
+      $KEY_NPAGE) sel=$(( sel + visible )); (( sel > n - 1 )) && sel=$(( n - 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )) ;;
+      $'\r')      LIST_RESULT=${items[sel]}; delwin "$lw"; return 0 ;;
+      $'\x1b'|$KEY_F10|q|Q) delwin "$lw"; return 1 ;;
+    esac
+    ld_draw
+  done
+  delwin "$lw"
   return 1
 }
 
@@ -1485,6 +1590,364 @@ do_symlink() {
   ln -s "$real" "${DIR[$CUR]}/$name" 2>/dev/null && list_dir "$CUR"
 }
 
+do_relative_symlink() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  text_field_dialog "Relative symlink" "Name of the new symlink:" "" || return
+  local name=$TF_TEXT
+  [[ -z $name ]] && return
+  local target="${DIR[$CUR]}/$real"
+  local link="${DIR[$CUR]}/$name"
+  local rel
+  rel=$(realpath --relative-to="$(dirname "$link")" "$target" 2>/dev/null)
+  [[ -z $rel ]] && rel=$real
+  ln -s "$rel" "$link" 2>/dev/null && list_dir "$CUR"
+}
+
+do_edit_symlink() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  local f="${DIR[$CUR]}/$real"
+  if [[ ! -L $f ]]; then
+    message_dialog "Edit symlink" "Not a symlink: $real"
+    return
+  fi
+  local target
+  target=$(readlink "$f" 2>/dev/null)
+  text_field_dialog "Edit symlink" "New target:" "$target" || return
+  [[ -z $TF_TEXT ]] && return
+  ln -sf "$TF_TEXT" "$f" 2>/dev/null && list_dir "$CUR"
+}
+
+do_chown() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  text_field_dialog "Chown" "Owner[:group]:" "" || return
+  local spec=$TF_TEXT
+  [[ -z $spec ]] && return
+  if ! chown "$spec" "${DIR[$CUR]}/$real" 2>/dev/null; then
+    message_dialog "Chown" "Cannot chown $real to $spec"
+  fi
+  list_dir "$CUR"
+}
+
+do_advanced_chown() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  text_field_dialog "Advanced chown" "Owner:" "" || return
+  local owner=$TF_TEXT
+  text_field_dialog "Advanced chown" "Group:" "" || return
+  local group=$TF_TEXT
+  local spec=$owner
+  [[ -n $group ]] && spec+=":$group"
+  [[ -z $spec ]] && return
+  if ! chown "$spec" "${DIR[$CUR]}/$real" 2>/dev/null; then
+    message_dialog "Advanced chown" "Cannot chown $real to $spec"
+  fi
+  list_dir "$CUR"
+}
+
+do_chattr() {
+  local real; real=$(cur_real)
+  [[ $real == ".." ]] && return
+  if ! command -v chattr >/dev/null 2>&1; then
+    message_dialog "Chattr" "chattr is not available."
+    return
+  fi
+  text_field_dialog "Chattr" "Attributes (+/- flags):" "" || return
+  local attrs=$TF_TEXT
+  [[ -z $attrs ]] && return
+  if ! chattr "$attrs" "${DIR[$CUR]}/$real" 2>/dev/null; then
+    message_dialog "Chattr" "Cannot set attributes on $real"
+  fi
+  list_dir "$CUR"
+}
+
+do_select_group() {
+  text_field_dialog "Select group" "File name pattern:" "*" || return
+  local pat=$TF_TEXT
+  [[ -z $pat ]] && return
+  local -n RR=REALS_$CUR
+  local i real
+  for (( i = 1; i < ${#RR[@]}; i++ )); do
+    real=${RR[$i]}
+    [[ $real == ".." ]] && continue
+    if [[ $real == $pat ]]; then
+      local -n SELARR=SELSET_$CUR
+      SELARR[$real]=1
+    fi
+  done
+  draw_panel "$CUR"
+  doupdate
+}
+
+do_unselect_group() {
+  text_field_dialog "Unselect group" "File name pattern:" "*" || return
+  local pat=$TF_TEXT
+  [[ -z $pat ]] && return
+  local -n RR=REALS_$CUR
+  local i real
+  for (( i = 1; i < ${#RR[@]}; i++ )); do
+    real=${RR[$i]}
+    [[ $real == ".." ]] && continue
+    if [[ $real == $pat ]]; then
+      local -n SELARR=SELSET_$CUR
+      unset 'SELARR[$real]'
+    fi
+  done
+  draw_panel "$CUR"
+  doupdate
+}
+
+do_invert_selection() {
+  local -n RR=REALS_$CUR
+  local i real
+  for (( i = 1; i < ${#RR[@]}; i++ )); do
+    real=${RR[$i]}
+    [[ $real == ".." ]] && continue
+    local -n SELARR=SELSET_$CUR
+    if [[ -n ${SELARR[$real]:-} ]]; then
+      unset 'SELARR[$real]'
+    else
+      SELARR[$real]=1
+    fi
+  done
+  draw_panel "$CUR"
+  doupdate
+}
+
+do_rescan() {
+  list_dir "$CUR"
+  draw_all
+  doupdate
+}
+
+do_filter() {
+  text_field_dialog "Filter" "Panel filter (shell pattern):" "${FILTERS[$CUR]}" || return
+  FILTERS[$CUR]=$TF_TEXT
+  list_dir "$CUR"
+}
+
+do_tree() {
+  local -a dirs=() d
+  while IFS= read -r d; do
+    [[ -n $d ]] && dirs+=("$d")
+  done < <(find "${DIR[$CUR]}" -maxdepth 3 -type d -print 2>/dev/null | head -200)
+  list_dialog "Directory tree" "${dirs[@]}" || return
+  DIR[$CUR]="$LIST_RESULT"
+  list_dir "$CUR"
+}
+
+do_find_file() {
+  text_field_dialog "Find file" "File name pattern:" "" || return
+  local pat=$TF_TEXT
+  [[ -z $pat ]] && return
+  local -a found=() f
+  while IFS= read -r f; do
+    [[ -n $f ]] && found+=("$f")
+  done < <(find "${DIR[$CUR]}" -name "$pat" -print 2>/dev/null | head -200)
+  if (( ${#found[@]} == 0 )); then
+    message_dialog "Find file" "No files found matching: $pat"
+    return
+  fi
+  list_dialog "Find file" "${found[@]}" || return
+  f=$LIST_RESULT
+  if [[ -d $f ]]; then
+    DIR[$CUR]="$f"; list_dir "$CUR"
+  else
+    view_path "$f"
+  fi
+}
+
+cur_real_p() { # p
+  local p=$1
+  local -n RR=REALS_$p
+  echo "${RR[${POS[$p]}]}"
+}
+
+do_compare_files() {
+  local l="${DIR[0]}/$(cur_real_p 0)"
+  local r="${DIR[1]}/$(cur_real_p 1)"
+  if cmp -s "$l" "$r"; then
+    message_dialog "Compare files" "Files are identical:" "$l" "$r"
+  else
+    message_dialog "Compare files" "Files differ:" "$l" "$r"
+  fi
+}
+
+do_command_history() {
+  (( ${#CMDHIST[@]} )) || { message_dialog "Command history" "No commands yet."; return; }
+  list_dialog "Command history" "${CMDHIST[@]}" || return
+  CMD_LINE="$LIST_RESULT"
+  draw_cmdline
+  doupdate
+}
+
+do_file_history() {
+  (( ${#FILEHIST[@]} )) || { message_dialog "Viewed/edited files history" "No files yet."; return; }
+  list_dialog "Viewed/edited files history" "${FILEHIST[@]}" || return
+  view_path "$LIST_RESULT"
+}
+
+do_hotlist() {
+  (( ${#DIRHIST[@]} )) || { message_dialog "Directory hotlist" "No directories yet."; return; }
+  list_dialog "Directory hotlist" "${DIRHIST[@]}" || return
+  DIR[$CUR]="$LIST_RESULT"
+  list_dir "$CUR"
+}
+
+do_vfs_list() {
+  message_dialog "Active VFS list" "No active VFS mounts."
+}
+
+do_background_jobs() {
+  message_dialog "Background jobs" "No background jobs."
+}
+
+do_screen_list() {
+  message_dialog "Screen list" "Only the current screen is available."
+}
+
+do_undelete() {
+  message_dialog "Undelete files" "Undelete is only available on ext2fs filesystems."
+}
+
+do_edit_file_kind() { # title filename
+  local title=$1 file=$2
+  local ed=${EDITOR:-${VISUAL:-}}
+  if [[ -z $ed ]]; then
+    message_dialog "$title" "No editor configured."
+    return
+  fi
+  message_dialog "$title" "External editor support is not wired into the curses UI yet."
+}
+
+do_panel_options() {
+  local w=44 h=10
+  (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  mc_dialog "$w" "$h" "Panel options" 0
+  local -a ET=(hidden ext reverse sort ok cancel)
+  local fi=0 cancelled=0
+  local hidden=${HIDE[$CUR]} ext=${SHOWEXT[$CUR]} rev=${REV[$CUR]} sort=${SORT[$CUR]}
+  po_draw() {
+    wattrset "$dw" 0 23
+    dlg_checkbox 1 2 "$hidden" "Show hidden files" 0 23 24 $(( fi == 0 ))
+    dlg_checkbox 2 2 "$ext" "Show extension" 0 23 24 $(( fi == 1 ))
+    dlg_checkbox 3 2 "$rev" "Reverse sort" 0 23 24 $(( fi == 2 ))
+    wattrset "$dw" 0 23
+    mvwaddstr "$dw" 4 2 "Sort order: $sort"
+    dlg_button 6 9 "OK" ok 0 23 24 $(( fi == 4 ))
+    dlg_button 6 20 "Cancel" plain 0 23 24 $(( fi == 5 ))
+    wrefresh "$dw"
+  }
+  po_draw
+  while :; do
+    wgetch "$dw" || break
+    case $key in
+      $KEY_RESIZE) BC_WINCH=1; cancelled=1; break ;;
+      $'\x1b') cancelled=1; break ;;
+      $'\t'|$KEY_DOWN) fi=$(( (fi + 1) % ${#ET[@]} )) ;;
+      $KEY_UP) fi=$(( (fi + ${#ET[@]} - 1) % ${#ET[@]} )) ;;
+      $'\r')
+        case ${ET[$fi]} in
+          ok) break ;;
+          cancel) cancelled=1; break ;;
+          hidden) hidden=$(( 1 - hidden )) ;;
+          ext) ext=$(( 1 - ext )) ;;
+          reverse) rev=$(( 1 - rev )) ;;
+          sort)
+            case $sort in
+              name) sort=size ;;
+              size) sort=date ;;
+              date) sort=name ;;
+              *) sort=name ;;
+            esac ;;
+        esac ;;
+      $' ')
+        case ${ET[$fi]} in
+          ok) break ;;
+          cancel) cancelled=1; break ;;
+          hidden) hidden=$(( 1 - hidden )) ;;
+          ext) ext=$(( 1 - ext )) ;;
+          reverse) rev=$(( 1 - rev )) ;;
+          sort)
+            case $sort in
+              name) sort=size ;;
+              size) sort=date ;;
+              date) sort=name ;;
+              *) sort=name ;;
+            esac ;;
+        esac ;;
+      $KEY_LEFT|$KEY_RIGHT)
+        case ${ET[$fi]} in
+          hidden) hidden=$(( 1 - hidden )) ;;
+          ext) ext=$(( 1 - ext )) ;;
+          reverse) rev=$(( 1 - rev )) ;;
+          sort)
+            case $sort in
+              name) sort=size ;;
+              size) sort=date ;;
+              date) sort=name ;;
+              *) sort=name ;;
+            esac ;;
+        esac ;;
+    esac
+    po_draw
+  done
+  delwin "$dw"
+  (( cancelled )) && return
+  HIDE[$CUR]=$hidden
+  SHOWEXT[$CUR]=$ext
+  REV[$CUR]=$rev
+  SORT[$CUR]=$sort
+  list_dir "$CUR"
+}
+
+do_configuration() {
+  message_dialog "Configuration" \
+    "Sort order: ${SORT[$CUR]}" \
+    "Reverse sort: $(( REV[$CUR] ))" \
+    "Show hidden files: $(( HIDE[$CUR] ))" \
+    "Show extension: $(( SHOWEXT[$CUR] ))" \
+    "Panel filter: ${FILTERS[$CUR]:-none}"
+}
+
+do_layout() {
+  message_dialog "Layout" "Layout changes are not implemented."
+}
+
+do_confirmation() {
+  message_dialog "Confirmation" "Confirmation settings are not implemented."
+}
+
+do_appearance() {
+  message_dialog "Appearance" "Appearance settings are not implemented."
+}
+
+do_display_bits() {
+  message_dialog "Display bits" "Display bits settings are not implemented."
+}
+
+do_learn_keys() {
+  message_dialog "Learn keys" "Key learning is not implemented."
+}
+
+do_virtual_fs() {
+  message_dialog "Virtual FS" "Virtual FS settings are not implemented."
+}
+
+do_save_setup() {
+  message_dialog "Save setup" "Saving setup is not implemented."
+}
+
+do_switch_panels() {
+  message_dialog "Switch panels on/off" "Panel visibility is not implemented."
+}
+
+do_external_panelize() {
+  message_dialog "External panelize" "External panelize is not implemented."
+}
+
 do_sort_cycle() { # Left/Right "Sort order...": cycle name -> size -> date
   local cur=${SORT[$CUR]:-name}
   case $cur in
@@ -1746,38 +2209,72 @@ run_menu() {
       case $label in
         "Quick view")    do_view ;;
         "Info")          do_info ;;
+        "Tree")          do_tree ;;
         "Sort order...") do_sort_cycle ;;
-        "Rescan")        draw_all; doupdate ;;
+        "Filter...")     do_filter ;;
+        "Rescan")        do_rescan ;;
         *)               message_dialog "$name" "Not implemented: $label" ;;
       esac ;;
     File)
       case $label in
         "View")          do_view ;;
-        "View file...")  do_view ;;
+        "View file...")  do_view_file ;;
+        "Filtered view") do_filtered_view ;;
         "Edit")          message_dialog "Edit" "No editor configured." ;;
         "Copy")          do_copy ;;
         "Chmod")         do_chmod ;;
         "Link")          do_link ;;
         "Symlink")       do_symlink ;;
+        "Relative symlink") do_relative_symlink ;;
+        "Edit symlink")  do_edit_symlink ;;
+        "Chown")         do_chown ;;
+        "Advanced chown") do_advanced_chown ;;
+        "Chattr")        do_chattr ;;
         "Rename/Move")   do_move ;;
         "Mkdir")         do_mkdir ;;
         "Delete")        do_delete ;;
         "Quick cd")      focus_cmdline ;;
+        "Select group")  do_select_group ;;
+        "Unselect group") do_unselect_group ;;
+        "Invert selection") do_invert_selection ;;
         "Exit")          STOP=1 ;;
         *)              message_dialog "File" "Not implemented: $label" ;;
       esac ;;
     Command)
       case $label in
         "User menu")            user_menu ;;
+        "Directory tree")       do_tree ;;
+        "Find file")            do_find_file ;;
         "Swap panels")          CUR=$(( 1 - CUR )); draw_all; doupdate ;;
-        "Show directory sizes") do_show_sizes ;;
+        "Switch panels on/off") do_switch_panels ;;
         "Compare directories")  do_compare_dirs ;;
+        "Compare files")        do_compare_files ;;
+        "External panelize")    do_external_panelize ;;
+        "Show directory sizes") do_show_sizes ;;
+        "Command history")      do_command_history ;;
+        "Viewed/edited files history") do_file_history ;;
+        "Directory hotlist")    do_hotlist ;;
+        "Active VFS list")      do_vfs_list ;;
+        "Background jobs")      do_background_jobs ;;
+        "Screen list")          do_screen_list ;;
+        "Undelete files (ext2fs only)") do_undelete ;;
+        "Edit extension file")  do_edit_file_kind "Edit extension file" "mc.ext" ;;
+        "Edit menu file")       do_edit_file_kind "Edit menu file" "mc.menu" ;;
+        "Edit highlighting group file") do_edit_file_kind "Edit highlighting group file" "mc.hint" ;;
         *)                     message_dialog "Command" "Not implemented: $label" ;;
       esac ;;
     Options)
       case $label in
-        "Save setup") message_dialog "Options" "Save setup not implemented." ;;
-        *)            message_dialog "Options" "Not implemented: $label" ;;
+        "Configuration...") do_configuration ;;
+        "Layout...")        do_layout ;;
+        "Panel options...") do_panel_options ;;
+        "Confirmation...")  do_confirmation ;;
+        "Appearance...")    do_appearance ;;
+        "Display bits...")  do_display_bits ;;
+        "Learn keys...")    do_learn_keys ;;
+        "Virtual FS...")    do_virtual_fs ;;
+        "Save setup")       do_save_setup ;;
+        *)                  message_dialog "Options" "Not implemented: $label" ;;
       esac ;;
    esac
  }
@@ -1790,6 +2287,10 @@ execute_cmd() {
   [[ -z $CMD_LINE ]] && return
   local cmd=$CMD_LINE
   CMD_LINE=""
+  local -a nh=("$cmd") e
+  for e in "${CMDHIST[@]}"; do [[ $e != "$cmd" ]] && nh+=("$e"); done
+  (( ${#nh[@]} > 50 )) && nh=("${nh[@]:0:50}")
+  CMDHIST=("${nh[@]}")
   if [[ $cmd =~ ^cd[[:space:]]*(.*)$ ]]; then
     local target="${BASH_REMATCH[1]//\"/}"
     target=${target/#~/$HOME}
@@ -1913,6 +2414,7 @@ main() {
   init_pair 28 15 "$COLOR_BLUE"              # input-field completer button (bright-white on blue)
   init_pair 29 0 6                           # focused dialog checkbox/button (black on cyan)
   init_pair 30 4 6                           # focused dialog mnemonic (blue on cyan)
+  init_pair 31 11 "$COLOR_BLUE"              # selected panel entry (bright yellow on blue)
 
   init_ui || { endwin; exit 1; }
 

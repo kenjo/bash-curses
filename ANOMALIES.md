@@ -128,6 +128,13 @@ command line. The normal F3→`q` and F3→Esc flows no longer reproduce this.
 `tests/mc_view.sh` now asserts that the command line remains clean after the
 viewer closes.
 
+### R15. File selection group actions
+The File menu's **Select group**, **Unselect group**, and **Invert selection**
+items now operate on the active panel. Selected entries are drawn in bright
+yellow on the panel background (pair 31), matching the real `mc` selection
+colour observed with `Insert`. Verified by `tests/mc_actions.sh` using SGR
+captures of the listing rows.
+
 ---
 
 ## Open
