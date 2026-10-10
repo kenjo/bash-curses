@@ -101,7 +101,16 @@ scoped split — `IFS='|' read -r -a delrects <<< "$BC_DELRECTS"` (and the same
 `read -r -a`) — so the persistent IFS is never clobbered. Verified: F9→Down→
 Right now renders **identically to `mc`** with 0 arithmetic errors.
 
-### R12. Terminal resize (SIGWINCH) is now handled
+### R12. Copy/Move dialog focus navigation
+The Copy/Move dialog now matches `mc`'s focus model: Up/Down/Tab move focus
+among the source field, "Using shell patterns", destination field, the five
+checkboxes, and the buttons. The initial focus is the destination field, and
+the checkbox order is column-major (Follow, Preserve, Dive, Stable). The
+focused checkbox/button is drawn black-on-cyan (pairs 29/30); Left/Right toggle
+the focused checkbox, and Space activates a focused button. Verified by
+`tests/mc_dialog.sh` using the per-cell SGR grid.
+
+### R13. Terminal resize (SIGWINCH) is now handled
 The clone previously ignored SIGWINCH, so the terminal just clipped the old
 render. Now: `main` traps `WINCH` (sets `BC_WINCH`); `wgetch` reads the first
 char with a 0.05 s timeout (bash defers a trapped WINCH until a `read` builtin
@@ -112,6 +121,12 @@ the flag is set; `resizeterm` re-reads the size and resizes the standard window;
 dialog all reflow (the modals close and the main UI is redrawn at the new size).
 Verified: `tests/mc_resize.sh` (shrink 100x30→80x24, grow →120x40; button bar
 stays on the last row, hint line reflows).
+
+### R14. Modal close key no longer leaks into the command line (was O3)
+The old note said pressing `q` to close the F3 viewer left a `q` in the
+command line. The normal F3→`q` and F3→Esc flows no longer reproduce this.
+`tests/mc_view.sh` now asserts that the command line remains clean after the
+viewer closes.
 
 ---
 
@@ -145,13 +160,6 @@ depends on redraw timing). E.g. after `open_alpha` / `viewer_txt`:
 `mc` shows "Want to do complex searches?…" / "M-t changes quickly the listing
 mode.", the clone shows "Tab changes your current panel." The rotation *style*
 matches `mc` (R4); the exact per-step text does not.
-
-### O3. A key that closes a modal can leak into the command line
-Pressing `q` to close the viewer (F3) leaves a `q` in the command line — the
-key is consumed by the modal and then also reaches the main loop, which appends
-printable keys to `CMD_LINE`. `mc` does not echo the closing key. Subtle,
-pre-existing, and unrelated to the resize work (R12); the normal F3→`q` flow
-reproduces it.
 
 ---
 

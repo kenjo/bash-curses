@@ -80,6 +80,14 @@ else
   bad "viewer did not restore panels"
 fi
 
+# the key that closed the modal must not leak into the command line
+cmdline="$(cap | sed -n '29p')"
+if [[ "$cmdline" != *'$ q'* && "$cmdline" != *'$q'* ]]; then
+  ok "q closing viewer does not leak into the command line"
+else
+  bad "q closing viewer leaked into the command line: '$cmdline'"
+fi
+
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 echo
 if (( fail == 0 )); then echo "mc_view: $pass passed"; else echo "mc_view: $pass passed, $fail FAILED"; fi
