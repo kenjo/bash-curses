@@ -1198,6 +1198,38 @@ do_filtered_view() {
   view_show
 }
 
+do_edit_path() { # path
+  local f=$1
+  local ed=${EDITOR:-${VISUAL:-}}
+  if [[ -z $ed ]]; then
+    message_dialog "Edit" "No editor configured."
+    return
+  fi
+  if [[ ! -e $f ]]; then
+    message_dialog "Edit" "File does not exist: $f"
+    return
+  fi
+  local -a nh=("$f") e
+  for e in "${FILEHIST[@]}"; do [[ $e != "$f" ]] && nh+=("$e"); done
+  (( ${#nh[@]} > 50 )) && nh=("${nh[@]:0:50}")
+  FILEHIST=("${nh[@]}")
+  def_prog_mode
+  endwin
+  eval "$ed $(printf '%q' "$f")"
+  reset_prog_mode
+  BC_FORCEFULL=1
+  draw_all
+  doupdate
+  list_dir "$CUR"
+}
+
+do_edit() { # real name
+  local real=${1:-}
+  [[ -z $real ]] && real=$(cur_real)
+  [[ $real == ".." ]] && return
+  do_edit_path "${DIR[$CUR]}/$real"
+}
+
 # Directory-history popup (the completer behind a field's "[^]" button). Shows
 # the recently-used directories most-recent-first; up/down/page/home/end to
 # browse, Enter to choose (result in HIST_RESULT), Esc/F10 to cancel. Returns
@@ -1819,7 +1851,12 @@ do_edit_file_kind() { # title filename
     message_dialog "$title" "No editor configured."
     return
   fi
-  message_dialog "$title" "External editor support is not wired into the curses UI yet."
+  local path="${HOME}/.config/mc/$file"
+  if [[ ! -e $path ]]; then
+    message_dialog "$title" "File not found: $path"
+    return
+  fi
+  do_edit_path "$path"
 }
 
 do_panel_options() {
@@ -2220,7 +2257,7 @@ run_menu() {
         "View")          do_view ;;
         "View file...")  do_view_file ;;
         "Filtered view") do_filtered_view ;;
-        "Edit")          message_dialog "Edit" "No editor configured." ;;
+        "Edit")          do_edit ;;
         "Copy")          do_copy ;;
         "Chmod")         do_chmod ;;
         "Link")          do_link ;;
@@ -2446,7 +2483,7 @@ main() {
       $KEY_F1)    fkey_help ;;
       $KEY_F2)    user_menu ;;
       $KEY_F3)    do_view ;;
-      $KEY_F4)    message_dialog "Edit" "No editor configured." ;;
+      $KEY_F4)    do_edit ;;
       $KEY_F5)    do_copy ;;
       $KEY_F6)    do_move ;;
       $KEY_F7)    do_mkdir ;;
