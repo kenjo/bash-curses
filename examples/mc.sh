@@ -14,6 +14,7 @@
 #   F9 pull down F10 quit             printable chars    : command line
 #   Esc         focus command line
 source "${BASH_SOURCE[0]%/*}/../lib/bc.sh"
+ESCDELAY=100
 
 # ---- per-panel state (suffix 0=left, 1=right) ----
 NAMES_0=(); TYPES_0=(); SIZES_0=(); TIMES_0=(); REALS_0=(); EXEC_0=()
@@ -31,6 +32,7 @@ PANEL=()
 
 CUR=0                 # active panel (0 left, 1 right)
 CMD_LINE=""
+HINT_TEXT=""
 STOP=0
 DLG_RESULT=""
 DIRHIST=()            # directory history, most-recent-first (for the completer)
@@ -73,14 +75,14 @@ MENU_File=(
 MENU_Command=(
   "User menu|F2|U" "Directory tree||D" "Find file|M-?|F" "Swap panels|C-u|w"
   "Switch panels on/off|C-o|p" "Compare directories|C-x d|C" "Compare files|C-x C-d|o"
-  "External panelize|C-x !|x" "Show directory sizes|C-Space|i"
+  "External panelize|C-x !|x" "Show directory sizes|C-Space|i:16"
   "---"
-  "Command history|M-h|h" "Viewed/edited files history|M-E|s" 'Directory hotlist|C-\|r'
+  "Command history|M-h|h" "Viewed/edited files history|M-E|s:22" 'Directory hotlist|C-\|r'
   "Active VFS list|C-x a|A" "Background jobs|C-x j|B" 'Screen list|M-`|t'
   "---"
   "Undelete files (ext2fs only)||U"
   "---"
-  "Edit extension file||e" "Edit menu file||m" "Edit highlighting group file||g"
+  "Edit extension file||e:5" "Edit menu file||m" "Edit highlighting group file||g"
 )
 MENU_Options=(
   "Configuration...||C" "Layout...||L" "Panel options...||P" "Confirmation...||o"
@@ -103,9 +105,33 @@ menu_dd=0        # dropdown open
 menu_sel=0       # selected item (index over real, non-separator items)
 
 # ------------------------------------------------------------------ helpers
+hum_bytes() { # bytes -> human
+  local b=$1
+  if (( b >= 1024 )); then printf '%dK' "$(( (b + 1023) / 1024 ))"
+  else printf '%d B' "$b"; fi
+}
+
+selection_summary() { # p -> SEL_SUMMARY
+  local p=$1
+  local -n RR=REALS_$p SS=SIZES_$p SELARR=SELSET_$p
+  local i cnt=0 bytes=0
+  for (( i = 1; i < ${#RR[@]}; i++ )); do
+    if [[ -n ${SELARR[${RR[$i]}]:-} ]]; then
+      cnt=$(( cnt + 1 ))
+      bytes=$(( bytes + ${SS[$i]:-0} ))
+    fi
+  done
+  if (( cnt == 0 )); then
+    SEL_SUMMARY=""
+  else
+    local files="files"; (( cnt == 1 )) && files="file"
+    SEL_SUMMARY="$(hum_bytes "$bytes") in $cnt $files"
+  fi
+}
+
 hum() { # kb -> human
   local kb=$1
-  if (( kb >= 1048576 )); then printf '%dG' "$(( kb / 1048576 ))"
+  if (( kb >= 10240 * 1024 )); then printf '%dG' "$(( kb / 1048576 ))"
   elif (( kb >= 1024 )); then printf '%dM' "$(( kb / 1024 ))"
   else printf '%dK' "$kb"; fi
 }
@@ -149,7 +175,11 @@ list_dir() {
       if [[ -n ${FILTERS[$p]} ]] && [[ $name != ${FILTERS[$p]} ]]; then continue; fi
       ex=0
       [[ $t != d && $t != l && $mode =~ ^[0-7]+$ ]] && (( (8#$mode) & 0111 )) && ex=1
-      if [[ $t == d ]]; then disp="/$name"; elif (( ex )); then disp="*$name"; else disp=" $name"; fi
+      if [[ $t == d ]]; then disp="/$name"
+      elif [[ $t == l ]]; then disp="@$name"
+      elif (( ex )); then disp="*$name"
+      else disp=" $name"
+      fi
       nm+=("$disp"); ty+=("$t"); sz+=("$s"); rk+=("$name"); xx+=("$ex")
       tm+=("$(fmt_mtime "$y" "$mo" "$dd" "$h" "$mi")")
       tk+=("$(printf '%04d%02d%02d%02d%02d' "$((10#$y))" "$((10#$mo))" "$((10#$dd))" "$((10#$h))" "$((10#$mi))")")
@@ -266,7 +296,12 @@ draw_panel() {
   if [[ $path == "$HOME" ]]; then dp="~"
   elif [[ $path == "$HOME"/* ]]; then dp="~${path#"$HOME"}"
   fi
-  local top="<─ ${dp:0:$(( w - 8 ))} "
+  local maxpath=$(( w - 12 ))
+  if (( maxpath < 6 )); then maxpath=6; fi
+  if (( ${#dp} > maxpath )); then
+    dp="...${dp: -$(( maxpath - 3 ))}"
+  fi
+  local top="<─ ${dp:0:$maxpath} "
   local fill=$(( w - 2 - ${#top} - 5 ))
   (( fill < 0 )) && fill=0
   printf -v dstr '─%.0s' $(seq 1 "$fill")
@@ -276,9 +311,9 @@ draw_panel() {
   # path highlight (pair 13, black-on-white) covers the path plus one space on
   # each side; only the active panel gets it (the inactive path stays border
   # color), matching real MC
-  if (( active )); then
+  if (( active && ! menu_open )); then
     wattrset "$win" 0 13
-    mvwaddstr "$win" 0 3 " ${dp:0:$(( w - 8 ))} "
+    mvwaddstr "$win" 0 3 " ${dp:0:$maxpath} "
   fi
 
   # header row: blue bg like the panel; column titles in bright yellow (pair 12),
@@ -315,16 +350,22 @@ draw_panel() {
     idx=$(( off + y ))
     (( idx >= cnt )) && break
     row=$(( y + 2 ))
-    if (( idx == pos && active )); then
-      # interior (cols 1..w-2) is a black-on-cyan strip; the border columns
-      # (0 and w-1) keep the border color drawn by box()
+    if (( idx == pos && active && ! menu_open )); then
+      # interior (cols 1..w-2) is a cyan strip; selected entries keep their
+      # bright-yellow text, unselected entries use black text.
+      local apair=6
+      [[ -n ${SELARR[${RR[$idx]}]:-} ]] && apair=34
       wmove "$win" "$row" 1
-      wchgat "$win" $(( w - 2 )) 0 6
-      wattrset "$win" 0 6
+      wchgat "$win" $(( w - 2 )) 0 "$apair"
+      wattrset "$win" 0 "$apair"
       mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+      wattrset "$win" 0 6
       mvwaddch "$win" "$row" "$SD" "│"
+      wattrset "$win" 0 "$apair"
       mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+      wattrset "$win" 0 6
       mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
+      wattrset "$win" 0 "$apair"
       mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
     else
       cpair=$(type_color "$p" "$idx")
@@ -359,7 +400,29 @@ draw_panel() {
   local sy=$(( h - 3 ))
   wattrset "$win" 0 "$bp"
   mvwaddch "$win" "$sy" 0 "$ACS_LTEE"
-  mvwhline "$win" "$sy" 1 "$ACS_HLINE" "$(( w - 2 ))"
+  selection_summary "$p"
+  local inside=$(( w - 2 ))
+  if [[ -n $SEL_SUMMARY ]]; then
+    local slen=${#SEL_SUMMARY}
+    if (( slen + 2 <= inside )); then
+      local lft=$(( (inside - slen - 2) / 2 ))
+      local rgt=$(( inside - 2 - lft - slen ))
+      (( lft < 0 )) && lft=0
+      (( rgt < 0 )) && rgt=0
+      printf -v ld '─%.0s' $(seq 1 "$lft")
+      printf -v rd '─%.0s' $(seq 1 "$rgt")
+      wattrset "$win" 0 "$bp"
+      mvwaddstr "$win" "$sy" 1 "$ld"
+      wattrset "$win" 0 12
+      mvwaddstr "$win" "$sy" $(( 1 + lft )) " ${SEL_SUMMARY} "
+      wattrset "$win" 0 "$bp"
+      mvwaddstr "$win" "$sy" $(( 1 + lft + slen + 2 )) "$rd"
+    else
+      mvwhline "$win" "$sy" 1 "$ACS_HLINE" "$inside"
+    fi
+  else
+    mvwhline "$win" "$sy" 1 "$ACS_HLINE" "$inside"
+  fi
   mvwaddch "$win" "$sy" "$(( w - 1 ))" "$ACS_RTEE"
 
   # status row names the selected entry (its listing name, with type prefix),
@@ -399,8 +462,10 @@ draw_panel() {
       local name=${MENUNAMES[$i]} x=${MENU_X[$i]}
       local mn=${name:0:1} rest=${name:1}
       if (( i == menu_bar_sel )); then
+        wattrset 0 0 18; mvwaddstr 0 0 "$(( x - 1 ))" " "
         wattrset 0 0 19; mvwaddstr 0 0 "$x" "$mn"
         wattrset 0 0 18; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
+        wattrset 0 0 18; mvwaddstr 0 0 "$(( x + ${#name} ))" " "
       else
         wattrset 0 0 17; mvwaddstr 0 0 "$x" "$mn"
         wattrset 0 0 16; mvwaddstr 0 0 "$(( x + 1 ))" "$rest"
@@ -435,7 +500,7 @@ menu_dd_prep() { # bar_sel
     (( ${#lab} > maxlen )) && maxlen=${#lab}
     (( ${#sc} > maxsc )) && maxsc=${#sc}
   done
-  MENU_INNER=$(( 1 + maxlen + (maxsc > 0 ? 2 + maxsc : 0) ))
+  MENU_INNER=$(( 1 + maxlen + 2 + maxsc ))
   MENU_MAXSC=$maxsc
   MENU_BW=$(( MENU_INNER + 2 ))
   MENU_GX=$(( MENU_X[$1] - 2 )); (( MENU_GX < 0 )) && MENU_GX=0
@@ -464,12 +529,19 @@ menu_dd_row() { # displayrow sel item
   local row=$1 sel=$2 e=$3
   local lab=${e%%|*} mnem=${e##*|}
   local sc=${e#*|}; sc=${sc%|*}
-  local tp tp2 sp mpos=0 i lc
+  local tp tp2 sp mpos=-1 i lc letter
   tp=$(( sel ? 18 : 16 )); tp2=$(( sel ? 19 : 17 ))
-  for (( i = 0; i < ${#lab}; i++ )); do
-    lc=${lab:i:1}; lc=${lc,,}
-    [[ $lc == "${mnem,,}" ]] && { mpos=$i; break; }
-  done
+  if [[ $mnem == *:* ]]; then
+    letter=${mnem%%:*}
+    mpos=${mnem##*:}
+  else
+    letter=$mnem
+    for (( i = 0; i < ${#lab}; i++ )); do
+      lc=${lab:i:1}
+      [[ -n $letter && $lc == "$letter" ]] && { mpos=$i; break; }
+    done
+  fi
+  (( mpos < 0 )) && mpos=0
   printf -v sp ' %.0s' $(seq 1 "$MENU_INNER")
   wattrset "$MENU_WIN" 0 16;      mvwaddstr "$MENU_WIN" "$row" 0 "│"
   wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$row" 1 "$sp"
@@ -488,6 +560,40 @@ menu_dd_sep() { # displayrow
   mvwaddstr "$MENU_WIN" "$row" 0 "$mid"
 }
 
+# Repaint the MC-style black shadow around the dropdown without changing the
+# underlying panel characters.
+menu_dd_shadow() {
+  local pair=32 p win px wx wy x y
+
+  local r0=$(( MENU_GY + 1 )) r1=$(( MENU_GY + MENU_GH - 1 ))
+  local c0=$(( MENU_GX + MENU_BW ))
+  local c1=$(( c0 + 1 ))
+  local br=$(( MENU_GY + MENU_GH ))
+  local bc0=$(( MENU_GX + 2 ))
+  local bc1=$(( MENU_GX + MENU_BW + 1 ))
+  for p in 0 1; do
+    win=${WIN[$p]}
+    (( win == 0 )) && continue
+    px=$(( p == 0 ? 0 : PW ))
+    for (( y = r0; y <= r1; y++ )); do
+      wy=$(( y - 1 ))
+      (( wy < 0 || wy >= PH )) && continue
+      for (( x = c0; x <= c1; x++ )); do
+        wx=$(( x - px ))
+        (( wx < 0 || wx >= PW )) && continue
+        wmove "$win" "$wy" "$wx" && wchgat "$win" 1 0 "$pair"
+      done
+    done
+    wy=$(( br - 1 ))
+    (( wy >= 0 && wy < PH )) || continue
+    for (( x = bc0; x <= bc1; x++ )); do
+      wx=$(( x - px ))
+      (( wx < 0 || wx >= PW )) && continue
+      wmove "$win" "$wy" "$wx" && wchgat "$win" 1 0 "$pair"
+    done
+  done
+}
+
 # Open (fully draw) the dropdown, scrolling so the selected item is visible.
 menu_dd_open() {
   menu_dd_prep "$menu_bar_sel"
@@ -502,6 +608,7 @@ menu_dd_open() {
   (( top < 0 )) && top=0
   MENU_TOP=$top
   local gh=$(( nshow + 2 ))
+  MENU_GH=$gh
   if (( MENU_WIN > 0 )); then
     del_panel "$MENU_PANEL" 2>/dev/null; delwin "$MENU_WIN"
     MENU_WIN=0; MENU_PANEL=0
@@ -521,7 +628,8 @@ menu_dd_open() {
     if [[ $e == SEP ]]; then menu_dd_sep "$drow"
     else menu_dd_row "$drow" $(( i == MENU_SELROW ? 1 : 0 )) "$e"; fi
   done
-  mvwaddstr "$MENU_WIN" "$gh" 0 "$botb"
+  mvwaddstr "$MENU_WIN" "$(( gh - 1 ))" 0 "$botb"
+  menu_dd_shadow
 }
 
 menu_dd_close() {
@@ -535,6 +643,8 @@ redraw_hint() { # bottom hint line, context-dependent like real MC
   clear=${clear:1}
   if [[ -n $CMD_LINE ]]; then
     hint="To change directory halfway through typing a command, use M-c."
+  elif [[ -n $HINT_TEXT ]]; then
+    hint=$HINT_TEXT
   else
     hint="Tab changes your current panel."
   fi
@@ -740,7 +850,7 @@ draw_cmdline() {
   local clear
   printf -v clear ' %.0s' $(seq 1 "$COLS")
   clear=${clear:1}
-  wattrset 0 0 1
+  wattrset 0 0 0
   mvwaddstr 0 "$CMY" 0 "$clear"
   local cwd=${DIR[$CUR]}
   local scwd=$cwd
@@ -774,6 +884,29 @@ dialog_box() { # w h title -> creates centered window, returns bc_win in $dw
 }
 
 # ------------------------------------------------------------------ mc-style dialogs
+# Paint a dialog shadow/highlight cell on whichever window covers the absolute
+# screen cell, preserving the character that is already there.
+mc_shadow_put() { # ay ax pair [ch]
+  local ay=$1 ax=$2 pair=$3 ch=$4 w ry rx found=0
+  for w in "${WIN[0]}" "${WIN[1]}"; do
+    [[ -n ${BC_WY[$w]:-} ]] || continue
+    if (( ay >= BC_WY[$w] && ay < BC_WY[$w] + BC_WH[$w] &&
+          ax >= BC_WX[$w] && ax < BC_WX[$w] + BC_WW[$w] )); then
+      ry=$(( ay - BC_WY[$w] )); rx=$(( ax - BC_WX[$w] ))
+      mvwinch "$w" "$ry" "$rx"
+      _bc_cell "$w" "$ay" "$ax" "$wch" "$wcha" "$wchp"
+      [[ -z $ch ]] && ch=$wch
+      found=1
+      break
+    fi
+  done
+  if (( ! found )); then
+    mvwinch 0 "$ay" "$ax"
+    [[ -z $ch ]] && ch=$wch
+  fi
+  mvwaddch 0 "$ay" "$ax" "$ch" 0 "$pair"
+}
+
 # A centered window with a colored frame and a centered title bar, matching
 # Midnight Commander's modal dialogs. danger=1 uses the red (destructive)
 # frame. Content is drawn on top afterwards. Sets the window id in $dw.
@@ -788,6 +921,35 @@ mc_dialog() { # w h title danger
   local fp tp
   (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
   newwin "$h" "$w" "$y" "$x"; dw=$bc_win
+  local sy sx
+  if (( y > 0 )); then
+    for (( sx = x - 1; sx <= x + w && sx < COLS; sx++ )); do
+      (( sx >= 0 )) && mc_shadow_put "$(( y - 1 ))" "$sx" "$fp" ' '
+    done
+  fi
+  for (( sy = y - 1; sy <= y + h - 1; sy++ )); do
+    (( sy >= 0 && x - 1 >= 0 )) && mc_shadow_put "$sy" "$(( x - 1 ))" "$fp" ' '
+  done
+  for (( sy = y; sy <= y + h; sy++ )); do
+    (( sy < LINES && x + w < COLS )) && mc_shadow_put "$sy" "$(( x + w ))" "$fp" ' '
+  done
+  if (( y + h < LINES )); then
+    for (( sx = x - 1; sx <= x + w && sx < COLS; sx++ )); do
+      (( sx >= 0 )) && mc_shadow_put "$(( y + h ))" "$sx" "$fp" ' '
+    done
+  fi
+  for (( sy = y; sy <= y + h; sy++ )); do
+    (( sy < LINES )) && {
+      (( x + w + 1 < COLS )) && mc_shadow_put "$sy" "$(( x + w + 1 ))" 32
+      (( x + w + 2 < COLS )) && mc_shadow_put "$sy" "$(( x + w + 2 ))" 32
+    }
+  done
+  if (( y + h + 1 < LINES )); then
+    for (( sx = x + 1; sx <= x + w + 2 && sx < COLS; sx++ )); do
+      mc_shadow_put "$(( y + h + 1 ))" "$sx" 32
+    done
+  fi
+  wrefresh 0
   wattrset "$dw" 0 "$fp"
   werase "$dw"; box "$dw"
   local tstr=" $title "
@@ -986,6 +1148,7 @@ do_open() {
     return
   fi
   list_dir "$CUR"
+  HINT_TEXT="VFS coolness: tap enter on a tar file to examine its contents."
   # MC: when entering the parent, highlight the directory we came from
   if [[ -n $child ]]; then
     local -n RR=REALS_$CUR
@@ -1695,21 +1858,90 @@ do_chattr() {
   list_dir "$CUR"
 }
 
+select_group_dialog() {
+  local w=53 h=5
+  local pat="" caret=0 focus=0
+  local files_only=0 case_sens=1 shell_pat=1
+  local cancelled=0
+  mc_dialog "$w" "$h" "Select" 0
+  sg_draw() {
+    dlg_field 1 2 49 "$pat" "$caret" $(( focus == 0 ))
+    dlg_checkbox 2 2  "$files_only" "Files only"           0 23 24 $(( focus == 1 ))
+    dlg_checkbox 2 27 "$case_sens"  "Case sensitive"       0 23 24 $(( focus == 2 ))
+    dlg_checkbox 3 2  "$shell_pat"  "Using shell patterns" 0 23 24 $(( focus == 3 ))
+    wrefresh "$dw"
+  }
+  sg_draw
+  while :; do
+    wgetch "$dw" || break
+    case $key in
+      $KEY_RESIZE) BC_WINCH=1; break ;;
+      $'\x1b') cancelled=1; break ;;
+      $'\r') break ;;
+      $'\t') focus=$(( (focus + 1) % 4 )) ;;
+      $' ')
+        case $focus in
+          1) files_only=$(( 1 - files_only )) ;;
+          2) case_sens=$(( 1 - case_sens )) ;;
+          3) shell_pat=$(( 1 - shell_pat )) ;;
+        esac
+        ;;
+      $KEY_LEFT)  (( caret > 0 )) && caret=$(( caret - 1 )) ;;
+      $KEY_RIGHT) (( caret < ${#pat} )) && caret=$(( caret + 1 )) ;;
+      $KEY_HOME) caret=0 ;;
+      $KEY_END) caret=${#pat} ;;
+      $'\x7f'|$'\x08')
+        if (( caret > 0 )); then
+          pat="${pat:0:caret-1}${pat:caret}"
+          caret=$(( caret - 1 ))
+        fi
+        ;;
+      *)
+        if (( focus == 0 )) && [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then
+          pat="${pat:0:caret}$key${pat:caret}"
+          caret=$(( caret + 1 ))
+        fi
+        ;;
+    esac
+    sg_draw
+  done
+  delwin "$dw"
+  SG_PATTERN=$pat
+  SG_FILES_ONLY=$files_only
+  SG_CASE_SENS=$case_sens
+  SG_SHELL_PAT=$shell_pat
+  (( cancelled )) && return 1
+  return 0
+}
+
 do_select_group() {
-  text_field_dialog "Select group" "File name pattern:" "*" || return
-  local pat=$TF_TEXT
-  [[ -z $pat ]] && return
-  local -n RR=REALS_$CUR
-  local i real
+  select_group_dialog || { draw_all; doupdate; return; }
+  local pat=$SG_PATTERN
+  [[ -z $pat ]] && { draw_all; doupdate; return; }
+  local -n RR=REALS_$CUR TT=TYPES_$CUR SELARR=SELSET_$CUR
+  local i real match
   for (( i = 1; i < ${#RR[@]}; i++ )); do
     real=${RR[$i]}
     [[ $real == ".." ]] && continue
-    if [[ $real == $pat ]]; then
-      local -n SELARR=SELSET_$CUR
-      SELARR[$real]=1
+    if (( SG_FILES_ONLY )) && [[ ${TT[$i]} == d ]]; then continue; fi
+    match=0
+    if (( SG_SHELL_PAT )); then
+      if (( SG_CASE_SENS )); then
+        [[ $real == $pat ]] && match=1
+      else
+        [[ ${real,,} == ${pat,,} ]] && match=1
+      fi
+    else
+      if (( SG_CASE_SENS )); then
+        [[ $real == "$pat" ]] && match=1
+      else
+        [[ ${real,,} == "${pat,,}" ]] && match=1
+      fi
     fi
+    (( match )) && SELARR[$real]=1
   done
-  draw_panel "$CUR"
+  HINT_TEXT=""
+  draw_all
   doupdate
 }
 
@@ -1731,6 +1963,37 @@ do_unselect_group() {
   doupdate
 }
 
+do_insert_select() {
+  local -n NN=NAMES_$CUR RR=REALS_$CUR SELARR=SELSET_$CUR
+  local pos=${POS[$CUR]}
+  if (( pos > 0 )); then
+    local real=${RR[$pos]}
+    if [[ -n ${SELARR[$real]:-} ]]; then
+      unset 'SELARR[$real]'
+    else
+      SELARR[$real]=1
+    fi
+  fi
+  (( pos < ${#NN[@]} - 1 )) && POS[$CUR]=$(( pos + 1 ))
+  HINT_TEXT=""
+  HINT_TEXT=""
+  draw_panel "$CUR"
+  doupdate
+}
+
+do_star_select() {
+  local -n RR=REALS_$CUR TT=TYPES_$CUR SELARR=SELSET_$CUR
+  local i
+  for (( i = 1; i < ${#RR[@]}; i++ )); do
+    [[ ${RR[$i]} == ".." ]] && continue
+    [[ ${TT[$i]} == d ]] && continue
+    SELARR[${RR[$i]}]=1
+  done
+  HINT_TEXT=""
+  draw_panel "$CUR"
+  doupdate
+}
+
 do_invert_selection() {
   local -n RR=REALS_$CUR
   local i real
@@ -1744,6 +2007,7 @@ do_invert_selection() {
       SELARR[$real]=1
     fi
   done
+  HINT_TEXT=""
   draw_panel "$CUR"
   doupdate
 }
@@ -2171,6 +2435,7 @@ run_menu() {
   local nmb=${#MENUNAMES[@]} chosen=""
   menu_real_n 0
   draw_menu
+  draw_panel 0; draw_panel 1
   doupdate
   while :; do
     wgetch 0 || break
@@ -2188,27 +2453,37 @@ run_menu() {
          (( menu_dd )) && { menu_dd_close; menu_dd_open; }
          ;;
         $KEY_RESIZE) do_resize ;;
-       $KEY_DOWN)
-         if (( menu_dd == 0 )); then MENU_TOP=0; menu_dd=1; menu_sel=0; menu_dd_open
-         else
+        $KEY_DOWN)
+          if (( menu_dd == 0 )); then
+            MENU_TOP=0; menu_dd=1; menu_sel=0
+            draw_panel 0; draw_panel 1
+            menu_dd_open
+          else
            menu_sel=$(( (menu_sel + 1) % REALN ))
            menu_dd_open
          fi
          ;;
        $KEY_UP)
          if (( menu_dd == 1 )); then
-           if (( menu_sel == 0 )); then menu_dd=0; menu_dd_close
-           else
-             menu_sel=$(( menu_sel - 1 ))
-             menu_dd_open
-           fi
-         else
-           MENU_TOP=0; menu_dd=1; menu_sel=0; menu_dd_open
-         fi
+            if (( menu_sel == 0 )); then
+              menu_dd=0; menu_dd_close
+              draw_panel 0; draw_panel 1
+            else
+              menu_sel=$(( menu_sel - 1 ))
+              menu_dd_open
+            fi
+          else
+            MENU_TOP=0; menu_dd=1; menu_sel=0
+            draw_panel 0; draw_panel 1
+            menu_dd_open
+          fi
          ;;
        $'\r')
-         if (( menu_dd == 0 )); then MENU_TOP=0; menu_dd=1; menu_sel=0; menu_dd_open
-         else
+          if (( menu_dd == 0 )); then
+            MENU_TOP=0; menu_dd=1; menu_sel=0
+            draw_panel 0; draw_panel 1
+            menu_dd_open
+          else
            menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
            menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break
          fi
@@ -2219,7 +2494,7 @@ run_menu() {
          if (( menu_dd == 1 )); then
            local old=$menu_sel
            for (( ri = 0; ri < REALN; ri++ )); do
-             menu_entry_at "$menu_bar_sel" "$ri"; lf=${ENTRY##*|}; lf=${lf,,}
+              menu_entry_at "$menu_bar_sel" "$ri"; lf=${ENTRY##*|}; lf=${lf%%:*}; lf=${lf,,}
              [[ $lf == "$ch" ]] && { menu_sel=$ri; break; }
            done
            (( old != menu_sel )) && menu_dd_open
@@ -2420,7 +2695,7 @@ main() {
   init_pair 1 "$COLOR_WHITE"   "$COLOR_BLACK"   # menu bar, hint/cmdline/buttons
   init_pair 2 15 "$COLOR_BLUE"               # directories (bright white)
   init_pair 3 10 "$COLOR_BLUE"               # executables (bright green)
-  init_pair 4 15 "$COLOR_BLUE"               # symlinks
+  init_pair 4 "$COLOR_WHITE" "$COLOR_BLUE"   # symlinks
   init_pair 5 15 "$COLOR_BLUE"               # special files
   init_pair 6 "$COLOR_BLACK"   "$COLOR_CYAN"  # selected entry: full row (active panel)
   init_pair 7 "$COLOR_WHITE"   "$COLOR_BLUE"  # active border, dividers, status+size text
@@ -2448,10 +2723,12 @@ main() {
   init_pair 25 8 6                            # dialog input fields (bright-black on cyan)
   init_pair 26 15 1                           # destructive dialog frame/body (bright-white on red)
   init_pair 27 11 1                           # destructive dialog title (bright-yellow on red)
-  init_pair 28 15 "$COLOR_BLUE"              # input-field completer button (bright-white on blue)
+  init_pair 28 7 "$COLOR_BLUE"               # input-field completer button (white on blue)
   init_pair 29 0 6                           # focused dialog checkbox/button (black on cyan)
   init_pair 30 4 6                           # focused dialog mnemonic (blue on cyan)
-  init_pair 31 11 "$COLOR_BLUE"              # selected panel entry (bright yellow on blue)
+  init_pair 31 11 "$COLOR_BLUE"              # selected panel entry, inactive (bright yellow on blue)
+  init_pair 34 11 6                           # selected panel entry, active (bright yellow on cyan)
+  init_pair 32 8 0                           # dropdown shadow (bright black on black)
 
   init_ui || { endwin; exit 1; }
 
@@ -2474,8 +2751,8 @@ main() {
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )); nav=1 ;;
       $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
       $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
-       $KEY_LEFT)   CUR=$(( 1 - CUR )); switched=1 ;;
-       $KEY_RIGHT)  CUR=$(( 1 - CUR )); switched=1 ;;
+       $KEY_LEFT)   : ;;
+       $KEY_RIGHT)  : ;;
        $KEY_RESIZE) do_resize ;;
        $'\t')       CUR=$(( 1 - CUR )); switched=1 ;;
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
@@ -2488,8 +2765,20 @@ main() {
       $KEY_F6)    do_move ;;
       $KEY_F7)    do_mkdir ;;
       $KEY_F8)    do_delete ;;
-      $KEY_F9)    run_menu ;;
-      $KEY_F10)   STOP=1 ;;
+       $KEY_F9)    run_menu ;;
+       $KEY_F10)   STOP=1 ;;
+       $KEY_IC)    do_insert_select ;;
+       '+')        do_select_group ;;
+       '-')        do_unselect_group ;;
+       '*')         do_star_select ;;
+       $' ')
+         if [[ -n $CMD_LINE ]]; then
+           CMD_LINE+=' '
+           draw_cmdline
+           doupdate
+           continue
+         fi
+         ;;
       $'\x1b')    if [[ -n $CMD_LINE ]]; then CMD_LINE=""; draw_cmdline; doupdate; fi ;;
       $'\x7f' | $'\x08')
         CMD_LINE=${CMD_LINE:0:-1}

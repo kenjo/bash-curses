@@ -74,6 +74,7 @@ sendk Right
 sendk Down
 sendk g
 sendk Enter
+sendk -l '*'
 sendk Enter
 sleep 1
 if capE | sed -n '4,10p' | grep -q '93m'; then
