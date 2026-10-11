@@ -1976,7 +1976,6 @@ do_insert_select() {
   fi
   (( pos < ${#NN[@]} - 1 )) && POS[$CUR]=$(( pos + 1 ))
   HINT_TEXT=""
-  HINT_TEXT=""
   draw_panel "$CUR"
   doupdate
 }
