@@ -32,7 +32,8 @@ run. ALWAYS:
 - Headless (no tmux, fast): `tests/unit.sh` (library behaviour), `tests/unit_screen.sh`
   (the SGR parser, per-cell grid model, and the raw cursor tracker).
 - tmux (need a real tty): `tests/integration.sh`, `tests/mc_nav.sh`,
-  `tests/mc_menu.sh`, `tests/mc_view.sh`.
+  `tests/mc_menu.sh`, `tests/mc_view.sh`, `tests/mc_resize.sh`,
+  `tests/mc_dialog.sh`, `tests/mc_actions.sh`, `tests/mc_parity.sh`.
 
 ### Per-cell screen model — `tests/lib/screen.sh`
 Source it to parse `tmux capture-pane -e` (SGR) captures into a per-cell grid
@@ -55,6 +56,14 @@ Slow interactive harness (NOT in run.sh): drives real `mc` and the clone in the
 same controlled tree, feeds identical keys, and reports per-cell divergences to
 `tmp/vd/REPORT.txt`. Run one step: `bash tests/visual_diff.sh initial`. Record
 findings in `ANOMALIES.md`.
+
+### MC-vs-clone parity probe — `tests/parity_probe.sh`
+Cached interactive harness (NOT in run.sh): drives real `mc` and the clone in
+parallel controlled trees, feeds identical keys/menu selections, and records
+mismatches to `PARITY_FINDINGS.md` plus captures under `tmp/p`. Run one step:
+`bash tests/parity_probe.sh nav_left`. Use `PARITY_RESET=1` to start a fresh
+findings file; real `mc` captures are cached under `tmp/p/cache` unless
+`PARITY_REFRESH_MC=1`.
 
 ## Temporary files
  - /tmp is not to be used. Use tmp in workspace insterad.

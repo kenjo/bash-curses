@@ -132,19 +132,23 @@ unit tests: all `KEY_*` (KEY_F1=265 … KEY_MOUSE=409, KEY_MAX=511), `A_BOLD`=1 
 bash tests/run.sh
 ```
 
-- `tests/unit.sh` — headless (no tty): 92 checks covering key-table lookup,
-  SGR/X10 mouse decode, mask expansion, click/double/triple merge runs, and
-  KEY_*/mouse constants vs the installed ncurses header.
+- `tests/unit.sh` — headless (no tty): key-table lookup, SGR/X10 mouse decode,
+  mask expansion, click/double/triple merge runs, and KEY_*/mouse constants vs
+  the installed ncurses header.
+- `tests/unit_screen.sh` — headless: SGR capture parser, per-cell grid model,
+  and raw cursor tracker.
 - `tests/integration.sh` — tmux-driven: runs `tests/battery_app.sh` in a pane,
   injects key and mouse bytes via `send-keys -H`, and asserts the decoded
-  `KEY`/`EV` output (24 checks).
+  `KEY`/`EV` output.
+- `tests/mc_*.sh` — tmux-driven regression tests for the `mc` clone: navigation,
+  menus, viewer, resize, dialogs, actions, and MC-vs-clone parity checks.
 
 ## Layout
 
 ```
 lib/bc.sh        the library (source it)
 examples/        ports of ncurses test-suite demos (smoke tests)
-tests/           run.sh, unit.sh, integration.sh, battery_app.sh
+tests/           run.sh, unit.sh, unit_screen.sh, integration.sh, mc_* tests
 references/      read-only vendored ncurses corpus (do not edit)
 DESIGN.md        architecture, data model, input/mouse, verification, deviations
 MOUSE.md         mouse semantics, ground truth, debugging record
