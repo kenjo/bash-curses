@@ -59,6 +59,42 @@ else
   bad "viewer fn-key bar missing"
 fi
 
+first_line() { cap | sed -n '2p' | sed 's/[[:space:]]*$//'; }
+
+if [[ "$(first_line)" == "1" ]]; then
+  ok "viewer starts at first content line"
+else
+  bad "viewer first content line wrong: '$(first_line)'"
+fi
+
+sendk Down
+if [[ "$(first_line)" == "2" ]]; then
+  ok "Down scrolls viewer by one line"
+else
+  bad "Down did not scroll viewer: '$(first_line)'"
+fi
+
+sendk Up
+if [[ "$(first_line)" == "1" ]]; then
+  ok "Up scrolls viewer back by one line"
+else
+  bad "Up did not restore first line: '$(first_line)'"
+fi
+
+sendk NPage
+if [[ "$(first_line)" == "29" ]]; then
+  ok "NPage scrolls viewer by one page"
+else
+  bad "NPage did not scroll to line 29: '$(first_line)'"
+fi
+
+sendk PPage
+if [[ "$(first_line)" == "1" ]]; then
+  ok "PPage scrolls viewer back to top"
+else
+  bad "PPage did not restore first line: '$(first_line)'"
+fi
+
 # End scrolls to the bottom: the offset in the title becomes non-zero
 sendk End
 sleep 1

@@ -263,6 +263,10 @@ BC_OLDSTTY=""
 BC_WINCH=0            # set by a SIGWINCH trap; consumed by wgetch as KEY_RESIZE
 BC_FORCEFULL=0       # when set, the next doupdate recomposites the whole screen
 BC_TEST_SEQ=0        # incremented by doupdate when BC_TEST_DIR is set
+BC_NO_SCROLLREG=${BC_NO_SCROLLREG:-0}
+BC_SCROLLREQ=""      # pending safe terminal scroll: "win top bottom n"
+declare -A BC_SCROLL=() # window scrollok flag
+declare -A BC_SR=()     # window scroll region: "top bottom"
 
 # ncurses globals (mirrored by initscr / start_color)
 COLS=80
@@ -354,6 +358,8 @@ _bc_init_window() { # w y x h
   BC_WDELAY[$w]=0
   BC_WKEYPAD[$w]=0
   BC_WBUF[$w]=$w
+  BC_SCROLL[$w]=0
+  BC_SR[$w]=""
   BC_WLIST+=("$w")
 }
 
@@ -725,6 +731,217 @@ _bc_mark_all() { # w
   done
   BC_WD[$w]+="$wd"
   return 0
+}
+
+_bc_mark_cell() { # w ay ax
+  local mk="$1/$2 $3"
+  if [[ -z ${BC_MK[$mk]:-} ]]; then
+    BC_MK[$mk]=1
+    BC_WD[$1]+=",$2 $3"
+  fi
+}
+
+_bc_mark_region() { # w ay ax h ww
+  local w=$1 y=$2 x=$3 h=$4 ww=$5
+  local ay ax
+  for (( ay = y; ay < y + h; ay++ )); do
+    for (( ax = x; ax < x + ww; ax++ )); do
+      _bc_mark_cell "$w" "$ay" "$ax"
+    done
+  done
+}
+
+_bc_expand_scroll_dirty() { # w top bottom
+  local w=$1 top=$2 bottom=$3
+  local y0=$(( BC_WY[$w] + top )) x0=${BC_WX[$w]}
+  local h=$(( bottom - top + 1 )) ww=${BC_WW[$w]}
+  _bc_mark_region "$w" "$y0" "$x0" "$h" "$ww"
+}
+
+_bc_scroll_window_cells() { # w top bottom n
+  local w=$1 top=$2 bottom=$3 n=$4
+  local buf=${BC_WBUF[$w]}
+  local x0=${BC_WX[$w]} ww=${BC_WW[$w]}
+  local h=$(( bottom - top + 1 ))
+  local y src ax srck dstk
+  _bc_render "$w" ' ' 0 0
+  local bch=$BC_RCH ba=$BC_RA bp=$BC_RP
+
+  if (( n > 0 )); then
+    if (( n >= h )); then
+      for (( y = top; y <= bottom; y++ )); do
+        for (( ax = x0; ax < x0 + ww; ax++ )); do
+          _bc_cell "$w" "$y" "$ax" "$bch" "$ba" "$bp"
+        done
+      done
+      return 0
+    fi
+    for (( y = top; y <= bottom - n; y++ )); do
+      src=$(( y + n ))
+      for (( ax = x0; ax < x0 + ww; ax++ )); do
+        srck="$buf/$src $ax"
+        dstk="$buf/$y $ax"
+        if [[ -n ${BC_C[$srck]+set} ]]; then
+          BC_C[$dstk]=${BC_C[$srck]}
+          BC_A[$dstk]=${BC_A[$srck]:-0}
+          BC_P[$dstk]=${BC_P[$srck]:-0}
+        else
+          unset "BC_C[$dstk]" "BC_A[$dstk]" "BC_P[$dstk]"
+        fi
+      done
+    done
+    for (( y = bottom - n + 1; y <= bottom; y++ )); do
+      for (( ax = x0; ax < x0 + ww; ax++ )); do
+        _bc_cell "$w" "$y" "$ax" "$bch" "$ba" "$bp"
+      done
+    done
+  elif (( n < 0 )); then
+    n=$(( -n ))
+    if (( n >= h )); then
+      for (( y = top; y <= bottom; y++ )); do
+        for (( ax = x0; ax < x0 + ww; ax++ )); do
+          _bc_cell "$w" "$y" "$ax" "$bch" "$ba" "$bp"
+        done
+      done
+      return 0
+    fi
+    for (( y = bottom; y >= top + n; y-- )); do
+      src=$(( y - n ))
+      for (( ax = x0; ax < x0 + ww; ax++ )); do
+        srck="$buf/$src $ax"
+        dstk="$buf/$y $ax"
+        if [[ -n ${BC_C[$srck]+set} ]]; then
+          BC_C[$dstk]=${BC_C[$srck]}
+          BC_A[$dstk]=${BC_A[$srck]:-0}
+          BC_P[$dstk]=${BC_P[$srck]:-0}
+        else
+          unset "BC_C[$dstk]" "BC_A[$dstk]" "BC_P[$dstk]"
+        fi
+      done
+    done
+    for (( y = top; y < top + n; y++ )); do
+      for (( ax = x0; ax < x0 + ww; ax++ )); do
+        _bc_cell "$w" "$y" "$ax" "$bch" "$ba" "$bp"
+      done
+    done
+  fi
+  return 0
+}
+
+_bc_shift_screen_model() { # top bottom n
+  local top=$1 bottom=$2 n=$3
+  local h=$(( bottom - top + 1 ))
+  local y src x k sk
+  if (( n > 0 )); then
+    if (( n >= h )); then
+      for (( y = top; y <= bottom; y++ )); do
+        for (( x = 0; x < BC_COLS; x++ )); do
+          k="$y $x"
+          unset "BC_S[$k]" "BC_SA[$k]" "BC_SP[$k]"
+        done
+      done
+      return 0
+    fi
+    for (( y = top; y <= bottom - n; y++ )); do
+      src=$(( y + n ))
+      for (( x = 0; x < BC_COLS; x++ )); do
+        k="$y $x"
+        sk="$src $x"
+        if [[ -n ${BC_S[$sk]+set} ]]; then
+          BC_S[$k]=${BC_S[$sk]}
+          BC_SA[$k]=${BC_SA[$sk]:-0}
+          BC_SP[$k]=${BC_SP[$sk]:-0}
+        else
+          unset "BC_S[$k]" "BC_SA[$k]" "BC_SP[$k]"
+        fi
+      done
+    done
+    for (( y = bottom - n + 1; y <= bottom; y++ )); do
+      for (( x = 0; x < BC_COLS; x++ )); do
+        k="$y $x"
+        unset "BC_S[$k]" "BC_SA[$k]" "BC_SP[$k]"
+      done
+    done
+  elif (( n < 0 )); then
+    n=$(( -n ))
+    if (( n >= h )); then
+      for (( y = top; y <= bottom; y++ )); do
+        for (( x = 0; x < BC_COLS; x++ )); do
+          k="$y $x"
+          unset "BC_S[$k]" "BC_SA[$k]" "BC_SP[$k]"
+        done
+      done
+      return 0
+    fi
+    for (( y = bottom; y >= top + n; y-- )); do
+      src=$(( y - n ))
+      for (( x = 0; x < BC_COLS; x++ )); do
+        k="$y $x"
+        sk="$src $x"
+        if [[ -n ${BC_S[$sk]+set} ]]; then
+          BC_S[$k]=${BC_S[$sk]}
+          BC_SA[$k]=${BC_SA[$sk]:-0}
+          BC_SP[$k]=${BC_SP[$sk]:-0}
+        else
+          unset "BC_S[$k]" "BC_SA[$k]" "BC_SP[$k]"
+        fi
+      done
+    done
+    for (( y = top; y < top + n; y++ )); do
+      for (( x = 0; x < BC_COLS; x++ )); do
+        k="$y $x"
+        unset "BC_S[$k]" "BC_SA[$k]" "BC_SP[$k]"
+      done
+    done
+  fi
+  return 0
+}
+
+_bc_scroll_safe() { # w top bottom n
+  local w=$1 top=$2 bottom=$3 n=$4
+  (( BC_NO_SCROLLREG == 0 )) || return 1
+  (( BC_FORCEFULL == 0 )) || return 1
+  [[ -z ${BC_DELRECTS:-} ]] || return 1
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local h=$(( bottom - top + 1 ))
+  local an=$n
+  (( an < 0 )) && an=$(( -an ))
+  (( an > 0 && an < h )) || return 1
+  (( BC_WX[$w] == 0 && BC_WW[$w] == BC_COLS )) || return 1
+  (( BC_WY[$w] == 0 && BC_WH[$w] == BC_LINES )) || return 1
+  local p top_p=""
+  if (( w == BC_STDSCR )); then
+    for p in "${BC_PSTACK[@]}"; do
+      [[ ${BC_PHID[$p]:-0} != 1 ]] && return 1
+    done
+  else
+    for p in "${BC_PSTACK[@]}"; do
+      [[ ${BC_PHID[$p]:-0} != 1 ]] && top_p=$p
+    done
+    [[ -n $top_p && ${BC_PWIN[$top_p]} == "$w" ]] || return 1
+  fi
+  return 0
+}
+
+_bc_combine_scroll_req() { # w top bottom n
+  local w=$1 top=$2 bottom=$3 n=$4
+  if [[ -n ${BC_SCROLLREQ:-} ]]; then
+    local ow otop obot on
+    read -r ow otop obot on <<< "$BC_SCROLLREQ"
+    if [[ $ow == "$w" && $otop == "$top" && $obot == "$bottom" ]]; then
+      local sum=$(( on + n ))
+      _bc_expand_scroll_dirty "$w" "$top" "$bottom"
+      if (( sum == 0 )); then
+        BC_SCROLLREQ=""
+      else
+        BC_SCROLLREQ="$w $top $bottom $sum"
+      fi
+      return 0
+    fi
+    _bc_expand_scroll_dirty "$ow" "$otop" "$obot"
+    BC_FORCEFULL=1
+  fi
+  BC_SCROLLREQ="$w $top $bottom $n"
 }
 
 # --------------------------------------------------------------------- mouse
@@ -1174,6 +1391,51 @@ derwin() { # win nlines ncol begin_y begin_x (absolute, within parent)
 
 subwin() { derwin "$@"; }
 
+scrollok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_SCROLL[$w]=0
+  else
+    BC_SCROLL[$w]=1
+  fi
+  return 0
+}
+
+idlok() { # win bool
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  return 0
+}
+
+wsetscrreg() { # win top bottom
+  local w=${1:-$BC_CURR} top=$2 bottom=$3
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  (( top >= 0 && bottom < BC_WH[$w] && top <= bottom )) || return 1
+  BC_SR[$w]="$top $bottom"
+  return 0
+}
+
+setscrreg() { wsetscrreg "$BC_STDSCR" "$@"; }
+
+wscrl() { # win n
+  local w=${1:-$BC_CURR} n=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  (( ${BC_SCROLL[$w]:-0} )) || return 1
+  (( n == 0 )) && return 0
+  local top=0 bottom=$(( BC_WH[$w] - 1 ))
+  if [[ -n ${BC_SR[$w]:-} ]]; then
+    read -r top bottom <<< "${BC_SR[$w]}"
+  fi
+  _bc_scroll_window_cells "$w" "$top" "$bottom" "$n"
+  _bc_combine_scroll_req "$w" "$top" "$bottom" "$n"
+  return 0
+}
+
+scroll() { wscrl "${1:-$BC_CURR}" 1; }
+
+scrl() { wscrl "$BC_CURR" "$1"; }
+
 delwin() {
   local w=$1
   # remember the region so the next composite can reveal what is underneath it
@@ -1183,6 +1445,7 @@ delwin() {
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
   unset "BC_WAX[$w]" "BC_WAY[$w]" "BC_WCURA[$w]" "BC_WCURP[$w]" "BC_WDELAY[$w]"
+  unset "BC_SCROLL[$w]" "BC_SR[$w]"
   local -a nl=()
   local z
   for z in "${BC_WLIST[@]}"; do
@@ -1744,6 +2007,14 @@ wrefresh() { # win
   local buf=${BC_WBUF[$w]}
   local -a keys=()
   local k y x ch a p out="" lasty=-1 lastx=-1
+  if [[ -n ${BC_SCROLLREQ:-} ]]; then
+    local srw stop sb sn
+    read -r srw stop sb sn <<< "$BC_SCROLLREQ"
+    if [[ $srw == "$w" ]]; then
+      _bc_expand_scroll_dirty "$w" "$stop" "$sb"
+      BC_SCROLLREQ=""
+    fi
+  fi
   if [[ -n ${BC_WD[$w]:-} ]]; then
     local IFS=','
     for k in ${BC_WD[$w]}; do
@@ -1817,6 +2088,28 @@ doupdate() {
     printf '%s\n' "$BC_TEST_SEQ" > "$BC_TEST_DIR/seq"
   fi
   local ay ax k p w r y x
+  local scroll_out=""
+  if [[ -n ${BC_SCROLLREQ:-} ]]; then
+    local sw stop sb sn
+    read -r sw stop sb sn <<< "$BC_SCROLLREQ"
+    BC_SCROLLREQ=""
+    if _bc_scroll_safe "$sw" "$stop" "$sb" "$sn"; then
+      local atop=$(( BC_WY[$sw] + stop )) abottom=$(( BC_WY[$sw] + sb ))
+      local an=$sn
+      (( an < 0 )) && an=$(( -an ))
+      scroll_out="${BC_ESC}[$(( atop + 1 ));$(( abottom + 1 ))r"
+      if (( sn > 0 )); then
+        scroll_out+="${BC_ESC}[${sn}S"
+      else
+        scroll_out+="${BC_ESC}[${an}T"
+      fi
+      scroll_out+="${BC_ESC}[r"
+      _bc_shift_screen_model "$atop" "$abottom" "$sn"
+    else
+      _bc_expand_scroll_dirty "$sw" "$stop" "$sb"
+      BC_FORCEFULL=1
+    fi
+  fi
   declare -A RC=()
   local -a wins=("$BC_STDSCR")
   for p in "${BC_PSTACK[@]}"; do wins+=("${BC_PWIN[$p]}"); done
@@ -1855,9 +2148,12 @@ doupdate() {
       for (( ax = 0; ax < BC_COLS; ax++ )); do RC["$ay $ax"]=1; done
     done
   fi
-  (( ${#RC[@]} == 0 )) && return 0
+  if (( ${#RC[@]} == 0 )); then
+    [[ -n $scroll_out ]] && printf '%s' "$scroll_out"
+    return 0
+  fi
 
-  local out="" lasty=-1 lastx=-1 last_sgr="" ch a pp emitted=0
+  local out="$scroll_out" lasty=-1 lastx=-1 last_sgr="" ch a pp emitted=0
   while read -r ay ax; do
     _bc_composite_cell "$ay" "$ax"
     ch=$_BC_CC; a=$_BC_CA; pp=$_BC_CP

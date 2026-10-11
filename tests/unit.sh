@@ -263,6 +263,20 @@ check "mc pgdn bottom"   "49" "$(mcnav 'POS[0]=40; POS[0]=$((POS[0]+$(page_rows 
 check "mc clamp high"    "49" "$(mcnav 'POS[0]=999; clamp_pos 0; printf "%s" "${POS[0]}"')"
 check "mc clamp low"     "0"  "$(mcnav 'POS[0]=-5;  clamp_pos 0; printf "%s" "${POS[0]}"')"
 
+# --- K. scrolling API ---
+check "wscrl requires scrollok" "1" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; wscrl 0 1; printf "%s" "$?"')"
+check "wscrl up moves chars"    "B" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wscrl 0 1; printf "%s" "${BC_C["0/0 0"]}"')"
+check "wscrl down moves chars"  "A" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wscrl 0 -1; printf "%s" "${BC_C["0/1 0"]}"')"
+check "wscrl blank attr pair"   "0 0" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wscrl 0 1; printf "%s %s" "${BC_A["0/2 0"]:-0}" "${BC_P["0/2 0"]:-0}"')"
+check "wsetscrreg bad bottom"   "1" "$(scr 'wsetscrreg 0 0 24; printf "%s" "$?"')"
+check "wsetscrreg scrolls region" "A| " "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; mvaddstr 3 0 D; scrollok 0 1; wsetscrreg 0 1 2; wscrl 0 1; printf "%s|%s" "${BC_C["0/0 0"]}" "${BC_C["0/2 0"]}"')"
+check "doupdate emits DECSTBM" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(doupdate); pat=$(printf "\033[1;3r"); [[ $out == *"$pat"* ]] && echo yes || echo no')"
+check "doupdate emits SU" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(doupdate); pat=$(printf "\033[1S"); [[ $out == *"$pat"* ]] && echo yes || echo no')"
+check "doupdate emits SD" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 -1; out=$(doupdate); pat=$(printf "\033[1T"); [[ $out == *"$pat"* ]] && echo yes || echo no')"
+check "doupdate honors BC_NO_SCROLLREG" "no" "$(scr 'BC_NO_SCROLLREG=1; mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(doupdate); pat=$(printf "\033[1;3r"); [[ $out == *"$pat"* ]] && echo yes || echo no')"
+check "wrefresh after wscrl repaints region" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(wrefresh 0); pat=$(printf "\033[1;3r"); [[ $out != *"$pat"* ]] && echo yes || echo no')"
+check "wscrl twice marks net new rows" "1" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; wscrl 0 1; [[ -n ${BC_MK["0/1 0"]+set} ]] && echo 1 || echo 0')"
+
 echo
 if (( fail == 0 )); then echo "unit: $pass passed"; else echo "unit: $pass passed, $fail FAILED"; fi
 (( fail == 0 ))

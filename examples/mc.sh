@@ -1163,26 +1163,23 @@ do_open() {
 # Full-screen scrollable quick view, matching Midnight Commander's F3.
 # Globals: V_WIN V_N V_OFF V_PATH V_LINES. Color pairs reused from the main
 # palette: 6 (black-on-cyan), 7 (white-on-blue), 15 (bright-white-on-black).
-view_draw() { # paint the full-screen viewer window and refresh it
-  local win=$V_WIN
-  local rows=$(( LINES - 2 )); (( rows < 1 )) && rows=1
-  local maxoff=$(( V_N - rows )); (( maxoff < 0 )) && maxoff=0
-  (( V_OFF < 0 )) && V_OFF=0
-  (( V_OFF > maxoff )) && V_OFF=$maxoff
+view_metrics() { # compute viewer content height and maximum line offset
+  V_ROWS=$(( LINES - 2 )); (( V_ROWS < 1 )) && V_ROWS=1
+  V_MAXOFF=$(( V_N - V_ROWS )); (( V_MAXOFF < 0 )) && V_MAXOFF=0
+}
+
+view_title() { # win : redraw only the title bar
+  local win=$1
   local total=${V_TOTAL:-0}; (( total < 0 )) && total=0
 
   # byte offset of first visible line; MC clamps to total (100%) at the bottom
   local off=${V_BTOFF[$V_OFF]:-0}
-  (( V_OFF >= maxoff && maxoff > 0 )) && off=$total
+  (( V_OFF >= V_MAXOFF && V_MAXOFF > 0 )) && off=$total
   (( off < 0 )) && off=0
   (( off > total )) && off=$total
   local pct=0
   (( total > 0 )) && pct=$(( (off * 100) / total ))
 
-  wattrset "$win" 0 7
-  werase "$win"
-
-  # title bar (pair 6): full-width cyan; path left, offset/total + pct right
   wattrset "$win" 0 6
   local offsettotal="${off}/${total}" pctpart="${pct}%" pctfield left_raw gap left title
   pctfield=$(printf '%17s' "$pctpart")
@@ -1192,24 +1189,66 @@ view_draw() { # paint the full-screen viewer window and refresh it
   left=$(printf '%-*s' "$((COLS - 17))" "$left_raw")
   title="${left}${pctfield}"
   mvwaddnstr "$win" 0 0 "$title" "$COLS"
+}
 
-  # content (pair 7): full-width blue, rows 1 .. LINES-2
+view_content_line() { # win row : draw one full-width content row
+  local win=$1 r=$2
+  local idx=$(( V_OFF + r - 1 )) line len
+  line=""; (( idx < V_N )) && line="${V_LINES[$idx]}"
+  line="${line:0:$COLS}"
   wattrset "$win" 0 7
-  local i idx line len
+  mvwaddnstr "$win" "$r" 0 "$line" "$COLS"
+  len=${#line}
+  (( len < COLS )) && mvwhline "$win" "$r" "$len" ' ' "$(( COLS - len ))"
+}
+
+view_draw() { # paint the full-screen viewer window and refresh it
+  local win=$V_WIN
+  view_metrics
+  (( V_OFF < 0 )) && V_OFF=0
+  (( V_OFF > V_MAXOFF )) && V_OFF=$V_MAXOFF
+
+  wattrset "$win" 0 7
+  werase "$win"
+  view_title "$win"
+
+  local i
   for (( i = 1; i < LINES - 1; i++ )); do
-    idx=$(( V_OFF + i - 1 ))
-    line=""; (( idx < V_N )) && line="${V_LINES[$idx]}"
-    line="${line:0:$COLS}"
-    mvwaddnstr "$win" "$i" 0 "$line" "$COLS"
-    len=${#line}
-    (( len < COLS )) && mvwhline "$win" "$i" "$len" ' ' "$(( COLS - len ))"
+    view_content_line "$win" "$i"
   done
 
-  # function-key hint bar (numbers pair 15, labels pair 6)
   view_fnbar "$win"
-
-  # the viewer is a top panel; doupdate composites it over the file panels
   doupdate
+}
+
+view_scroll_to() { # new_off : scroll the content region when possible
+  local new=$1
+  view_metrics
+  (( new < 0 )) && new=0
+  (( new > V_MAXOFF )) && new=$V_MAXOFF
+  local d=$(( new - V_OFF ))
+  (( d == 0 )) && return 0
+  local ad=$d
+  (( ad < 0 )) && ad=$(( -ad ))
+
+  if (( ad < V_ROWS )) && wscrl "$V_WIN" "$d"; then
+    V_OFF=$new
+    local r
+    if (( d > 0 )); then
+      for (( r = LINES - 1 - d; r < LINES - 1; r++ )); do
+        view_content_line "$V_WIN" "$r"
+      done
+    else
+      for (( r = 1; r < 1 - d; r++ )); do
+        view_content_line "$V_WIN" "$r"
+      done
+    fi
+    view_title "$V_WIN"
+    doupdate
+  else
+    V_OFF=$new
+    view_draw
+  fi
 }
 
 view_fnbar() { # win : MC-style function-key hints (10 slots; #6 has a blank label)
@@ -1230,52 +1269,55 @@ view_fnbar() { # win : MC-style function-key hints (10 slots; #6 has a blank lab
   done
 }
 
-drain_view_nav() { # fold any queued navigation keys into a single V_OFF step
+view_apply_nav_key() { # key : update V_TARGET from one navigation key
+  local k=$1
+  case $k in
+    $KEY_UP)    (( V_TARGET > 0 )) && V_TARGET=$(( V_TARGET - 1 )) ;;
+    $KEY_DOWN)  (( V_TARGET < V_MAXOFF )) && V_TARGET=$(( V_TARGET + 1 )) ;;
+    $KEY_HOME)  V_TARGET=0 ;;
+    $KEY_END)   V_TARGET=$V_MAXOFF ;;
+    $KEY_PPAGE) (( V_TARGET >= V_ROWS )) && V_TARGET=$(( V_TARGET - V_ROWS )) || V_TARGET=0 ;;
+    $KEY_NPAGE) (( V_TARGET + V_ROWS <= V_MAXOFF )) && V_TARGET=$(( V_TARGET + V_ROWS )) || V_TARGET=$V_MAXOFF ;;
+  esac
+  (( V_TARGET < 0 )) && V_TARGET=0
+  (( V_TARGET > V_MAXOFF )) && V_TARGET=$V_MAXOFF
+}
+
+drain_view_nav() { # fold any queued navigation keys into V_TARGET
   local win=$V_WIN
   local old=${BC_WDELAY[$win]:-0}
   BC_WDELAY[$win]=1
-  local rows=$(( LINES - 2 )); (( rows < 1 )) && rows=1
-  local maxoff=$(( V_N - rows )); (( maxoff < 0 )) && maxoff=0
   local k
   while :; do
     wgetch "$win" || break
     k=$key
     case $k in
-      $KEY_UP)    (( V_OFF > 0 )) && V_OFF=$(( V_OFF - 1 )) ;;
-      $KEY_DOWN)  (( V_OFF < maxoff )) && V_OFF=$(( V_OFF + 1 )) ;;
-      $KEY_HOME)  V_OFF=0 ;;
-      $KEY_END)   V_OFF=$maxoff ;;
-      $KEY_PPAGE) (( V_OFF >= rows )) && V_OFF=$(( V_OFF - rows )) || V_OFF=0 ;;
-      $KEY_NPAGE) (( V_OFF + rows <= maxoff )) && V_OFF=$(( V_OFF + rows )) || V_OFF=$maxoff ;;
-      *)          ungetch "$key"; break ;;
+      $KEY_UP|$KEY_DOWN|$KEY_HOME|$KEY_END|$KEY_PPAGE|$KEY_NPAGE)
+        view_apply_nav_key "$k"
+        ;;
+      *) ungetch "$key"; break ;;
     esac
   done
   BC_WDELAY[$win]=$old
-  (( V_OFF < 0 )) && V_OFF=0
-  (( V_OFF > maxoff )) && V_OFF=$maxoff
 }
 
 view_loop() { # modal key loop; returns 0 to close the viewer
   local win=$V_WIN
-  local rows=$(( LINES - 2 )); (( rows < 1 )) && rows=1
-  local maxoff=$(( V_N - rows )); (( maxoff < 0 )) && maxoff=0
   local k
   while :; do
     wgetch "$win" || return 0
     k=$key
     case $k in
-      $KEY_UP)    (( V_OFF > 0 )) && V_OFF=$(( V_OFF - 1 )) ;;
-      $KEY_DOWN)  (( V_OFF < maxoff )) && V_OFF=$(( V_OFF + 1 )) ;;
-      $KEY_HOME)  V_OFF=0 ;;
-      $KEY_END)   V_OFF=$maxoff ;;
-      $KEY_PPAGE) (( V_OFF >= rows )) && V_OFF=$(( V_OFF - rows )) || V_OFF=0 ;;
-      $KEY_NPAGE) (( V_OFF + rows <= maxoff )) && V_OFF=$(( V_OFF + rows )) || V_OFF=$maxoff ;;
+      $KEY_UP|$KEY_DOWN|$KEY_HOME|$KEY_END|$KEY_PPAGE|$KEY_NPAGE)
+        V_TARGET=$V_OFF
+        view_apply_nav_key "$k"
+        drain_view_nav
+        view_scroll_to "$V_TARGET"
+        ;;
       "q"|"Q"|$'\x1b'|"$KEY_F3"|"$KEY_F10") return 0 ;;
       $KEY_RESIZE) BC_WINCH=1; return 0 ;;
-      *)          continue ;;
+      *) continue ;;
     esac
-    drain_view_nav
-    view_draw
   done
   return 0
 }
@@ -1303,6 +1345,10 @@ view_show() { # open the viewer from the current V_* globals
   newwin "$LINES" "$COLS" 0 0
   V_WIN=$bc_win
   new_panel "$V_WIN"; V_PANEL=$bc_panel
+  scrollok "$V_WIN" 1
+  if (( LINES > 2 )); then
+    wsetscrreg "$V_WIN" 1 $(( LINES - 2 ))
+  fi
   view_draw
   view_loop
   del_panel "$V_PANEL" 2>/dev/null
