@@ -357,6 +357,7 @@ _bc_init_window() { # w y x h
   BC_WCURP[$w]=0
   BC_WDELAY[$w]=0
   BC_WKEYPAD[$w]=0
+  BC_WYOFF[$w]=0
   BC_WBUF[$w]=$w
   BC_SCROLL[$w]=0
   BC_SR[$w]=""
@@ -1041,6 +1042,41 @@ has_mouse() {
   return $?
 }
 
+wenclose() { # win y x -> 0 if screen coords are inside win, 1 otherwise
+  local w=${1:-$BC_CURR} y=${2:-0} x=${3:-0} yoff
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  [[ $y =~ ^-?[0-9]+$ && $x =~ ^-?[0-9]+$ ]] || return 1
+  yoff=${BC_WYOFF[$w]:-0}
+  y=$(( y - yoff ))
+  (( y >= BC_WY[$w] && y <= BC_WY[$w] + BC_WH[$w] - 1
+     && x >= BC_WX[$w] && x <= BC_WX[$w] + BC_WW[$w] - 1 ))
+}
+
+wmouse_trafo() { # win y x toscreen -> BC_MT_Y BC_MT_X; 0 ok, 1 outside
+  local w=${1:-$BC_CURR} y=${2:-0} x=${3:-0} toscreen=${4:-1}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  [[ $y =~ ^-?[0-9]+$ && $x =~ ^-?[0-9]+$ ]] || return 1
+  local yoff=${BC_WYOFF[$w]:-0}
+  if [[ $toscreen == 0 || $toscreen == false ]]; then
+    if wenclose "$w" "$y" "$x"; then
+      BC_MT_Y=$(( y - BC_WY[$w] - yoff ))
+      BC_MT_X=$(( x - BC_WX[$w] ))
+      return 0
+    fi
+  else
+    local sy=$(( y + BC_WY[$w] + yoff )) sx=$(( x + BC_WX[$w] ))
+    if wenclose "$w" "$sy" "$sx"; then
+      BC_MT_Y=$sy BC_MT_X=$sx
+      return 0
+    fi
+  fi
+  return 1
+}
+
+mouse_trafo() { # y x toscreen -> BC_MT_Y BC_MT_X; 0 ok, 1 outside
+  wmouse_trafo "$BC_STDSCR" "$@"
+}
+
 # Read the SGR 1006 payload that follows "\E[<": "b;x;y" then a final 'M'|'m'.
 # Sets _BC_SGR_B/_BC_SGR_X/_BC_SGR_Y/_BC_SGR_FINAL. 0 on success, 1 incomplete.
 _bc_mouse_read_sgr() {
@@ -1445,6 +1481,7 @@ delwin() {
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
   unset "BC_WAX[$w]" "BC_WAY[$w]" "BC_WCURA[$w]" "BC_WCURP[$w]" "BC_WDELAY[$w]"
+  unset "BC_WYOFF[$w]"
   unset "BC_SCROLL[$w]" "BC_SR[$w]"
   local -a nl=()
   local z

@@ -238,6 +238,22 @@ check "_bc_mark_all count" "1920"        "$(scr '_bc_mark_all 0; n=0; for k in "
 check "def_prog_mode rc"   "0"           "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; def_prog_mode; printf "%s" "$?" ) )"
 check "reset_prog_mode redraw" "1920"    "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; reset_prog_mode >/dev/null 2>&1; n=0; for k in "${!BC_MK[@]}"; do [[ $k == "0/"* ]] && n=$((n+1)); done; printf "%s" "$n" ) )"
 
+# --- H2. mouse coordinate API (headless) ---
+win5() { ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; eval "$1"; ); }
+check "wenclose stdscr inside"   "yes"     "$(scr 'wenclose 0 23 79 && echo yes || echo no')"
+check "wenclose stdscr outside"  "no"      "$(scr 'wenclose 0 24 79 && echo yes || echo no')"
+check "wenclose win inside"      "yes"     "$(win5 'wenclose 5 11 22 && echo yes || echo no')"
+check "wenclose win outside"     "no"      "$(win5 'wenclose 5 12 22 && echo yes || echo no')"
+check "wenclose honors yoffset"  "yes"     "$(win5 'BC_WYOFF[5]=1; wenclose 5 12 22 && echo yes || echo no')"
+check "wmouse_trafo to screen"   "2 3"     "$(win5 'wmouse_trafo 5 0 0 1; printf "%s %s" "$BC_MT_Y" "$BC_MT_X"')"
+check "wmouse_trafo to screen br" "11 22"  "$(win5 'wmouse_trafo 5 9 19 1; printf "%s %s" "$BC_MT_Y" "$BC_MT_X"')"
+check "wmouse_trafo to screen out" "no"    "$(win5 'wmouse_trafo 5 10 0 1 && echo yes || echo no')"
+check "wmouse_trafo from screen" "0 0"     "$(win5 'wmouse_trafo 5 2 3 0; printf "%s %s" "$BC_MT_Y" "$BC_MT_X"')"
+check "wmouse_trafo from screen br" "9 19" "$(win5 'wmouse_trafo 5 11 22 0; printf "%s %s" "$BC_MT_Y" "$BC_MT_X"')"
+check "wmouse_trafo from screen out" "no"  "$(win5 'wmouse_trafo 5 1 3 0 && echo yes || echo no')"
+check "wmouse_trafo false keeps vars" "keep keep" "$(win5 'BC_MT_Y=keep BC_MT_X=keep; wmouse_trafo 5 10 0 1; printf "%s %s" "$BC_MT_Y" "$BC_MT_X"')"
+check "mouse_trafo stdscr"       "5 7"     "$(scr 'mouse_trafo 5 7 1; printf "%s %s" "$BC_MT_Y" "$BC_MT_X"')"
+
 # --- I. wchgat window x-offset (regression: changed cell must land at the
 #        window's absolute X, not at X=0 of the buffer) ---
 check "wchgat win x-offset attr" "9 0" "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; wmove 5 0 0; wchgat 5 -1 9 4; printf "%s %s" "${BC_A["5/2 3"]:-0}" "${BC_A["5/2 0"]:-0}" ) )"
