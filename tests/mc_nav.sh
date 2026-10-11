@@ -42,6 +42,8 @@ check_cy() { # desc expected
 check_cy "initial selection visible" 1
 sendk 1b 5b 35 7e            # PageUp from the very top (the original bug)
 check_cy "PageUp-from-top keeps selection visible" 1
+sendk $(printf '1b 4f 41 %.0s' {1..50}) # many Up at the top must drain, not redraw-loop
+check_cy "many Up at top keeps selection visible" 1
 sendk 1b 4f 42               # Down
 check_cy "Down keeps selection visible" 1
 sendk 1b 4f 41               # Up

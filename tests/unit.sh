@@ -277,6 +277,23 @@ check "doupdate honors BC_NO_SCROLLREG" "no" "$(scr 'BC_NO_SCROLLREG=1; mvaddstr
 check "wrefresh after wscrl repaints region" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(wrefresh 0); pat=$(printf "\033[1;3r"); [[ $out != *"$pat"* ]] && echo yes || echo no')"
 check "wscrl twice marks net new rows" "1" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; wscrl 0 1; [[ -n ${BC_MK["0/1 0"]+set} ]] && echo 1 || echo 0')"
 
+# J4. list_dir: parent first, directories before files, hidden filtering, exec marker
+check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(
+  d="$REPO/tmp/list_dir_test.$$"
+  rm -rf "$d"; mkdir -p "$d/dir" "$d/zzz"; : > "$d/file"; : > "$d/.hidden"; : > "$d/exe"; chmod +x "$d/exe"
+  ( source "$REPO/examples/mc.sh"; DIR[0]="$d"; HIDE[0]=1; FILTERS[0]=''; SORT[0]=name; REV[0]=0
+    list_dir 0; hid=0; [[ " ${NAMES_0[*]} " == *" .hidden "* ]] && hid=1
+    IFS='|'; printf '%s|%s' "${NAMES_0[*]}" "$hid" )
+  rm -rf "$d"
+)"
+check "list_dir applies filter" "/..| file.txt" "$(
+  d="$REPO/tmp/list_dir_test.$$"
+  rm -rf "$d"; mkdir -p "$d"; : > "$d/file.txt"; : > "$d/file.md"
+  ( source "$REPO/examples/mc.sh"; DIR[0]="$d"; HIDE[0]=0; FILTERS[0]='*.txt'; SORT[0]=name; REV[0]=0
+    list_dir 0; IFS='|'; printf '%s' "${NAMES_0[*]}" )
+  rm -rf "$d"
+)"
+
 echo
 if (( fail == 0 )); then echo "unit: $pass passed"; else echo "unit: $pass passed, $fail FAILED"; fi
 (( fail == 0 ))

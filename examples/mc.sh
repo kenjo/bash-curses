@@ -16,10 +16,20 @@
 source "${BASH_SOURCE[0]%/*}/../lib/bc.sh"
 ESCDELAY=100
 
+_repeat() { # var char n
+  local __var=$1 __ch=$2 __n=$3 __s=""
+  if (( __n > 0 )); then
+    printf -v __s '%*s' "$__n" ''
+    __s=${__s// /$__ch}
+  fi
+  printf -v "$__var" '%s' "$__s"
+}
+
 # ---- per-panel state (suffix 0=left, 1=right) ----
 NAMES_0=(); TYPES_0=(); SIZES_0=(); TIMES_0=(); REALS_0=(); EXEC_0=()
 NAMES_1=(); TYPES_1=(); SIZES_1=(); TIMES_1=(); REALS_1=(); EXEC_1=()
 DIR=("$PWD" "$PWD")
+FREE=("" "")
 POS_0=0; POS_1=0; OFF_0=0; OFF_1=0
 SORT=(name name)
 REV=(0 0)
@@ -148,6 +158,16 @@ fmt_mtime() { # y mo dd h mi
   fi
 }
 
+update_free() { # p
+  local p=$1
+  local total_kb avail_kb fstr="no info"
+  read -r _ total_kb _ avail_kb _ _ <<< "$(df -P -k "${DIR[$p]}" 2>/dev/null | tail -1)"
+  if [[ -n ${total_kb:-} ]]; then
+    fstr="$(hum "$avail_kb") / $(hum "$total_kb") ($(( avail_kb * 100 / total_kb ))%)"
+  fi
+  FREE[$p]=$fstr
+}
+
 # list a directory into the panel's arrays; ".." is always entry 0
 list_dir() {
   local p=$1
@@ -162,82 +182,72 @@ list_dir() {
   (( ${#nh[@]} > 50 )) && nh=("${nh[@]:0:50}")
   DIRHIST=("${nh[@]}")
   DIR[$p]=$d
+  update_free "$p"
   local now; now=$(date +%Y%-m); NOW_Y=${now:0:4}; NOW_MO=$((10#${now:4}))
 
-  local -a nm=() ty=() sz=() tk=() tm=() rk=() xx=()
-  local out t s mode y mo dd h mi name disp ex
-  out=$( (cd "$d" 2>/dev/null && find . -mindepth 1 -maxdepth 1 \
-        -printf '%y|%s|%m|%TY|%Tm|%Td|%TH|%TM|%f\n') 2>/dev/null )
+  local SEP=$'\037'
+  local -a find_args=(. -mindepth 1 -maxdepth 1)
+  (( HIDE[$p] )) && find_args+=(! -name '.*')
+  if [[ -n ${FILTERS[$p]} ]]; then find_args+=(-name "${FILTERS[$p]}"); fi
+  local fmt='%y'"$SEP"'%s'"$SEP"'%m'"$SEP"'%TY'"$SEP"'%Tm'"$SEP"'%Td'"$SEP"'%TH'"$SEP"'%TM'"$SEP"'%f\n'
+  local out sorted
+  out=$( (cd "$d" 2>/dev/null && find "${find_args[@]}" -printf "$fmt") 2>/dev/null )
+
+  sorted=""
   if [[ -n $out ]]; then
-    while IFS='|' read -r t s mode y mo dd h mi name; do
-      [[ -z $name ]] && continue
-      if (( HIDE[$p] )) && [[ $name == .* ]]; then continue; fi
-      if [[ -n ${FILTERS[$p]} ]] && [[ $name != ${FILTERS[$p]} ]]; then continue; fi
-      ex=0
-      [[ $t != d && $t != l && $mode =~ ^[0-7]+$ ]] && (( (8#$mode) & 0111 )) && ex=1
-      if [[ $t == d ]]; then disp="/$name"
-      elif [[ $t == l ]]; then disp="@$name"
-      elif (( ex )); then disp="*$name"
-      else disp=" $name"
-      fi
-      nm+=("$disp"); ty+=("$t"); sz+=("$s"); rk+=("$name"); xx+=("$ex")
-      tm+=("$(fmt_mtime "$y" "$mo" "$dd" "$h" "$mi")")
-      tk+=("$(printf '%04d%02d%02d%02d%02d' "$((10#$y))" "$((10#$mo))" "$((10#$dd))" "$((10#$h))" "$((10#$mi))")")
-    done <<< "$out"
-  fi
-
-  local n=${#nm[@]} i k
-  local -a di=() fi=()
-  for (( i = 0; i < n; i++ )); do
-    [[ ${ty[$i]} == d ]] && di+=("$i") || fi+=("$i")
-  done
-
-  local SEP=$'\x1f' revflag=""
-  (( ${REV[$p]} )) && revflag="-r"
-  local di_sorted="" fi_sorted=""
-  if (( ${#di[@]} > 0 )); then
-    di_sorted=$(
-      for i in "${di[@]}"; do
-        case ${SORT[$p]} in
-          size) k=$(printf '%020d' "${sz[$i]}") ;;
-          date) k="${tk[$i]}" ;;
-          *)    k="${rk[$i]}" ;;
-        esac
-        printf '%s%s%s\n' "$k" "$SEP" "$i"
-      done | LC_ALL=C sort $revflag | cut -d"$SEP" -f2
+    sorted=$(
+      awk -F"$SEP" -v OFS="$SEP" \
+        -v now_y="$NOW_Y" -v now_mo="$NOW_MO" \
+        -v sort_mode="${SORT[$p]}" \
+        -v months='jan,feb,mars,apr,maj,juni,juli,aug,sep,okt,nov,dec' '
+        BEGIN { split(months, mon, ",") }
+        function fmt_time(y, mo, dd, h, mi,   age) {
+          age = (now_y - y) * 12 + (now_mo - mo)
+          if (age >= 6) return sprintf("%s %2d  %d", mon[mo], dd, y)
+          return sprintf("%s %2d %s:%s", mon[mo], dd, h, mi)
+        }
+        {
+          t=$1; s=$2; mode=$3; y=$4+0; mo=$5+0; dd=$6+0; h=$7; mi=$8; name=$9
+          ex=0
+          if (t != "d" && t != "l" && mode ~ /^[0-7]+$/) {
+            m=0
+            for (i=1; i<=length(mode); i++) m = m*8 + substr(mode, i, 1)
+            if (m % 2 || int(m/8) % 2 || int(m/64) % 2) ex=1
+          }
+          if (t == "d") disp="/" name
+          else if (t == "l") disp="@" name
+          else if (ex) disp="*" name
+          else disp=" " name
+          tm=fmt_time(y, mo, dd, h, mi)
+          tk=sprintf("%04d%02d%02d%02d%02d", y, mo, dd, h+0, mi+0)
+          group=(t == "d") ? "0" : "1"
+          if (sort_mode == "size") key=sprintf("%020s", s)
+          else if (sort_mode == "date") key=tk
+          else key=name
+          print group, key, disp, t, s, tm, name, ex
+        }
+      ' <<< "$out" | LC_ALL=C sort -t"$SEP" -k1,1 $( (( REV[$p] )) && echo "-k2,2r" || echo "-k2,2" )
     )
   fi
-  if (( ${#fi[@]} > 0 )); then
-    fi_sorted=$(
-      for i in "${fi[@]}"; do
-        case ${SORT[$p]} in
-          size) k=$(printf '%020d' "${sz[$i]}") ;;
-          date) k="${tk[$i]}" ;;
-          *)    k="${rk[$i]}" ;;
-        esac
-        printf '%s%s%s\n' "$k" "$SEP" "$i"
-      done | LC_ALL=C sort $revflag | cut -d"$SEP" -f2
-    )
-  fi
-
-  local -a order=()
-  [[ -n $di_sorted ]] && order+=($di_sorted)
-  [[ -n $fi_sorted ]] && order+=($fi_sorted)
 
   # ".." parent entry, always first
   local pd parent_time="-"
   pd=$( (cd "$(dirname "$d")" 2>/dev/null && find . -maxdepth 0 -printf '%TY|%Tm|%Td|%TH|%TM') 2>/dev/null )
   if [[ -n $pd ]]; then
+    local y mo dd h mi
     IFS='|' read -r y mo dd h mi <<< "$pd"
     parent_time=$(fmt_mtime "$y" "$mo" "$dd" "$h" "$mi")
   fi
 
   local -a f_nn=() f_tt=() f_ss=() f_tm=() f_rr=() f_xx=()
   f_nn+=("/.."); f_tt+=(d); f_ss+=("UP--DIR"); f_tm+=("$parent_time"); f_rr+=(".."); f_xx+=(0)
-  for i in "${order[@]}"; do
-    f_nn+=("${nm[$i]}"); f_tt+=("${ty[$i]}"); f_ss+=("${sz[$i]}")
-    f_tm+=("${tm[$i]}"); f_rr+=("${rk[$i]}"); f_xx+=("${xx[$i]}")
-  done
+  if [[ -n $sorted ]]; then
+    local group key disp t s tm name ex
+    while IFS="$SEP" read -r group key disp t s tm name ex; do
+      f_nn+=("$disp"); f_tt+=("$t"); f_ss+=("$s")
+      f_tm+=("$tm"); f_rr+=("$name"); f_xx+=("$ex")
+    done <<< "$sorted"
+  fi
   NN=("${f_nn[@]}"); TT=("${f_tt[@]}"); SS=("${f_ss[@]}")
   TM=("${f_tm[@]}"); RR=("${f_rr[@]}"); XX=("${f_xx[@]}")
   case $p in
@@ -304,7 +314,7 @@ draw_panel() {
   local top="<─ ${dp:0:$maxpath} "
   local fill=$(( w - 2 - ${#top} - 5 ))
   (( fill < 0 )) && fill=0
-  printf -v dstr '─%.0s' $(seq 1 "$fill")
+  _repeat dstr '─' "$fill"
   top+="$dstr.[^]>"
   top=${top:0:$(( w - 2 ))}
   mvwaddstr "$win" 0 1 "$top"
@@ -409,8 +419,8 @@ draw_panel() {
       local rgt=$(( inside - 2 - lft - slen ))
       (( lft < 0 )) && lft=0
       (( rgt < 0 )) && rgt=0
-      printf -v ld '─%.0s' $(seq 1 "$lft")
-      printf -v rd '─%.0s' $(seq 1 "$rgt")
+      _repeat ld '─' "$lft"
+      _repeat rd '─' "$rgt"
       wattrset "$win" 0 "$bp"
       mvwaddstr "$win" "$sy" 1 "$ld"
       wattrset "$win" 0 12
@@ -436,23 +446,20 @@ draw_panel() {
   wattrset "$win" 0 7
   mvwprintw "$win" "$(( h - 2 ))" 1 '%s' "${status:0:$(( w - 2 ))}"
 
-  local total_kb avail_kb fstr="no info"
-  read -r _ total_kb _ avail_kb _ _ <<< "$(df -P -k "${DIR[$p]}" 2>/dev/null | tail -1)"
-  if [[ -n ${total_kb:-} ]]; then
-    fstr="$(hum "$avail_kb") / $(hum "$total_kb") ($(( avail_kb * 100 / total_kb ))%)"
-  fi
+  local fstr=${FREE[$p]}
+  [[ -z $fstr ]] && fstr="no info"
   local blen=${#fstr} rd=1 left
   left=$(( w - 5 - blen ))
   (( left < 0 )) && left=0
-  printf -v ld '─%.0s' $(seq 1 "$left")
-  printf -v rdstr '─%.0s' $(seq 1 "$rd")
+  _repeat ld '─' "$left"
+  _repeat rdstr '─' "$rd"
   wattrset "$win" 0 7
   mvwaddstr "$win" "$(( h - 1 ))" 1 "$ld $fstr $rdstr"
 }
 
   draw_menu() {
    local i full
-  printf -v full ' %.0s' $(seq 1 "$COLS")
+  _repeat full ' ' "$COLS"
   if (( menu_open )); then
     # Open state: bright-white-on-cyan (16); mnemonic bright-yellow (17); the
     # selected item inverted to white-on-black (18), mnemonic (19).
@@ -542,7 +549,7 @@ menu_dd_row() { # displayrow sel item
     done
   fi
   (( mpos < 0 )) && mpos=0
-  printf -v sp ' %.0s' $(seq 1 "$MENU_INNER")
+  _repeat sp ' ' "$MENU_INNER"
   wattrset "$MENU_WIN" 0 16;      mvwaddstr "$MENU_WIN" "$row" 0 "│"
   wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$row" 1 "$sp"
   wattrset "$MENU_WIN" 0 "$tp";   mvwaddstr "$MENU_WIN" "$row" 2 "${lab:0:mpos}"
@@ -555,7 +562,7 @@ menu_dd_row() { # displayrow sel item
 # Draw a separator line at window row $1.
 menu_dd_sep() { # displayrow
   local row=$1 mid
-  printf -v mid '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); mid="├${mid}┤"
+  _repeat mid '─' "$(( MENU_BW - 2 ))"; mid="├${mid}┤"
   wattrset "$MENU_WIN" 0 16
   mvwaddstr "$MENU_WIN" "$row" 0 "$mid"
 }
@@ -618,8 +625,8 @@ menu_dd_open() {
   wattrset "$MENU_WIN" 0 16
   werase "$MENU_WIN"
   local topb botb
-  printf -v topb '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); topb="┌${topb}┐"
-  printf -v botb '─%.0s' $(seq 1 "$(( MENU_BW - 2 ))"); botb="└${botb}┘"
+  _repeat topb '─' "$(( MENU_BW - 2 ))"; topb="┌${topb}┐"
+  _repeat botb '─' "$(( MENU_BW - 2 ))"; botb="└${botb}┘"
   mvwaddstr "$MENU_WIN" 0 0 "$topb"
   local i drow e
   for (( i = top; i < top + nshow; i++ )); do
@@ -639,7 +646,7 @@ menu_dd_close() {
 
 redraw_hint() { # bottom hint line, context-dependent like real MC
   local clear hint
-  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  _repeat clear ' ' "$COLS"
   clear=${clear:1}
   if [[ -n $CMD_LINE ]]; then
     hint="To change directory halfway through typing a command, use M-c."
@@ -656,7 +663,7 @@ redraw_hint() { # bottom hint line, context-dependent like real MC
 draw_buttonbar() { # 10 button labels (empty allowed); number always, label if set
   local -a bl=("$@")
   local clear x=0 num last=$(( ${#bl[@]} - 1 )) n
-  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  _repeat clear ' ' "$COLS"
   clear=${clear:1}
   # bright-white numbers on black, black labels on cyan
   wattrset 0 0 0
@@ -677,7 +684,7 @@ draw_buttonbar() { # 10 button labels (empty allowed); number always, label if s
 
 draw_bottom() {
   local clear
-  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  _repeat clear ' ' "$COLS"
   clear=${clear:1}
   # hint: default colors (context-dependent)
   redraw_hint
@@ -792,7 +799,7 @@ draw_panel_top() { # p
   fi
   top="<─ ${dp:0:$(( w - 8 ))} "
   fill=$(( w - 2 - ${#top} - 5 )); (( fill < 0 )) && fill=0
-  printf -v dstr '─%.0s' $(seq 1 "$fill")
+  _repeat dstr '─' "$fill"
   top+="$dstr.[^]>"; top=${top:0:$(( w - 2 ))}
   wattrset "$win" 0 "$bp"
   mvwaddstr "$win" 0 1 "$top"
@@ -848,7 +855,7 @@ drain_panel_nav() {
 draw_cmdline() {
   redraw_hint
   local clear
-  printf -v clear ' %.0s' $(seq 1 "$COLS")
+  _repeat clear ' ' "$COLS"
   clear=${clear:1}
   wattrset 0 0 0
   mvwaddstr 0 "$CMY" 0 "$clear"
@@ -2793,8 +2800,8 @@ main() {
     getch || break
     k=$key
     case $k in
-      $KEY_UP)     (( POS[$CUR] > 0 )) && { POS[$CUR]=$(( POS[$CUR]-1 )); nav=1; } ;;
-      $KEY_DOWN)   (( POS[$CUR] < ${#_CN[@]}-1 )) && { POS[$CUR]=$(( POS[$CUR]+1 )); nav=1; } ;;
+      $KEY_UP)     (( POS[$CUR] > 0 )) && POS[$CUR]=$(( POS[$CUR]-1 )); nav=1 ;;
+      $KEY_DOWN)   (( POS[$CUR] < ${#_CN[@]}-1 )) && POS[$CUR]=$(( POS[$CUR]+1 )); nav=1 ;;
       $KEY_HOME)   POS[$CUR]=0; nav=1 ;;
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )); nav=1 ;;
       $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
@@ -2847,7 +2854,9 @@ main() {
       switch_panel "$prev_cur"
     elif (( nav )); then
       drain_panel_nav
-      update_selection "$CUR" "$prev_pos" || { draw_panel "$CUR"; wrefresh "${WIN[$CUR]}"; }
+      if (( POS[$CUR] != prev_pos )); then
+        update_selection "$CUR" "$prev_pos" || { draw_panel "$CUR"; wrefresh "${WIN[$CUR]}"; }
+      fi
     else
       draw_all
       doupdate
