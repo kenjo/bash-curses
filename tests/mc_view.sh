@@ -15,7 +15,8 @@ bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
 
 # scratch dir with one file taller than one screen so scrolling moves the offset
 rm -rf "$WORK"; mkdir -p "$WORK"
-seq 1 60 > "$WORK/sample.txt"
+seq 1 59 > "$WORK/sample.txt"
+printf '█▀▀█ █▀▀█ █▀▀█ █▀▀▄\n' >> "$WORK/sample.txt"
 
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
@@ -68,6 +69,15 @@ if [[ -n "$num" && "$num" != "0" ]]; then
   ok "End scrolls to bottom (offset $num)"
 else
   bad "End did not change offset: '$title2'"
+fi
+
+# multibyte short lines must still be padded with the content color, not the
+# previous title-bar color (regression: cyan block at the right edge)
+sgr="$(tmux -S "$SOCK" capture-pane -t "$T" -p -e)"
+if ! printf '%s\n' "$sgr" | sed -n '2,29p' | grep -qF -- $'\x1b[46m'; then
+  ok "viewer content lines have no cyan background padding"
+else
+  bad "viewer content lines contain cyan background padding"
 fi
 
 # q closes the viewer and restores the file manager

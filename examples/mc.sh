@@ -1179,6 +1179,7 @@ view_draw() { # paint the full-screen viewer window and refresh it
   local pct=0
   (( total > 0 )) && pct=$(( (off * 100) / total ))
 
+  wattrset "$win" 0 7
   werase "$win"
 
   # title bar (pair 6): full-width cyan; path left, offset/total + pct right
@@ -1194,12 +1195,14 @@ view_draw() { # paint the full-screen viewer window and refresh it
 
   # content (pair 7): full-width blue, rows 1 .. LINES-2
   wattrset "$win" 0 7
-  local i idx line
+  local i idx line len
   for (( i = 1; i < LINES - 1; i++ )); do
     idx=$(( V_OFF + i - 1 ))
     line=""; (( idx < V_N )) && line="${V_LINES[$idx]}"
     line="${line:0:$COLS}"
-    mvwaddnstr "$win" "$i" 0 "$(printf '%-*s' "$COLS" "$line")" "$COLS"
+    mvwaddnstr "$win" "$i" 0 "$line" "$COLS"
+    len=${#line}
+    (( len < COLS )) && mvwhline "$win" "$i" "$len" ' ' "$(( COLS - len ))"
   done
 
   # function-key hint bar (numbers pair 15, labels pair 6)
