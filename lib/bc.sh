@@ -373,6 +373,7 @@ BC_EPB=0
 BC_DEFAULT_FG=-1
 BC_DEFAULT_BG=-1
 bc_pair=-1
+bc_key=-1
 BC_CAN_CHANGE_COLOR=0
 BC_ERASECHAR=127
 BC_KILLCHAR=21
@@ -449,6 +450,7 @@ _bc_endwin_trap() {
 # infocmp at initscr time; wgetch matches the byte stream against it.
 BC_KEYSEQ=()   # full key sequences (all start with ESC)
 BC_KEYVAL=()   # matching KEY_* value
+declare -A BC_KEYOK=() # key -> 0 if disabled by keyok
 
 _bc_ti_decode() { # $1 raw terminfo string -> _BC_TI decoded bytes
   local s=$1
@@ -505,10 +507,12 @@ _bc_load_keytable() {
 
 _BC_TI_KEY=0
 _bc_ti_lookup() { # $1 full sequence -> _BC_TI_KEY, returns 0 on exact match
-  local i
+  local i k
   for i in ${!BC_KEYSEQ[@]}; do
     if [[ $1 == "${BC_KEYSEQ[i]}" ]]; then
-      _BC_TI_KEY=${BC_KEYVAL[i]}
+      k=${BC_KEYVAL[i]}
+      [[ ${BC_KEYOK[$k]:-1} == 0 ]] && continue
+      _BC_TI_KEY=$k
       return 0
     fi
   done
@@ -521,6 +525,92 @@ _bc_ti_prefix() { # $1 partial sequence -> 0 if a longer entry starts with it
     (( ${#BC_KEYSEQ[i]} > ${#1} )) && [[ "${BC_KEYSEQ[i]}" == "$1"* ]] && return 0
   done
   return 1
+}
+
+has_key() { # key
+  local k=$1 name
+  (( k == KEY_RESIZE )) && return 0
+  for name in $(compgen -v KEY_); do
+    if (( ${!name} == k )); then
+      return 0
+    fi
+  done
+  return 1
+}
+
+_bc_keyname_char() { # c
+  local c=$1
+  if (( c == 0 )); then
+    printf '@@'
+  elif (( c < 32 )); then
+    printf '^%b' "\\$(printf '%03o' "$(( c + 64 ))")"
+  elif (( c == 127 )); then
+    printf '^?'
+  elif (( c < 128 )); then
+    printf '%b' "\\$(printf '%03o' "$c")"
+  else
+    printf ''
+  fi
+}
+
+keyname() { # c
+  local c=$1 name
+  for name in $(compgen -v KEY_); do
+    if (( ${!name} == c )); then
+      printf '%s' "$name"
+      return 0
+    fi
+  done
+  _bc_keyname_char "$c"
+  return 0
+}
+
+key_defined() { # definition -> bc_key
+  local def=$1
+  bc_key=$ERR
+  if _bc_ti_lookup "$def"; then
+    bc_key=$_BC_TI_KEY
+    printf '%s' "$bc_key"
+    return 0
+  fi
+  return 1
+}
+
+keybound() { # definition options -> bc_key
+  key_defined "$1"
+}
+
+keyok() { # key return -> bc_key previous
+  local k=$1 bf=${2:-1}
+  local prev=${BC_KEYOK[$k]:-1}
+  bc_key=$prev
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_KEYOK[$k]=0
+  else
+    BC_KEYOK[$k]=1
+  fi
+  return 0
+}
+
+define_key() { # definition key
+  local def=$1 k=$2 i
+  [[ -n $def ]] || return 1
+  for i in "${!BC_KEYSEQ[@]}"; do
+    if [[ ${BC_KEYSEQ[i]} == "$def" ]]; then
+      if (( k == ERR )); then
+        unset "BC_KEYSEQ[i]"
+        unset "BC_KEYVAL[i]"
+      else
+        BC_KEYVAL[i]=$k
+      fi
+      return 0
+    fi
+  done
+  if (( k != ERR )); then
+    BC_KEYSEQ+=("$def")
+    BC_KEYVAL+=("$k")
+  fi
+  return 0
 }
 
 # build (and cache) the SGR sequence for an attr/pair combination
@@ -1653,6 +1743,36 @@ mvwin() { # win y x
   return 0
 }
 
+mvderwin() { # win y x (relative to parent)
+  local w=$1
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local p=${BC_WPAR[$w]:--1}
+  if (( p >= 0 )); then
+    BC_WY[$w]=$(( BC_WY[$p] + $2 ))
+    BC_WX[$w]=$(( BC_WX[$p] + $3 ))
+  else
+    BC_WY[$w]=$2
+    BC_WX[$w]=$3
+  fi
+  _bc_mark_all "$w"
+  return 0
+}
+
+wsyncup() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  return 0
+}
+
+wsyncdown() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  return 0
+}
+
+syncup() { wsyncup "$BC_CURR"; }
+syncdown() { wsyncdown "$BC_CURR"; }
+
 dupwin() { # win -> bc_win
   local w=$1
   [[ -n ${BC_WY[$w]:-} ]] || return 1
@@ -1690,6 +1810,87 @@ dupwin() { # win -> bc_win
     done
   done
   _bc_mark_all "$id"
+  bc_win=$id
+  return 0
+}
+
+putwin() { # win file
+  local w=$1 f=$2
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local buf=${BC_WBUF[$w]} y x k
+  {
+    printf 'BCWIN\t1\n'
+    printf 'HDR\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${BC_WY[$w]}" "${BC_WX[$w]}" "${BC_WH[$w]}" "${BC_WW[$w]}" \
+      "${BC_WBG[$w]}" "${BC_WBGA[$w]}" "${BC_WBGP[$w]}" \
+      "${BC_WAX[$w]}" "${BC_WAY[$w]}" "${BC_WCURA[$w]}" "${BC_WCURP[$w]}" \
+      "${BC_WDELAY[$w]}" "${BC_WTIMEOUT[$w]}" "${BC_WKEYPAD[$w]}" "${BC_WYOFF[$w]}" \
+      "${BC_WPAD[$w]}" "${BC_WCLEAR[$w]}" "${BC_WIDC[$w]}" "${BC_WIDL[$w]}" \
+      "${BC_WIMM[$w]}" "${BC_WLEAVE[$w]}" "${BC_WNOTIMEOUT[$w]}" "${BC_WSYNC[$w]}" \
+      "${BC_SCROLL[$w]}" "${BC_SR[$w]}"
+    for (( y = 0; y < BC_WH[$w]; y++ )); do
+      for (( x = 0; x < BC_WW[$w]; x++ )); do
+        k="$buf/$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
+        if [[ -n ${BC_C[$k]+set} || -n ${BC_A[$k]+set} || -n ${BC_P[$k]+set} ]]; then
+          printf 'CELL\t%s\t%s\t%s\t%s\t%s\n' \
+            "$(( BC_WY[$w] + y ))" "$(( BC_WX[$w] + x ))" \
+            "${BC_C[$k]:- }" "${BC_A[$k]:-0}" "${BC_P[$k]:-0}"
+        fi
+      done
+    done
+  } > "$f"
+  return 0
+}
+
+getwin() { # file -> bc_win
+  local f=$1 line _ y x h wd bg bga bgp ax ay ca cp delay timeout keypad yoff pad
+  local clear idc idl imm leave notimeout sync scroll sr ay ax ch a p
+  if ! { exec 3< "$f"; } 2>/dev/null; then
+    return 1
+  fi
+  IFS= read -r line <&3 || { exec 3<&-; return 1; }
+  [[ $line == BCWIN* ]] || { exec 3<&-; return 1; }
+  local id=$BC_WN
+  BC_WN=$(( BC_WN + 1 ))
+  _bc_init_window "$id" 0 0 1 1
+  while IFS= read -r line <&3; do
+    case $line in
+      HDR*)
+        IFS=$'\t' read -r _ y x h wd bg bga bgp ax ay ca cp delay timeout keypad yoff pad \
+          clear idc idl imm leave notimeout sync scroll sr <<< "$line"
+        BC_WY[$id]=$y
+        BC_WX[$id]=$x
+        BC_WH[$id]=$h
+        BC_WW[$id]=$wd
+        BC_WBG[$id]=$bg
+        BC_WBGA[$id]=$bga
+        BC_WBGP[$id]=$bgp
+        BC_WAX[$id]=$ax
+        BC_WAY[$id]=$ay
+        BC_WCURA[$id]=$ca
+        BC_WCURP[$id]=$cp
+        BC_WDELAY[$id]=$delay
+        BC_WTIMEOUT[$id]=$timeout
+        BC_WKEYPAD[$id]=$keypad
+        BC_WYOFF[$id]=$yoff
+        BC_WPAD[$id]=$pad
+        BC_WCLEAR[$id]=$clear
+        BC_WIDC[$id]=$idc
+        BC_WIDL[$id]=$idl
+        BC_WIMM[$id]=$imm
+        BC_WLEAVE[$id]=$leave
+        BC_WNOTIMEOUT[$id]=$notimeout
+        BC_WSYNC[$id]=$sync
+        BC_SCROLL[$id]=$scroll
+        BC_SR[$id]=$sr
+        ;;
+      CELL*)
+        IFS=$'\t' read -r _ ay ax ch a p <<< "$line"
+        _bc_cell "$id" "$ay" "$ax" "$ch" "$a" "$p"
+        ;;
+    esac
+  done
+  exec 3<&-
   bc_win=$id
   return 0
 }
