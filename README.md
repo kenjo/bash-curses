@@ -5,10 +5,11 @@ then write terminal apps with the familiar `initscr` / `waddstr` / `wgetch` /
 `wrefresh` API.
 
 It is not a 1:1 reimplementation: it covers the parts of the ncurses API the
-reference corpora actually exercise (see `references/API-MATRIX.md`), excludes
-wide characters and the terminfo API, and makes a small number of deliberate
-API deviations (below — read them before porting C code). `DESIGN.md` has the
-full architecture and `MOUSE.md` the mouse semantics.
+reference corpora actually exercise (see `references/API-MATRIX.md`), includes
+thin single-cell wide-character wrappers but excludes the terminfo API, and
+makes a small number of deliberate API deviations (below — read them before
+porting C code). `DESIGN.md` has the full architecture and `MOUSE.md` the mouse
+semantics.
 
 ## Requirements
 
@@ -100,8 +101,9 @@ Bash has no return values, pointers, or out-parameters, so:
 - Key decoding is terminfo-driven via `infocmp` keycaps, so which sequences
   decode to which `KEY_*` depends on `$TERM` (exactly as in C ncurses).
 
-Not implemented (out of scope or not feasible in bash): wide characters,
-terminfo API, `use_screen`, `slk_wset`, `PAIR_NUMBER`.
+Not implemented (out of scope or not feasible in bash): full wide-character
+semantics (the `*_wch*` wrappers treat each argument as one cell), terminfo API,
+`use_screen`, `slk_wset`.
 
 ## API overview
 
@@ -112,12 +114,13 @@ terminfo API, `use_screen`, `slk_wset`, `PAIR_NUMBER`.
 | Output | `waddch`/`waddstr`/`waddnstr` (+ `mvw*`/`mv*`/plain variants), `mvwinch`, `wborder`/`box`/`hline`/`vline`, `wbkgd`/`bkgd`/`wbkgset`/`bkgdset`, `winsn` |
 | Refresh | `wrefresh`/`wnoutrefresh`/`refresh`/`doupdate` |
 | Attributes | `wattrset`/`attrset`, `wattron`/`attron`, `wattroff`/`attroff`, `standout`/`standend` |
-| Color | `start_color`, `has_colors`, `init_pair`, `init_color`, `use_default_colors`, `COLOR_PAIR` |
+| Color | `start_color`, `has_colors`, `init_pair`, `init_color`, `use_default_colors`, `COLOR_PAIR`, `PAIR_NUMBER` |
 | Input | `wgetch`/`getch`/`getkey`/`echochar`, `ungetch`, `nodelay`, `halfdelay`, `cbreak`, `raw`/`noraw`, `noecho`, `beep`, `flash` |
 | Mouse | `mousemask`/`mouse_set`, `mouseinterval`, `getmouse`, `ungetmouse`, `has_mouse` |
 | Screen save | `scr_init`/`scr_init_sp`, `scr_dump`, `scr_set`/`scr_set_sp`, `scr_restore`/`scr_restore_sp` |
 | SLK | `slk_init`, `slk_set`, `slk_label`, `slk_refresh`, `slk_noutrefresh`, `slk_clear`, `slk_restore`, `slk_touch`, `slk_color`, `slk_attr*` family |
 | Misc | `vidattr`/`vidputs` (and `vid_attr`/`vid_puts`) |
+| Wide chars | `wadd_wch`, `wget_wch`, `win_wch`, `wins_wch`, `setcchar`, `getcchar`, `wcwidth` (single-cell wrappers) |
 
 Constants match ncurses and are checked against `/usr/include/ncurses.h` by the
 unit tests: all `KEY_*` (KEY_F1=265 … KEY_MOUSE=409, KEY_MAX=511), `A_BOLD`=1 …
