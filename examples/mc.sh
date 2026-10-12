@@ -113,6 +113,9 @@ menu_open=0      # menu bar visible
 menu_bar_sel=0   # highlighted bar item
 menu_dd=0        # dropdown open
 menu_sel=0       # selected item (index over real, non-separator items)
+MC_MOUSE_IDX=-1  # panel entry hit by the last mouse event
+MC_MOUSE_MENU=-1 # menu bar item hit by the last mouse event
+MC_MOUSE_CHOOSE=0
 
 # ------------------------------------------------------------------ helpers
 hum_bytes() { # bytes -> human
@@ -2485,12 +2488,179 @@ about_mc() {
     "Dual panels, command line, F-key actions."
 }
 
+# ------------------------------------------------------------------ mouse input
+mouse_panel_entry() { # p y x -> MC_MOUSE_IDX
+  local p=$1 y=$2 x=$3
+  local win=${WIN[$p]} wy wx h w rows idx
+  wmouse_trafo "${WIN[$p]}" "$y" "$x" 0 || { MC_MOUSE_IDX=-1; return 1; }
+  wy=$BC_MT_Y; wx=$BC_MT_X
+  getmaxyx "$win"; h=$BC_GMY; w=$BC_GMX
+  rows=$(( h - 5 ))
+  if (( wy >= 2 && wy < 2 + rows && wx >= 1 && wx < w - 1 )); then
+    idx=$(( OFF[$p] + wy - 2 ))
+    local -n NN=NAMES_$p
+    if (( idx >= 0 && idx < ${#NN[@]} )); then
+      MC_MOUSE_IDX=$idx
+      return 0
+    fi
+  fi
+  MC_MOUSE_IDX=-1
+  return 1
+}
+
+handle_panel_mouse() { # y x bstate
+  local y=$1 x=$2 b=$3 p=-1 q idx old_cur prev_pos
+  for q in 0 1; do
+    if wenclose "${WIN[$q]}" "$y" "$x"; then
+      p=$q
+      break
+    fi
+  done
+  (( p < 0 )) && return 1
+
+  if (( b & (BUTTON4_PRESSED | BUTTON4_CLICKED | BUTTON5_PRESSED | BUTTON5_CLICKED) )); then
+    local -n NN=NAMES_$p
+    local n=${#NN[@]} oldpos
+    if (( n == 0 )); then
+      if (( p != CUR )); then
+        old_cur=$CUR
+        CUR=$p
+        switch_panel "$old_cur"
+      fi
+      return 0
+    fi
+    clamp_pos "$p"
+    oldpos=${POS[$p]}
+    if (( b & (BUTTON4_PRESSED | BUTTON4_CLICKED) )); then
+      (( POS[$p] > 0 )) && POS[$p]=$(( POS[$p] - 1 ))
+    else
+      (( POS[$p] < n - 1 )) && POS[$p]=$(( POS[$p] + 1 ))
+    fi
+    if (( p != CUR )); then
+      old_cur=$CUR
+      CUR=$p
+      switch_panel "$old_cur"
+    fi
+    if (( POS[$p] != oldpos )); then
+      update_selection "$p" "$oldpos" || { draw_panel "$p"; wrefresh "${WIN[$p]}"; }
+    fi
+    return 0
+  fi
+
+  if (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
+    if mouse_panel_entry "$p" "$y" "$x"; then
+      idx=$MC_MOUSE_IDX
+    else
+      idx=-1
+    fi
+    if (( p != CUR )); then
+      old_cur=$CUR
+      prev_pos=${POS[$p]}
+      CUR=$p
+      switch_panel "$old_cur"
+      if (( idx >= 0 && POS[$p] != idx )); then
+        POS[$p]=$idx
+        update_selection "$p" "$prev_pos" || { draw_panel "$p"; wrefresh "${WIN[$p]}"; }
+      fi
+    else
+      prev_pos=${POS[$p]}
+      if (( idx >= 0 && POS[$p] != idx )); then
+        POS[$p]=$idx
+        update_selection "$p" "$prev_pos" || { draw_panel "$p"; wrefresh "${WIN[$p]}"; }
+      fi
+    fi
+    if (( idx >= 0 && (b & (BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED)) )); then
+      do_open
+    fi
+    return 0
+  fi
+
+  return 1
+}
+
+handle_buttonbar_mouse() { # y x bstate
+  local y=$1 x=$2 b=$3 num
+  (( y != BTNY )) && return 1
+  (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 1
+  num=$(( x / 10 ))
+  (( num < 0 || num > 9 )) && return 1
+  case $num in
+    0) fkey_help ;;
+    1) user_menu ;;
+    2) do_view ;;
+    3) do_edit ;;
+    4) do_copy ;;
+    5) do_move ;;
+    6) do_mkdir ;;
+    7) do_delete ;;
+    8) run_menu 0 1 ;;
+    9) STOP=1 ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
+menu_bar_hit() { # y x -> MC_MOUSE_MENU
+  local y=$1 x=$2 i name len
+  MC_MOUSE_MENU=-1
+  (( y != 0 )) && return 1
+  for i in "${!MENUNAMES[@]}"; do
+    name=${MENUNAMES[$i]}
+    len=${#name}
+    if (( x >= MENU_X[i] && x < MENU_X[i] + len )); then
+      MC_MOUSE_MENU=$i
+      return 0
+    fi
+  done
+  return 1
+}
+
+menu_mouse_handle() { # y x bstate
+  local y=$1 x=$2 b=$3 i row ridx e ri k
+  MC_MOUSE_CHOOSE=0
+  (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 1
+
+  if menu_bar_hit "$y" "$x"; then
+    menu_bar_sel=$MC_MOUSE_MENU
+    menu_sel=0
+    MENU_TOP=0
+    menu_dd=1
+    menu_real_n "$menu_bar_sel"
+    draw_menu
+    draw_panel 0
+    draw_panel 1
+    menu_dd_open
+    return 0
+  fi
+
+  if (( menu_dd && MENU_WIN > 0 )); then
+    if (( y >= MENU_GY && y < MENU_GY + MENU_GH && x >= MENU_GX && x < MENU_GX + MENU_BW )); then
+      row=$(( y - MENU_GY ))
+      (( row <= 0 || row >= MENU_GH - 1 )) && return 0
+      ridx=$(( MENU_TOP + row - 1 ))
+      (( ridx < 0 || ridx >= MENU_NROWS )) && return 0
+      e=${MENU_ROWS[$ridx]}
+      [[ $e == SEP ]] && return 0
+      ri=0
+      for (( k = 0; k <= ridx; k++ )); do
+        [[ ${MENU_ROWS[$k]} != SEP ]] && (( ri++ ))
+      done
+      menu_sel=$(( ri - 1 ))
+      MC_MOUSE_CHOOSE=1
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 run_menu() {
-  menu_open=1; menu_bar_sel=0; menu_dd=0; menu_sel=0
+  menu_open=1; menu_bar_sel=${1:-0}; menu_dd=${2:-0}; menu_sel=0
   local nmb=${#MENUNAMES[@]} chosen=""
-  menu_real_n 0
+  menu_real_n "$menu_bar_sel"
   draw_menu
   draw_panel 0; draw_panel 1
+  (( menu_dd )) && menu_dd_open
   doupdate
   while :; do
     wgetch 0 || break
@@ -2508,6 +2678,18 @@ run_menu() {
          (( menu_dd )) && { menu_dd_close; menu_dd_open; }
          ;;
         $KEY_RESIZE) do_resize ;;
+        $KEY_MOUSE)
+          while getmouse; do
+            if menu_mouse_handle "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then
+              if (( MC_MOUSE_CHOOSE )); then
+                menu_entry_at "$menu_bar_sel" "$menu_sel"; chosen="$ENTRY"
+                menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break 2
+              fi
+            else
+              menu_open=0; menu_dd=0; draw_menu; menu_dd_close; break 2
+            fi
+          done
+          ;;
         $KEY_DOWN)
           if (( menu_dd == 0 )); then
             MENU_TOP=0; menu_dd=1; menu_sel=0
@@ -2742,6 +2924,8 @@ main() {
   cbreak
   noecho
   keypad 0 1
+  mousemask "$ALL_MOUSE_EVENTS"
+  mouseinterval 200
   start_color
   trap 'endwin' EXIT INT TERM
   trap 'BC_WINCH=1' WINCH
@@ -2809,6 +2993,17 @@ main() {
        $KEY_LEFT)   : ;;
        $KEY_RIGHT)  : ;;
        $KEY_RESIZE) do_resize ;;
+        $KEY_MOUSE)
+          while getmouse; do
+            if handle_panel_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then
+              :
+            elif handle_buttonbar_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then
+              :
+            elif menu_bar_hit "$BC_ME_Y" "$BC_ME_X"; then
+              run_menu "$MC_MOUSE_MENU" 1
+            fi
+          done
+          ;;
        $'\t')       CUR=$(( 1 - CUR )); switched=1 ;;
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
