@@ -2406,6 +2406,17 @@ mvwprintw() { # win y x fmt [args...]
   return 0
 }
 
+wprintw() { # win fmt [args...]
+  local w=${1:-$BC_CURR}
+  local out
+  printf -v out "$2" "${@:3}"
+  waddstr "$w" "$out"
+  return 0
+}
+
+vwprintw() { wprintw "$@"; }
+vw_printw() { wprintw "$@"; }
+
 waddch() { # win ch [a p]
   local w=${1:-$BC_CURR}
   local a=${3:-${BC_WCURA[$w]}}
@@ -4061,6 +4072,381 @@ mvwgetnstr() { # win y x n
 getstr() { wgetstr "$BC_STDSCR"; }
 getnstr() { wgetnstr "$BC_STDSCR" "$@"; }
 mvgetnstr() { mvwgetnstr "$BC_STDSCR" "$@"; }
+mvgetstr() { mvwgetstr "$BC_STDSCR" "$@"; }
+
+mvwgetch() { # win y x
+  wmove "$1" "$2" "$3" && wgetch "$1"
+}
+mvgetch() { mvwgetch "$BC_STDSCR" "$@"; }
+
+_bc_scan_range_match() { # range neg ch -> 0 if ch matches
+  local range=$1 neg=$2 ch=$3
+  local n=${#range} i=0 in=0 a b ca cb cc
+  while (( i < n )); do
+    a=${range:i:1}
+    if (( i + 2 < n )) && [[ ${range:i+1:1} == '-' ]]; then
+      b=${range:i+2:1}
+      printf -v ca '%d' "'$a"
+      printf -v cb '%d' "'$b"
+      printf -v cc '%d' "'$ch"
+      if (( ca <= cc && cc <= cb )); then
+        in=1
+        break
+      fi
+      i=$(( i + 3 ))
+    else
+      if [[ $a == "$ch" ]]; then
+        in=1
+        break
+      fi
+      i=$(( i + 1 ))
+    fi
+  done
+  if (( neg )); then
+    (( ! in ))
+  else
+    (( in ))
+  fi
+}
+
+_bc_scanw_int() { # conv str pos limit -> bc_scanw_val bc_scanw_pos
+  local conv=$1 str=$2 pos=$3 limit=$4
+  local start=$pos sign='' digits=''
+  if [[ ${str:pos:1} == + || ${str:pos:1} == - ]]; then
+    sign=${str:pos:1}
+    ((pos++))
+  fi
+  case $conv in
+    x|X)
+      if [[ ${str:pos:2} == 0x || ${str:pos:2} == 0X ]]; then
+        digits=${str:pos:2}
+        pos=$(( pos + 2 ))
+      fi
+      while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9a-fA-F] ]]; do
+        digits+=${str:pos:1}
+        ((pos++))
+      done
+      if [[ -z $digits || $digits == 0[xX] ]]; then
+        bc_scanw_pos=$start
+        return 1
+      fi
+      ;;
+    o)
+      while (( pos < limit )) && [[ ${str:pos:1} =~ [0-7] ]]; do
+        digits+=${str:pos:1}
+        ((pos++))
+      done
+      if [[ -z $digits ]]; then
+        bc_scanw_pos=$start
+        return 1
+      fi
+      ;;
+    i)
+      if [[ ${str:pos:2} == 0x || ${str:pos:2} == 0X ]]; then
+        digits=${str:pos:2}
+        pos=$(( pos + 2 ))
+        while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9a-fA-F] ]]; do
+          digits+=${str:pos:1}
+          ((pos++))
+        done
+        if [[ -z $digits || $digits == 0[xX] ]]; then
+          bc_scanw_pos=$start
+          return 1
+        fi
+      elif [[ ${str:pos:1} == 0 ]]; then
+        digits=0
+        ((pos++))
+        while (( pos < limit )) && [[ ${str:pos:1} =~ [0-7] ]]; do
+          digits+=${str:pos:1}
+          ((pos++))
+        done
+      else
+        while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9] ]]; do
+          digits+=${str:pos:1}
+          ((pos++))
+        done
+        if [[ -z $digits ]]; then
+          bc_scanw_pos=$start
+          return 1
+        fi
+      fi
+      ;;
+    *)
+      while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9] ]]; do
+        digits+=${str:pos:1}
+        ((pos++))
+      done
+      if [[ -z $digits ]]; then
+        bc_scanw_pos=$start
+        return 1
+      fi
+      ;;
+  esac
+  bc_scanw_val=$sign$digits
+  bc_scanw_pos=$pos
+  return 0
+}
+
+_bc_scanw_float() { # str pos limit -> bc_scanw_val bc_scanw_pos
+  local str=$1 pos=$2 limit=$3
+  local start=$pos sign='' digits='' exp_digits=''
+  if [[ ${str:pos:1} == + || ${str:pos:1} == - ]]; then
+    sign=${str:pos:1}
+    ((pos++))
+  fi
+  while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9] ]]; do
+    digits+=${str:pos:1}
+    ((pos++))
+  done
+  if [[ ${str:pos:1} == . ]]; then
+    ((pos++))
+    while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9] ]]; do
+      digits+=${str:pos:1}
+      ((pos++))
+    done
+  fi
+  if [[ ${str:pos:1} == e || ${str:pos:1} == E ]]; then
+    ((pos++))
+    if [[ ${str:pos:1} == + || ${str:pos:1} == - ]]; then
+      ((pos++))
+    fi
+    while (( pos < limit )) && [[ ${str:pos:1} =~ [0-9] ]]; do
+      exp_digits+=${str:pos:1}
+      ((pos++))
+    done
+    if [[ -z $exp_digits ]]; then
+      bc_scanw_pos=$start
+      return 1
+    fi
+  fi
+  if [[ -z $digits ]]; then
+    bc_scanw_pos=$start
+    return 1
+  fi
+  bc_scanw_val=$sign${str:start:pos-start}
+  bc_scanw_pos=$pos
+  return 0
+}
+
+_bc_scanw() { # fmt var... -> assigns vars, bc_scanw_count, returns count
+  local _bc_fmt=$1
+  shift
+  local _bc_str=$bc_str
+  local _bc_slen=${#_bc_str} _bc_pos=0 _bc_assigned=0 _bc_argi=1
+  local _bc_i=0 _bc_flen=${#_bc_fmt} _bc_c _bc_conv _bc_width _bc_suppress _bc_limit _bc_val _bc_sign _bc_num _bc_name _bc_range _bc_neg
+  while (( _bc_i < _bc_flen )); do
+    _bc_c=${_bc_fmt:_bc_i:1}
+    if [[ $_bc_c != '%' ]]; then
+      if [[ $_bc_c =~ [[:space:]] ]]; then
+        while (( _bc_pos < _bc_slen )) && [[ ${_bc_str:_bc_pos:1} =~ [[:space:]] ]]; do
+          ((_bc_pos++))
+        done
+      else
+        if (( _bc_pos >= _bc_slen )) || [[ ${_bc_str:_bc_pos:1} != "$_bc_c" ]]; then
+          break
+        fi
+        ((_bc_pos++))
+      fi
+      ((_bc_i++))
+      continue
+    fi
+    ((_bc_i++))
+    _bc_suppress=0
+    if [[ ${_bc_fmt:_bc_i:1} == '*' ]]; then
+      _bc_suppress=1
+      ((_bc_i++))
+    fi
+    _bc_width=''
+    while [[ ${_bc_fmt:_bc_i:1} =~ [0-9] ]]; do
+      _bc_width+=${_bc_fmt:_bc_i:1}
+      ((_bc_i++))
+    done
+    while [[ ${_bc_fmt:_bc_i:1} =~ [hlLjzt] ]]; do
+      ((_bc_i++))
+    done
+    _bc_conv=${_bc_fmt:_bc_i:1}
+    ((_bc_i++))
+    if [[ -z $_bc_conv ]]; then
+      break
+    fi
+    if [[ $_bc_conv == '%' ]]; then
+      if (( _bc_pos >= _bc_slen )) || [[ ${_bc_str:_bc_pos:1} != '%' ]]; then
+        break
+      fi
+      ((_bc_pos++))
+      continue
+    fi
+    if [[ $_bc_conv != c && $_bc_conv != '[' && $_bc_conv != n ]]; then
+      while (( _bc_pos < _bc_slen )) && [[ ${_bc_str:_bc_pos:1} =~ [[:space:]] ]]; do
+        ((_bc_pos++))
+      done
+    fi
+    if [[ $_bc_conv == c ]]; then
+      if [[ -n $_bc_width ]]; then
+        _bc_limit=$(( _bc_pos + _bc_width ))
+      else
+        _bc_limit=$(( _bc_pos + 1 ))
+      fi
+    elif [[ -n $_bc_width ]]; then
+      _bc_limit=$(( _bc_pos + _bc_width ))
+    else
+      _bc_limit=$_bc_slen
+    fi
+    if (( _bc_limit > _bc_slen )); then
+      _bc_limit=$_bc_slen
+    fi
+    _bc_val=''
+    case $_bc_conv in
+      c)
+        if (( _bc_pos >= _bc_limit )); then
+          break
+        fi
+        _bc_val=${_bc_str:_bc_pos:_bc_limit-_bc_pos}
+        _bc_pos=$_bc_limit
+        ;;
+      s)
+        while (( _bc_pos < _bc_limit )) && [[ ${_bc_str:_bc_pos:1} != [[:space:]] ]]; do
+          _bc_val+=${_bc_str:_bc_pos:1}
+          ((_bc_pos++))
+        done
+        if [[ -z $_bc_val ]]; then
+          break
+        fi
+        ;;
+      d|i|u|x|X|o)
+        if ! _bc_scanw_int "$_bc_conv" "$_bc_str" "$_bc_pos" "$_bc_limit"; then
+          break
+        fi
+        _bc_val=$bc_scanw_val
+        _bc_pos=$bc_scanw_pos
+        ;;
+      f|e|E|g|G)
+        if ! _bc_scanw_float "$_bc_str" "$_bc_pos" "$_bc_limit"; then
+          break
+        fi
+        _bc_val=$bc_scanw_val
+        _bc_pos=$bc_scanw_pos
+        ;;
+      n)
+        _bc_val=$_bc_pos
+        ;;
+      '[')
+        _bc_range=''
+        _bc_neg=0
+        if [[ ${_bc_fmt:_bc_i:1} == '^' ]]; then
+          _bc_neg=1
+          ((_bc_i++))
+        fi
+        if [[ ${_bc_fmt:_bc_i:1} == ']' ]]; then
+          _bc_range+=']'
+          ((_bc_i++))
+        fi
+        while (( _bc_i < _bc_flen )) && [[ ${_bc_fmt:_bc_i:1} != ']' ]]; do
+          _bc_range+=${_bc_fmt:_bc_i:1}
+          ((_bc_i++))
+        done
+        if (( _bc_i < _bc_flen )); then
+          ((_bc_i++))
+        fi
+        while (( _bc_pos < _bc_limit )); do
+          _bc_c=${_bc_str:_bc_pos:1}
+          if _bc_scan_range_match "$_bc_range" "$_bc_neg" "$_bc_c"; then
+            _bc_val+=$_bc_c
+            ((_bc_pos++))
+          else
+            break
+          fi
+        done
+        if [[ -z $_bc_val ]]; then
+          break
+        fi
+        ;;
+      *)
+        break
+        ;;
+    esac
+    if (( _bc_suppress )); then
+      continue
+    fi
+    if (( _bc_argi > $# )); then
+      break
+    fi
+    _bc_name=${!_bc_argi}
+    case $_bc_conv in
+      d|u)
+        if [[ $_bc_val == +* ]]; then
+          _bc_num=$(( 10#${_bc_val#+} ))
+        elif [[ $_bc_val == -* ]]; then
+          _bc_num=$(( -10#${_bc_val#-} ))
+        else
+          _bc_num=$(( 10#$_bc_val ))
+        fi
+        printf -v "$_bc_name" '%d' "$_bc_num"
+        ;;
+      i)
+        printf -v "$_bc_name" '%d' "$(( _bc_val ))"
+        ;;
+      x|X)
+        if [[ $_bc_val == 0[xX]* || $_bc_val == +0[xX]* || $_bc_val == -0[xX]* ]]; then
+          printf -v "$_bc_name" '%d' "$(( _bc_val ))"
+        elif [[ $_bc_val == +* ]]; then
+          printf -v "$_bc_name" '%d' "$(( 16#${_bc_val#+} ))"
+        elif [[ $_bc_val == -* ]]; then
+          printf -v "$_bc_name" '%d' "$(( -16#${_bc_val#-} ))"
+        else
+          printf -v "$_bc_name" '%d' "$(( 16#$_bc_val ))"
+        fi
+        ;;
+      o)
+        if [[ $_bc_val == +* ]]; then
+          _bc_num=$(( 8#${_bc_val#+} ))
+        elif [[ $_bc_val == -* ]]; then
+          _bc_num=$(( -8#${_bc_val#-} ))
+        else
+          _bc_num=$(( 8#$_bc_val ))
+        fi
+        printf -v "$_bc_name" '%d' "$_bc_num"
+        ;;
+      *)
+        printf -v "$_bc_name" '%s' "$_bc_val"
+        ;;
+    esac
+    ((_bc_argi++))
+    if [[ $_bc_conv != n ]]; then
+      ((_bc_assigned++))
+    fi
+  done
+  bc_scanw_count=$_bc_assigned
+  if (( _bc_assigned > 255 )); then
+    return 255
+  fi
+  return "$_bc_assigned"
+}
+
+wscanw() { # win fmt var...
+  local w=${1:-$BC_CURR}
+  shift
+  if ! wgetnstr "$w" 1023; then
+    bc_scanw_count=-1
+    return 1
+  fi
+  _bc_scanw "$@"
+}
+
+scanw() { wscanw "$BC_STDSCR" "$@"; }
+
+mvwscanw() { # win y x fmt var...
+  if ! wmove "$1" "$2" "$3"; then
+    bc_scanw_count=-1
+    return 1
+  fi
+  wscanw "$1" "${@:4}"
+}
+
+mvscanw() { mvwscanw "$BC_STDSCR" "$@"; }
+
+vwscanw() { wscanw "$@"; }
+vw_scanw() { wscanw "$@"; }
 
 # --------------------------------------------------------- attrs / pairs
 wattrset() { # win a p
