@@ -3808,7 +3808,204 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
 getch() { wgetch "$BC_STDSCR"; }
 getkey() { wgetch "$BC_STDSCR"; }
 
-echochar() { wgetch "$BC_STDSCR" && waddch "$BC_STDSCR" "$key"; }
+wechochar() { # win ch [a p]
+  local w=${1:-$BC_CURR}
+  waddch "$w" "${2:- }" ${3:+"$3"} ${4:+"$4"} && wrefresh "$w"
+}
+
+echochar() { wechochar "$BC_STDSCR" "$@"; }
+
+wadd_wch() { # win wch [a p]
+  local w=${1:-$BC_CURR}
+  waddch "$w" "${2:0:1}" ${3:+"$3"} ${4:+"$4"}
+}
+
+add_wch() { wadd_wch "$BC_CURR" "$@"; }
+
+mvwadd_wch() { # win y x wch [a p]
+  wmove "$1" "$2" "$3" && wadd_wch "$1" "${4:- }" ${5:+"$5"} ${6:+"$6"}
+}
+
+mvadd_wch() { mvwadd_wch "$BC_STDSCR" "$@"; }
+
+wadd_wchnstr() { # win wstr n
+  waddnstr "${1:-$BC_CURR}" "$2" "$3"
+}
+
+add_wchnstr() { wadd_wchnstr "$BC_CURR" "$@"; }
+
+mvwadd_wchnstr() { # win y x wstr n
+  wmove "$1" "$2" "$3" && wadd_wchnstr "$1" "$4" "$5"
+}
+
+mvadd_wchnstr() { mvwadd_wchnstr "$BC_STDSCR" "$@"; }
+
+wadd_wchstr() { # win wstr
+  waddstr "${1:-$BC_CURR}" "$2"
+}
+
+add_wchstr() { wadd_wchstr "$BC_CURR" "$@"; }
+
+mvwadd_wchstr() { # win y x wstr
+  wmove "$1" "$2" "$3" && wadd_wchstr "$1" "$4"
+}
+
+mvadd_wchstr() { mvwadd_wchstr "$BC_STDSCR" "$@"; }
+
+wecho_wchar() { # win wch [a p]
+  local w=${1:-$BC_CURR}
+  wadd_wch "$w" "${2:- }" ${3:+"$3"} ${4:+"$4"} && wrefresh "$w"
+}
+
+echo_wchar() { wecho_wchar "$BC_STDSCR" "$@"; }
+
+wget_wch() { # win -> wch wcha wchp; 0 ok, 1 ERR
+  local w=${1:-$BC_CURR}
+  if wgetch "$w"; then
+    wch=$key
+    wcha=0
+    wchp=0
+    return 0
+  fi
+  return 1
+}
+
+get_wch() { wget_wch "$BC_STDSCR"; }
+
+mvwget_wch() { # win y x -> wch wcha wchp
+  wmove "$1" "$2" "$3" && wget_wch "$1"
+}
+
+mvget_wch() { mvwget_wch "$BC_STDSCR" "$@"; }
+
+win_wch() { # win -> wch wcha wchp
+  winch "${1:-$BC_CURR}"
+}
+
+in_wch() { win_wch "$BC_STDSCR"; }
+
+mvwin_wch() { # win y x -> wch wcha wchp
+  mvwinch "$1" "$2" "$3"
+}
+
+mvin_wch() { mvwin_wch "$BC_STDSCR" "$@"; }
+
+win_wchnstr() { # win n -> bc_chstr bc_chattr bc_chpair bc_str
+  inchnstr "${1:-$BC_CURR}" "$2"
+}
+
+in_wchnstr() { win_wchnstr "$BC_STDSCR" "$@"; }
+
+mvwin_wchnstr() { # win y x n -> bc_chstr bc_chattr bc_chpair bc_str
+  mvwinchnstr "$1" "$2" "$3" "$4"
+}
+
+mvin_wchnstr() { mvwin_wchnstr "$BC_STDSCR" "$@"; }
+
+win_wchstr() { # win -> bc_chstr bc_chattr bc_chpair bc_str
+  inchstr "${1:-$BC_CURR}"
+}
+
+in_wchstr() { win_wchstr "$BC_STDSCR"; }
+
+mvwin_wchstr() { # win y x -> bc_chstr bc_chattr bc_chpair bc_str
+  mvwinchstr "$1" "$2" "$3"
+}
+
+mvin_wchstr() { mvwin_wchstr "$BC_STDSCR" "$@"; }
+
+wins_wch() { # win wch [a p]
+  winsch "${1:-$BC_CURR}" "${2:0:1}" ${3:+"$3"} ${4:+"$4"}
+}
+
+ins_wch() { wins_wch "$BC_CURR" "$@"; }
+
+mvwins_wch() { # win y x wch [a p]
+  wmove "$1" "$2" "$3" && wins_wch "$1" "${4:- }" ${5:+"$5"} ${6:+"$6"}
+}
+
+mvins_wch() { mvwins_wch "$BC_STDSCR" "$@"; }
+
+winsn_wch() { # win wstr n
+  winsnstr "${1:-$BC_CURR}" "$3" "$2"
+}
+
+insn_wch() { winsn_wch "$BC_CURR" "$@"; }
+
+mvwinsn_wch() { # win y x wstr n
+  wmove "$1" "$2" "$3" && winsn_wch "$1" "$4" "$5"
+}
+
+mvinsn_wch() { mvwinsn_wch "$BC_STDSCR" "$@"; }
+
+wins_wchstr() { # win wstr
+  winsstr "${1:-$BC_CURR}" "$2"
+}
+
+ins_wchstr() { wins_wchstr "$BC_CURR" "$@"; }
+
+mvwins_wchstr() { # win y x wstr
+  wmove "$1" "$2" "$3" && wins_wchstr "$1" "$4"
+}
+
+mvins_wchstr() { mvwins_wchstr "$BC_STDSCR" "$@"; }
+
+wins_wchnstr() { # win wstr n
+  winsnstr "${1:-$BC_CURR}" "$3" "$2"
+}
+
+ins_wchnstr() { wins_wchnstr "$BC_CURR" "$@"; }
+
+mvwins_wchnstr() { # win y x wstr n
+  wmove "$1" "$2" "$3" && wins_wchnstr "$1" "$4" "$5"
+}
+
+mvins_wchnstr() { mvwins_wchnstr "$BC_STDSCR" "$@"; }
+
+unget_wch() { # wch
+  ungetch "${1:-$key}"
+}
+
+napms() { # ms
+  local ms=${1:-0}
+  if (( ms > 0 )); then
+    local t
+    printf -v t '%d.%03d' $(( ms / 1000 )) $(( ms % 1000 ))
+    sleep "$t" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
+mcprint() { # str
+  return 1
+}
+
+setcchar() { # cchar wch attrs color_pair ext -> bc_cchar bc_cchar_a bc_cchar_p
+  local cchar=$1 wch=$2 attrs=${3:-0} cp=${4:-0} ext=${5:-}
+  bc_cchar="${wch:0:1}"
+  bc_cchar_a=$attrs
+  bc_cchar_p=$cp
+  bc_cchar_ext=$ext
+  return 0
+}
+
+getcchar() { # cchar -> wch wcha wchp
+  local cchar=$1
+  wch=${cchar:0:1}
+  wcha=${bc_cchar_a:-0}
+  wchp=${bc_cchar_p:-0}
+  return 0
+}
+
+wcwidth() { # wch
+  local c=${1:0:1} n
+  [[ -z $c ]] && return 0
+  printf -v n '%d' "'$c"
+  if (( n >= 0 && n < 32 )) || (( n >= 127 && n < 160 )); then
+    return 0
+  fi
+  return 1
+}
 
 # read a line into the global bc_str, echoing each char to the window like
 # ncurses wgetstr (the terminal is raw/-echo, so we echo into the window)
