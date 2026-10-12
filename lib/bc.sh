@@ -319,6 +319,7 @@ declare -A BC_WAY=()  # window cursor y
 declare -A BC_WCURA=() # window current attr
 declare -A BC_WCURP=() # window current pair
 declare -A BC_WDELAY=() # window nodelay flag
+declare -A BC_WTIMEOUT=() # window timeout delay
 declare -A BC_PAIRS_A=() # pair -> fg
 declare -A BC_PAIRS_B=() # pair -> bg
 declare -A BC_SGRC=()  # "a/p" -> sgr code
@@ -356,6 +357,7 @@ _bc_init_window() { # w y x h
   BC_WCURA[$w]=0
   BC_WCURP[$w]=0
   BC_WDELAY[$w]=0
+  BC_WTIMEOUT[$w]=-1
   BC_WKEYPAD[$w]=0
   BC_WYOFF[$w]=0
   BC_WBUF[$w]=$w
@@ -750,6 +752,33 @@ _bc_mark_region() { # w ay ax h ww
       _bc_mark_cell "$w" "$ay" "$ax"
     done
   done
+}
+
+_bc_unmark_region() { # w ay ax h ww
+  local w=$1 y=$2 x=$3 h=$4 ww=$5
+  local ay ax mk k ky kx
+  for (( ay = y; ay < y + h; ay++ )); do
+    for (( ax = x; ax < x + ww; ax++ )); do
+      mk="$w/$ay $ax"
+      unset "BC_MK[$mk]"
+    done
+  done
+  local -a keep=()
+  local IFS=','
+  for k in ${BC_WD[$w]}; do
+    [[ -z $k ]] && continue
+    ky=${k%% *}
+    kx=${k##* }
+    if (( ky >= y && ky < y + h && kx >= x && kx < x + ww )); then
+      continue
+    fi
+    keep+=("$k")
+  done
+  BC_WD[$w]=""
+  if (( ${#keep[@]} )); then
+    local IFS=','
+    BC_WD[$w]="${keep[*]}"
+  fi
 }
 
 _bc_expand_scroll_dirty() { # w top bottom
@@ -1481,7 +1510,7 @@ delwin() {
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
   unset "BC_WAX[$w]" "BC_WAY[$w]" "BC_WCURA[$w]" "BC_WCURP[$w]" "BC_WDELAY[$w]"
-  unset "BC_WYOFF[$w]"
+  unset "BC_WTIMEOUT[$w]" "BC_WYOFF[$w]"
   unset "BC_SCROLL[$w]" "BC_SR[$w]"
   local -a nl=()
   local z
@@ -1507,6 +1536,33 @@ resizeterm() {
 }
 
 resizestdscr() { resizeterm "$@"; }
+
+wresize() { # win lines cols
+  local w=${1:-$BC_CURR} lines=${2:-0} cols=${3:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  (( lines > 0 && cols > 0 )) || return 1
+  BC_WH[$w]=$lines
+  BC_WW[$w]=$cols
+  _bc_mark_all "$w"
+  return 0
+}
+
+resize_term() { # lines cols
+  local lines=${1:-0} cols=${2:-0}
+  (( lines > 0 && cols > 0 )) || return 1
+  BC_LINES=$lines
+  BC_COLS=$cols
+  LINES=$lines
+  COLS=$cols
+  BC_WH[0]=$lines
+  BC_WW[0]=$cols
+  _bc_mark_all 0
+  return 0
+}
+
+is_term_resized() { # lines cols
+  (( $1 != BC_LINES || $2 != BC_COLS ))
+}
 
 move() { wmove "$BC_STDSCR" "$1" "$2"; }
 
@@ -1549,6 +1605,56 @@ getyx() { # win -> BC_GCY BC_GCX
   return 0
 }
 
+getcury() { # win -> BC_GCY
+  local w=${1:-$BC_CURR}
+  BC_GCY=${BC_WAY[$w]}
+  return 0
+}
+
+getcurx() { # win -> BC_GCX
+  local w=${1:-$BC_CURR}
+  BC_GCX=${BC_WAX[$w]}
+  return 0
+}
+
+getbegy() { # win -> BC_GBY
+  local w=${1:-$BC_CURR}
+  BC_GBY=${BC_WY[$w]}
+  return 0
+}
+
+getbegx() { # win -> BC_GBX
+  local w=${1:-$BC_CURR}
+  BC_GBX=${BC_WX[$w]}
+  return 0
+}
+
+getmaxy() { # win -> BC_GMY
+  local w=${1:-$BC_CURR}
+  BC_GMY=$(( BC_WH[$w] - 1 ))
+  return 0
+}
+
+getmaxx() { # win -> BC_GMX
+  local w=${1:-$BC_CURR}
+  BC_GMX=$(( BC_WW[$w] - 1 ))
+  return 0
+}
+
+getattrs() { # win -> BC_GA
+  local w=${1:-$BC_CURR}
+  BC_GA=${BC_WCURA[$w]}
+  return 0
+}
+
+getbkgd() { # win -> BC_GBKG BC_GBKG_A BC_GBKG_P
+  local w=${1:-$BC_CURR}
+  BC_GBKG=${BC_WBG[$w]}
+  BC_GBKG_A=${BC_WBGA[$w]}
+  BC_GBKG_P=${BC_WBGP[$w]}
+  return 0
+}
+
 # ----------------------------------------------------------- erase / fill
 werase() { _bc_erase_region "${1:-$BC_CURR}"; }
 wclear() { werase "$@"; }
@@ -1562,6 +1668,19 @@ wclrtoeol() { # win
 }
 
 clrtoeol() { wclrtoeol "$BC_STDSCR"; }
+
+wclrtobot() { # win
+  local w=${1:-$BC_CURR}
+  local y=${BC_WAY[$w]} x=${BC_WAX[$w]} yy
+  _bc_clrtoeol_cell "$w" "$y" "$x"
+  for (( yy = y + 1; yy < BC_WH[$w]; yy++ )); do
+    _bc_clrtoeol_cell "$w" "$yy" 0
+  done
+  return 0
+}
+
+clrtobot() { wclrtobot "$BC_STDSCR"; }
+erase() { werase "$BC_STDSCR"; }
 
 beep() { printf '\a'; return 0; }
 flash() { return 0; }
@@ -1663,6 +1782,7 @@ wborder() { # win ls rs ts bs [tl tr bl br]
   local bl=${8:-$ACS_LL} br=${9:-$ACS_LR}
   local h=${BC_WH[$w]} ww=${BC_WW[$w]} i
   local a=${BC_WCURA[$w]} p=${BC_WCURP[$w]}
+  local oy=${BC_WAY[$w]} ox=${BC_WAX[$w]}
   for (( i = 1; i < h - 1; i++ )); do
     _bc_put "$w" "$i" 0 "$ls" "$a" "$p"
     _bc_put "$w" "$i" $(( ww - 1 )) "$rs" "$a" "$p"
@@ -1675,14 +1795,34 @@ wborder() { # win ls rs ts bs [tl tr bl br]
   _bc_put "$w" 0 $(( ww - 1 )) "$tr" "$a" "$p"
   _bc_put "$w" $(( h - 1 )) 0 "$bl" "$a" "$p"
   _bc_put "$w" $(( h - 1 )) $(( ww - 1 )) "$br" "$a" "$p"
+  BC_WAY[$w]=$oy
+  BC_WAX[$w]=$ox
   return 0
 }
 
-wborder_set() { return 0; }
+wborder_set() { wborder "$@"; }
 
 box() { # win [verch horch]
   local w=${1:-$BC_CURR}
   wborder "$w" "${2:-$ACS_VLINE}" "${2:-$ACS_VLINE}" "${3:-$ACS_HLINE}" "${3:-$ACS_HLINE}"
+}
+
+box_set() { # win [vcl hcl tl tr bl br]
+  local w=${1:-$BC_CURR}
+  wborder_set "$w" "${2:-$ACS_VLINE}" "${2:-$ACS_VLINE}" "${3:-$ACS_HLINE}" "${3:-$ACS_HLINE}" \
+    "${4:-$ACS_UL}" "${5:-$ACS_UR}" "${6:-$ACS_LL}" "${7:-$ACS_LR}"
+}
+
+border() { # [ls rs ts bs tl tr bl br]
+  wborder "$BC_STDSCR" "$@"
+}
+
+mvborder() { # y x [ls rs ts bs tl tr bl br]
+  move "$1" "$2" && border "${@:3}"
+}
+
+mvwborder() { # win y x [ls rs ts bs tl tr bl br]
+  wmove "$1" "$2" "$3" && wborder "$1" "${@:4}"
 }
 
 hline() { wborder "$1" "$ACS_VLINE" "$ACS_VLINE" "$ACS_HLINE" "$ACS_HLINE"; }
@@ -2092,6 +2232,60 @@ refresh() { wrefresh "$BC_STDSCR"; }
 
 wnoutrefresh() { wrefresh "$@"; }
 
+touchwin() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  _bc_mark_all "$w"
+  return 0
+}
+
+untouchwin() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  _bc_clear_marks "$w"
+  BC_WD[$w]=""
+  return 0
+}
+
+is_wintouched() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WD[$w]:-} ]]
+}
+
+touchline() { # win start count
+  local w=${1:-$BC_CURR} start=${2:-0} count=${3:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  (( count <= 0 )) && return 0
+  _bc_mark_region "$w" "$(( BC_WY[$w] + start ))" "${BC_WX[$w]}" "$count" "${BC_WW[$w]}"
+  return 0
+}
+
+wtouchln() { # win y count changed
+  local w=${1:-$BC_CURR} y=${2:-0} count=${3:-0} changed=${4:-1}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  (( count <= 0 )) && return 0
+  if [[ $changed == 0 || $changed == false ]]; then
+    _bc_unmark_region "$w" "$(( BC_WY[$w] + y ))" "${BC_WX[$w]}" "$count" "${BC_WW[$w]}"
+  else
+    _bc_mark_region "$w" "$(( BC_WY[$w] + y ))" "${BC_WX[$w]}" "$count" "${BC_WW[$w]}"
+  fi
+  return 0
+}
+
+is_linetouched() { # win line
+  local w=${1:-$BC_CURR} line=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local ay=$(( BC_WY[$w] + line )) k ky
+  local IFS=','
+  for k in ${BC_WD[$w]}; do
+    ky=${k%% *}
+    if (( ky == ay )); then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Composite the visible content at one absolute cell: stdscr is the base, and
 # the topmost visible panel in the stack that covers the cell wins. Sets
 # _BC_CC / _BC_CA / _BC_CP.
@@ -2438,14 +2632,43 @@ nodelay() { # win nodelay
   local w=${1:-$BC_CURR}
   if (( ${2:-1} )); then
     BC_WDELAY[$w]=1
+    BC_WTIMEOUT[$w]=0
   else
     BC_WDELAY[$w]=0
+    BC_WTIMEOUT[$w]=-1
   fi
   return 0
 }
 
 halfdelay() { # tenths
   BC_HALFTENTHS=${1:-10}
+  return 0
+}
+
+wtimeout() { # win delay
+  local w=${1:-$BC_CURR} delay=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  BC_WTIMEOUT[$w]=$delay
+  if (( delay < 0 )); then
+    BC_WDELAY[$w]=0
+  elif (( delay == 0 )); then
+    BC_WDELAY[$w]=1
+  else
+    BC_WDELAY[$w]=0
+  fi
+  return 0
+}
+
+timeout() { wtimeout "$BC_STDSCR" "$@"; }
+
+notimeout() { # win bf
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WDELAY[$w]=0
+  else
+    BC_WDELAY[$w]=1
+  fi
   return 0
 }
 
@@ -2475,13 +2698,13 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
       BC_PENDING_IN=${BC_PENDING_IN:1}
       return 0
     fi
+    local to=0.05
     if (( BC_WDELAY[$w] )); then
-      IFS= read -rsn1 -t 0.001 c; rc=$?
-    else
-      # Short timeout so a SIGWINCH (trapped, deferred until this read
-      # completes) can be picked up as KEY_RESIZE instead of blocking forever.
-      IFS= read -rsn1 -t 0.05 c; rc=$?
+      to=0.001
+    elif (( ${BC_WTIMEOUT[$w]:-0} > 0 )); then
+      printf -v to '%d.%03d' $(( BC_WTIMEOUT[$w] / 1000 )) $(( BC_WTIMEOUT[$w] % 1000 ))
     fi
+    IFS= read -rsn1 -t "$to" c; rc=$?
     if (( BC_WINCH )); then
       BC_WINCH=0
       key=$KEY_RESIZE
@@ -2489,8 +2712,10 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
     fi
     if (( rc > 128 )); then
       # A timed-out read (rc > 128): nothing was read, so keep polling. A
-      # nodelay window reports ERR instead of looping.
-      (( BC_WDELAY[$w] )) && return 1
+      # nodelay window or a positive wtimeout reports ERR instead of looping.
+      if (( BC_WDELAY[$w] || ${BC_WTIMEOUT[$w]:-0} > 0 )); then
+        return 1
+      fi
       continue
     fi
     if (( rc )); then
@@ -2569,8 +2794,8 @@ echochar() { wgetch "$BC_STDSCR" && waddch "$BC_STDSCR" "$key"; }
 
 # read a line into the global bc_str, echoing each char to the window like
 # ncurses wgetstr (the terminal is raw/-echo, so we echo into the window)
-wgetstr() { # win
-  local w=${1:-$BC_CURR}
+wgetstr() { # win [n]
+  local w=${1:-$BC_CURR} n=${2:-0}
   local c cy cx
   bc_str=""
   while :; do
@@ -2594,6 +2819,10 @@ wgetstr() { # win
         fi
         ;;
       *)
+        if (( n > 0 && ${#bc_str} >= n )); then
+          ungetch "$c"
+          break
+        fi
         bc_str+=$c
         waddch "$w" "$c"
         ;;
@@ -2602,7 +2831,21 @@ wgetstr() { # win
   return 0
 }
 
+wgetnstr() { # win n
+  wgetstr "${1:-$BC_CURR}" "${2:-0}"
+}
+
+mvwgetstr() { # win y x
+  wmove "$1" "$2" "$3" && wgetstr "$1"
+}
+
+mvwgetnstr() { # win y x n
+  wmove "$1" "$2" "$3" && wgetnstr "$1" "$4"
+}
+
 getstr() { wgetstr "$BC_STDSCR"; }
+getnstr() { wgetnstr "$BC_STDSCR" "$@"; }
+mvgetnstr() { mvwgetnstr "$BC_STDSCR" "$@"; }
 
 # --------------------------------------------------------- attrs / pairs
 wattrset() { # win a p
@@ -2629,6 +2872,37 @@ wattroff() { # win a
 }
 
 attroff() { wattroff "$BC_STDSCR" "$1"; }
+
+wattr_get() { # win -> BC_AG BC_AP
+  local w=${1:-$BC_CURR}
+  BC_AG=${BC_WCURA[$w]}
+  BC_AP=${BC_WCURP[$w]}
+  return 0
+}
+
+wattr_set() { # win a p
+  local w=${1:-$BC_CURR}
+  BC_WCURA[$w]=${2:-0}
+  BC_WCURP[$w]=${3:-0}
+  return 0
+}
+
+wattr_on() { # win a
+  local w=${1:-$BC_CURR}
+  BC_WCURA[$w]=$(( BC_WCURA[$w] | ${2:-0} ))
+  return 0
+}
+
+wattr_off() { # win a
+  local w=${1:-$BC_CURR}
+  BC_WCURA[$w]=$(( BC_WCURA[$w] & ~${2:-0} ))
+  return 0
+}
+
+attr_get() { wattr_get "$BC_STDSCR"; }
+attr_set() { wattr_set "$BC_STDSCR" "$@"; }
+attr_on() { wattr_on "$BC_STDSCR" "$@"; }
+attr_off() { wattr_off "$BC_STDSCR" "$@"; }
 
 standend() { wattrset "$BC_STDSCR" 0 0; }
 standout() { wattron "$BC_STDSCR" "$(( A_BOLD | A_REVERSE ))"; }
