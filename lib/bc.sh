@@ -322,6 +322,9 @@ declare -A BC_WDELAY=() # window nodelay flag
 declare -A BC_WTIMEOUT=() # window timeout delay
 declare -A BC_PAIRS_A=() # pair -> fg
 declare -A BC_PAIRS_B=() # pair -> bg
+declare -A BC_COLOR_R=() # color -> red
+declare -A BC_COLOR_G=() # color -> green
+declare -A BC_COLOR_B=() # color -> blue
 declare -A BC_SGRC=()  # "a/p" -> sgr code
 declare -a BC_WLIST=()
 declare -A BC_WBUF=() # buffer owner per window (w -> owner window id)
@@ -359,6 +362,25 @@ bc_bottom=0
 bc_chstr=()
 bc_chattr=()
 bc_chpair=()
+BC_CR=0
+BC_CG=0
+BC_CB=0
+BC_CPF=0
+BC_CPB=0
+BC_EPF=0
+BC_EPB=0
+BC_DEFAULT_FG=-1
+BC_DEFAULT_BG=-1
+bc_pair=-1
+BC_CAN_CHANGE_COLOR=0
+BC_ERASECHAR=127
+BC_KILLCHAR=21
+BC_ERASEWCHAR=127
+BC_KILLWCHAR=21
+BC_META=0
+BC_FILTER=0
+curscr=0
+newscr=0
 
 # ------------------------------------------------------------ internals
 _bc_init_window() { # w y x h
@@ -723,6 +745,43 @@ endwin() {
   BC_STARTED=0
   return 0
 }
+
+isendwin() { (( ! BC_STARTED )); }
+
+use_window() { # win -> bc_win previous
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  bc_win=$BC_CURR
+  BC_CURR=$w
+  curscr=$BC_STDSCR
+  newscr=$BC_CURR
+  return 0
+}
+
+has_ic() { return 0; }
+has_il() { return 0; }
+
+erasechar() { printf '%s' "$BC_ERASECHAR"; }
+killchar() { printf '%s' "$BC_KILLCHAR"; }
+erasewchar() { BC_ERASEWCHAR=$BC_ERASECHAR; return 0; }
+killwchar() { BC_KILLWCHAR=$BC_KILLCHAR; return 0; }
+
+meta() { # win bf
+  local bf=${2:-0}
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_META=0
+  else
+    BC_META=1
+  fi
+  return 0
+}
+
+intrflush() { return 0; }
+qiflush() { return 0; }
+noqiflush() { return 0; }
+
+filter() { BC_FILTER=1; return 0; }
+nofilter() { BC_FILTER=0; return 0; }
 
 # save the current terminal mode (ncurses def_prog_mode)
 def_prog_mode() {
@@ -1436,7 +1495,107 @@ has_named_color() { has_colors "$@"; }
 
 use_default_colors() { return 0; }
 
-init_color() { return 0; }
+init_color() { # color r g b
+  local c=$1
+  if (( c < 0 || c >= BC_COLORS )); then
+    return 1
+  fi
+  BC_COLOR_R[$c]=$2
+  BC_COLOR_G[$c]=$3
+  BC_COLOR_B[$c]=$4
+  return 0
+}
+
+can_change_color() { (( BC_CAN_CHANGE_COLOR )); }
+
+color_content() { # color -> BC_CR BC_CG BC_CB
+  local c=$1
+  if (( c < 0 || c >= BC_COLORS )); then
+    return 1
+  fi
+  BC_CR=${BC_COLOR_R[$c]:-0}
+  BC_CG=${BC_COLOR_G[$c]:-0}
+  BC_CB=${BC_COLOR_B[$c]:-0}
+  return 0
+}
+
+extended_color_content() { color_content "$@"; }
+
+pair_content() { # pair -> BC_CPF BC_CPB
+  local p=$1
+  if (( p < 0 || p > BC_PAIRS )); then
+    return 1
+  fi
+  BC_CPF=${BC_PAIRS_A[$p]:-0}
+  BC_CPB=${BC_PAIRS_B[$p]:-0}
+  return 0
+}
+
+extended_pair_content() { # pair -> BC_EPF BC_EPB
+  local p=$1
+  if (( p < 0 || p > BC_PAIRS )); then
+    return 1
+  fi
+  BC_EPF=${BC_PAIRS_A[$p]:-0}
+  BC_EPB=${BC_PAIRS_B[$p]:-0}
+  return 0
+}
+
+init_extended_color() { init_color "$@"; }
+
+init_extended_pair() { init_pair "$@"; }
+
+assume_default_colors() { # fg bg
+  BC_DEFAULT_FG=${1:--1}
+  BC_DEFAULT_BG=${2:--1}
+  return 0
+}
+
+color_set() { # pair [opts]
+  local p=${1:-0}
+  if (( p < 0 || p > BC_PAIRS )); then
+    return 1
+  fi
+  BC_WCURP[$BC_CURR]=$p
+  return 0
+}
+
+PAIR_NUMBER() { printf '%s' "$(( $1 & 0x1ff ))"; }
+
+find_pair() { # fg bg -> bc_pair
+  local fg=$1 bg=$2 p
+  bc_pair=-1
+  for p in "${!BC_PAIRS_A[@]}"; do
+    if [[ ${BC_PAIRS_A[$p]} == "$fg" && ${BC_PAIRS_B[$p]} == "$bg" ]]; then
+      bc_pair=$p
+      printf '%s' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+alloc_pair() { # fg bg -> bc_pair
+  local fg=$1 bg=$2 p
+  bc_pair=-1
+  for (( p = 1; p <= BC_PAIRS; p++ )); do
+    if [[ -z ${BC_PAIRS_A[$p]+set} ]]; then
+      BC_PAIRS_A[$p]=$fg
+      BC_PAIRS_B[$p]=$bg
+      bc_pair=$p
+      printf '%s' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+free_pair() { # pair
+  local p=$1
+  [[ -n ${BC_PAIRS_A[$p]+set} ]] || return 1
+  unset "BC_PAIRS_A[$p]" "BC_PAIRS_B[$p]"
+  return 0
+}
 
 init_pair() {
   local n=$1
@@ -1489,6 +1648,47 @@ mvwin() { # win y x
   BC_WY[$w]=$2
   BC_WX[$w]=$3
   _bc_mark_all "$w"
+  return 0
+}
+
+dupwin() { # win -> bc_win
+  local w=$1
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local id=$BC_WN
+  BC_WN=$(( BC_WN + 1 ))
+  _bc_init_window "$id" "${BC_WY[$w]}" "${BC_WX[$w]}" "${BC_WH[$w]}" "${BC_WW[$w]}"
+  BC_WBG[$id]=${BC_WBG[$w]}
+  BC_WBGA[$id]=${BC_WBGA[$w]}
+  BC_WBGP[$id]=${BC_WBGP[$w]}
+  BC_WAX[$id]=${BC_WAX[$w]}
+  BC_WAY[$id]=${BC_WAY[$w]}
+  BC_WCURA[$id]=${BC_WCURA[$w]}
+  BC_WCURP[$id]=${BC_WCURP[$w]}
+  BC_WDELAY[$id]=${BC_WDELAY[$w]}
+  BC_WTIMEOUT[$id]=${BC_WTIMEOUT[$w]}
+  BC_WKEYPAD[$id]=${BC_WKEYPAD[$w]}
+  BC_WYOFF[$id]=${BC_WYOFF[$w]}
+  BC_WCLEAR[$id]=${BC_WCLEAR[$w]}
+  BC_WIDC[$id]=${BC_WIDC[$w]}
+  BC_WIDL[$id]=${BC_WIDL[$w]}
+  BC_WIMM[$id]=${BC_WIMM[$w]}
+  BC_WLEAVE[$id]=${BC_WLEAVE[$w]}
+  BC_WNOTIMEOUT[$id]=${BC_WNOTIMEOUT[$w]}
+  BC_WSYNC[$id]=${BC_WSYNC[$w]}
+  BC_SCROLL[$id]=${BC_SCROLL[$w]}
+  BC_SR[$id]=${BC_SR[$w]}
+  local buf=${BC_WBUF[$w]} y x k
+  for (( y = 0; y < BC_WH[$w]; y++ )); do
+    for (( x = 0; x < BC_WW[$w]; x++ )); do
+      k="$buf/$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
+      if [[ -n ${BC_C[$k]+set} || -n ${BC_A[$k]+set} || -n ${BC_P[$k]+set} ]]; then
+        _bc_cell "$id" "$(( BC_WY[$id] + y ))" "$(( BC_WX[$id] + x ))" \
+          "${BC_C[$k]:- }" "${BC_A[$k]:-0}" "${BC_P[$k]:-0}"
+      fi
+    done
+  done
+  _bc_mark_all "$id"
+  bc_win=$id
   return 0
 }
 
@@ -2267,36 +2467,70 @@ mvwborder() { # win y x [ls rs ts bs tl tr bl br]
   wmove "$1" "$2" "$3" && wborder "$1" "${@:4}"
 }
 
-hline() { wborder "$1" "$ACS_VLINE" "$ACS_VLINE" "$ACS_HLINE" "$ACS_HLINE"; }
-vline() { wborder "$1" "$ACS_VLINE" "$ACS_VLINE" "$ACS_HLINE" "$ACS_HLINE"; }
+whline() { # win ch n
+  local w=${1:-$BC_CURR} ch=$2 n=$3 i
+  local y=${BC_WAY[$w]} x=${BC_WAX[$w]}
+  local a=${BC_WCURA[$w]} p=${BC_WCURP[$w]}
+  for (( i = 0; i < n; i++ )); do
+    _bc_put "$w" "$y" $(( x + i )) "$ch" "$a" "$p"
+  done
+  return 0
+}
+
+wvline() { # win ch n
+  local w=${1:-$BC_CURR} ch=$2 n=$3 i
+  local y=${BC_WAY[$w]} x=${BC_WAX[$w]}
+  local a=${BC_WCURA[$w]} p=${BC_WCURP[$w]}
+  for (( i = 0; i < n; i++ )); do
+    _bc_put "$w" $(( y + i )) "$x" "$ch" "$a" "$p"
+  done
+  return 0
+}
+
+hline() { whline "$BC_CURR" "$@"; }
+vline() { wvline "$BC_CURR" "$@"; }
 
 # draw a horizontal/vertical line of n chars starting at (y,x) on stdscr
 # (ncurses mvhline/mvvline: move to (y,x), then emit n chars)
 mvhline() { # y x ch n
   wmove "$BC_STDSCR" "$1" "$2" || return 1
-  local i
-  for (( i = 0; i < $4; i++ )); do
-    waddch "$BC_STDSCR" "$3"
-  done
-  return 0
+  hline "$3" "$4"
 }
 
 mvwhline() { # win y x ch n
-  local w=${1:-$BC_CURR}
-  wmove "$w" "$2" "$3" || return 1
-  local i
-  for (( i = 0; i < $5; i++ )); do
-    waddch "$w" "$4"
-  done
-  return 0
+  wmove "$1" "$2" "$3" || return 1
+  whline "$1" "$4" "$5"
 }
 
 mvvline() { # y x ch n
-  local i
-  for (( i = 0; i < $4; i++ )); do
-    mvwaddch "$BC_STDSCR" "$(( $1 + i ))" "$2" "$3"
-  done
-  return 0
+  wmove "$BC_STDSCR" "$1" "$2" || return 1
+  vline "$3" "$4"
+}
+
+mvwvline() { # win y x ch n
+  wmove "$1" "$2" "$3" || return 1
+  wvline "$1" "$4" "$5"
+}
+
+hline_set() { hline "${1:0:1}" "$2"; }
+vline_set() { vline "${1:0:1}" "$2"; }
+whline_set() { whline "$1" "${2:0:1}" "$3"; }
+wvline_set() { wvline "$1" "${2:0:1}" "$3"; }
+mvhline_set() { # y x cchar n
+  wmove "$BC_STDSCR" "$1" "$2" || return 1
+  hline_set "$3" "$4"
+}
+mvvline_set() { # y x cchar n
+  wmove "$BC_STDSCR" "$1" "$2" || return 1
+  vline_set "$3" "$4"
+}
+mvwhline_set() { # win y x cchar n
+  wmove "$1" "$2" "$3" || return 1
+  whline_set "$1" "$4" "$5"
+}
+mvwvline_set() { # win y x cchar n
+  wmove "$1" "$2" "$3" || return 1
+  wvline_set "$1" "$4" "$5"
 }
 
 wbkgd() { # win ch a p
@@ -2340,9 +2574,40 @@ wbkgd() { # win ch a p
   return 0
 }
 
-wbkgset() { wbkgd "$@"; }
+wbkgdset() { # win ch a p
+  local w=${1:-$BC_CURR}
+  BC_WBG[$w]=${2:- }
+  BC_WBGA[$w]=${3:-0}
+  BC_WBGP[$w]=${4:-0}
+  BC_WCURA[$w]=${3:-0}
+  if (( ${4:-0} )); then
+    BC_WCURP[$w]=${4}
+  fi
+  return 0
+}
+
+wbkgset() { wbkgdset "$@"; }
 bkgd() { wbkgd "$BC_STDSCR" "$@"; }
-bkgdset() { wbkgset "$@"; }
+bkgdset() { wbkgdset "$BC_STDSCR" "$@"; }
+
+bkgrnd() { # win cchar [a p]
+  local w=${1:-$BC_CURR}
+  wbkgd "$w" "${2:0:1}" "${3:-0}" "${4:-0}"
+}
+
+bkgrndset() { # win cchar [a p]
+  local w=${1:-$BC_CURR}
+  wbkgdset "$w" "${2:0:1}" "${3:-0}" "${4:-0}"
+}
+
+getbkgrnd() { # win -> wch wcha wchp
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  wch=${BC_WBG[$w]}
+  wcha=${BC_WBGA[$w]}
+  wchp=${BC_WBGP[$w]}
+  return 0
+}
 
 # --------------------------------------------------------------- slk
 # Soft-key labels. slk_init(fmt) with fmt 0..3 reserves 1 line (fmt 0..2)
