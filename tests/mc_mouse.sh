@@ -157,6 +157,17 @@ wheel_down 5 10
 check_line_not 1 " 0/" "wheel down scrolls viewer"
 click 25 29
 
+# command line click sets the caret
+tmux -S "$SOCK" send-keys -t "$T" q7z
+sleep 1
+line=$(cap | sed -n '29p')
+prompt=${line%%q7z*}
+click $(( ${#prompt} + 1 )) 28
+tmux -S "$SOCK" send-keys -t "$T" X
+sleep 1
+check_line 29 "qX7z" "command line click sets caret"
+esc
+
 # Quit button exits
 click 95 29
 gone=0

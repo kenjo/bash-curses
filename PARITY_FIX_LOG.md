@@ -26,3 +26,4 @@ Rules:
 | Mouse input was ignored: panel clicks, double-click open, menu clicks, and button-bar clicks did not match original `mc` | 2026-10-12T02:48:31+02:00 | 2026-10-12T03:17:54+02:00 | fixed; enabled `mousemask`, added panel/menu/button mouse handling and `tests/mc_mouse.sh` |
 | Dialogs ignored mouse clicks on buttons, checkboxes, fields, and list items | 2026-10-12T03:17:54+02:00 | 2026-10-12T03:25:35+02:00 | fixed; added dialog hit-test helpers and mouse handling for common dialogs; extended `tests/mc_mouse.sh` |
 | Viewer ignored mouse wheel scrolling and button-bar clicks | 2026-10-12T03:25:35+02:00 | 2026-10-12T03:33:40+02:00 | fixed; added viewer wheel/button mouse handling and `tests/mc_mouse.sh` wheel/Quit assertions |
+| Command line ignored mouse clicks and always appended at the end | 2026-10-12T03:33:40+02:00 | 2026-10-12T03:42:17+02:00 | fixed; added `CMD_CARET`, command-line click hit-testing, and caret-aware editing; extended `tests/mc_mouse.sh` |

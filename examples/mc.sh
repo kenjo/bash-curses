@@ -42,6 +42,7 @@ PANEL=()
 
 CUR=0                 # active panel (0 left, 1 right)
 CMD_LINE=""
+CMD_CARET=0
 HINT_TEXT=""
 STOP=0
 DLG_RESULT=""
@@ -855,6 +856,15 @@ drain_panel_nav() {
   return 0
 }
 
+cmdline_prompt() {
+  local cwd=${DIR[$CUR]}
+  local scwd=$cwd
+  if [[ $cwd == "$HOME" ]]; then scwd="~"
+  elif [[ $cwd == "$HOME"/* ]]; then scwd="~${cwd#"$HOME"}"
+  fi
+  CMD_PROMPT="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
+}
+
 draw_cmdline() {
   redraw_hint
   local clear
@@ -862,17 +872,15 @@ draw_cmdline() {
   clear=${clear:1}
   wattrset 0 0 0
   mvwaddstr 0 "$CMY" 0 "$clear"
-  local cwd=${DIR[$CUR]}
-  local scwd=$cwd
-  if [[ $cwd == "$HOME" ]]; then scwd="~"
-  elif [[ $cwd == "$HOME"/* ]]; then scwd="~${cwd#"$HOME"}"
-  fi
-  local prompt="${USER:-$(whoami)}@${HOSTNAME%%.*}:${scwd}\$ "
+  cmdline_prompt
+  local prompt=$CMD_PROMPT
+  (( CMD_CARET > ${#CMD_LINE} )) && CMD_CARET=${#CMD_LINE}
+  (( CMD_CARET < 0 )) && CMD_CARET=0
   mvwaddstr 0 "$CMY" 0 "$prompt"
   mvwaddstr 0 "$CMY" "${#prompt}" "$CMD_LINE"
   wattrset 0 0 7
   mvwaddstr 0 "$CMY" "$(( COLS - 3 ))" "[^]"
-  move "$CMY" "$(( ${#prompt} + ${#CMD_LINE} ))"
+  move "$CMY" "$(( ${#prompt} + CMD_CARET ))"
 }
 
 # ------------------------------------------------------------------ dialogs
@@ -2256,6 +2264,7 @@ do_command_history() {
   (( ${#CMDHIST[@]} )) || { message_dialog "Command history" "No commands yet."; return; }
   list_dialog "Command history" "${CMDHIST[@]}" || return
   CMD_LINE="$LIST_RESULT"
+  CMD_CARET=${#CMD_LINE}
   draw_cmdline
   doupdate
 }
@@ -2723,6 +2732,20 @@ handle_buttonbar_mouse() { # y x bstate
   return 0
 }
 
+handle_cmdline_mouse() { # y x bstate
+  local y=$1 x=$2 b=$3 col
+  (( y != CMY )) && return 1
+  (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 1
+  cmdline_prompt
+  col=$(( x - ${#CMD_PROMPT} ))
+  (( col < 0 )) && col=0
+  (( col > ${#CMD_LINE} )) && col=${#CMD_LINE}
+  CMD_CARET=$col
+  draw_cmdline
+  doupdate
+  return 0
+}
+
 menu_bar_hit() { # y x -> MC_MOUSE_MENU
   local y=$1 x=$2 i name len
   MC_MOUSE_MENU=-1
@@ -2953,12 +2976,14 @@ run_menu() {
 
  focus_cmdline() { # F9: focus the command line (fresh line to type a command)
   CMD_LINE=""
+  CMD_CARET=0
 }
 
 execute_cmd() {
   [[ -z $CMD_LINE ]] && return
   local cmd=$CMD_LINE
   CMD_LINE=""
+  CMD_CARET=0
   local -a nh=("$cmd") e
   for e in "${CMDHIST[@]}"; do [[ $e != "$cmd" ]] && nh+=("$e"); done
   (( ${#nh[@]} > 50 )) && nh=("${nh[@]:0:50}")
@@ -3122,6 +3147,8 @@ main() {
               :
             elif handle_buttonbar_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then
               :
+            elif handle_cmdline_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then
+              :
             elif menu_bar_hit "$BC_ME_Y" "$BC_ME_X"; then
               run_menu "$MC_MOUSE_MENU" 1
             fi
@@ -3144,24 +3171,32 @@ main() {
        '+')        do_select_group ;;
        '-')        do_unselect_group ;;
        '*')         do_star_select ;;
-       $' ')
-         if [[ -n $CMD_LINE ]]; then
-           CMD_LINE+=' '
-           draw_cmdline
-           doupdate
-           continue
+        $' ')
+          if [[ -n $CMD_LINE ]]; then
+            CMD_LINE="${CMD_LINE:0:CMD_CARET} ${CMD_LINE:CMD_CARET}"
+            CMD_CARET=$(( CMD_CARET + 1 ))
+            draw_cmdline
+            doupdate
+            continue
+          fi
+          ;;
+       $'\x1b')    if [[ -n $CMD_LINE ]]; then CMD_LINE=""; CMD_CARET=0; draw_cmdline; doupdate; fi ;;
+       $'\x7f' | $'\x08')
+         if (( CMD_CARET > 0 )); then
+           CMD_LINE="${CMD_LINE:0:CMD_CARET-1}${CMD_LINE:CMD_CARET}"
+           CMD_CARET=$(( CMD_CARET - 1 ))
+         elif [[ -n $CMD_LINE ]]; then
+           CMD_LINE=${CMD_LINE:0:-1}
+           CMD_CARET=${#CMD_LINE}
          fi
+         draw_cmdline
+         doupdate
+         continue
          ;;
-      $'\x1b')    if [[ -n $CMD_LINE ]]; then CMD_LINE=""; draw_cmdline; doupdate; fi ;;
-      $'\x7f' | $'\x08')
-        CMD_LINE=${CMD_LINE:0:-1}
-        draw_cmdline
-        doupdate
-        continue
-        ;;
       *)
         if [[ ${#k} == 1 && ${k:0:1} == [[:print:]] ]]; then
-          CMD_LINE+=$k
+          CMD_LINE="${CMD_LINE:0:CMD_CARET}${k}${CMD_LINE:CMD_CARET}"
+          CMD_CARET=$(( CMD_CARET + 1 ))
           draw_cmdline
           doupdate
           continue
