@@ -77,7 +77,12 @@ for ex in \
   22-scanw-getstr.sh \
   23-halfdelay.sh \
   24-mouse-buttons.sh \
-  27-keyname.sh
+  25-background.sh \
+  26-inserts.sh \
+  27-keyname.sh \
+  28-inchs.sh \
+  29-addchstr.sh \
+  30-instr.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -95,8 +100,23 @@ do
     24-mouse-buttons.sh)
       run_example "$ex" "raw:1b 5b 3c 30 3b 35 3b 36 4d 1b 5b 3c 30 3b 35 3b 36 6d"
       ;;
+    25-background.sh)
+      run_example "$ex" b s g
+      ;;
+    26-inserts.sh)
+      run_example "$ex" i n s d I D
+      ;;
     27-keyname.sh)
       run_example "$ex" Up F1 a
+      ;;
+    28-inchs.sh)
+      run_example "$ex" i n s m
+      ;;
+    29-addchstr.sh)
+      run_example "$ex" a n m b
+      ;;
+    30-instr.sh)
+      run_example "$ex" i n m b
       ;;
     *)
       run_example "$ex"
