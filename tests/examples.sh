@@ -92,7 +92,12 @@ for ex in \
   37-use-window.sh \
   38-touch-lines.sh \
   39-echochar.sh \
-  40-defkey.sh
+  40-defkey.sh \
+  41-slk.sh \
+  42-prog-mode.sh \
+  43-filter.sh \
+  44-vidattr.sh \
+  45-color-pair.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -157,6 +162,21 @@ do
       ;;
     40-defkey.sh)
       run_example "$ex" d k b o
+      ;;
+    41-slk.sh)
+      run_example "$ex" c r t l a
+      ;;
+    42-prog-mode.sh)
+      run_example "$ex" d r
+      ;;
+    43-filter.sh)
+      run_example "$ex" f n
+      ;;
+    44-vidattr.sh)
+      run_example "$ex" a p
+      ;;
+    45-color-pair.sh)
+      run_example "$ex" p e a
       ;;
     *)
       run_example "$ex"
