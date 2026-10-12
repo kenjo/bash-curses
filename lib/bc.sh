@@ -325,6 +325,14 @@ declare -A BC_PAIRS_B=() # pair -> bg
 declare -A BC_SGRC=()  # "a/p" -> sgr code
 declare -a BC_WLIST=()
 declare -A BC_WBUF=() # buffer owner per window (w -> owner window id)
+declare -A BC_WPAR=() # parent window id, -1 for top-level windows
+declare -A BC_WCLEAR=()
+declare -A BC_WIDC=()
+declare -A BC_WIDL=()
+declare -A BC_WIMM=()
+declare -A BC_WLEAVE=()
+declare -A BC_WNOTIMEOUT=()
+declare -A BC_WSYNC=()
 # panel state: BC_PSTACK holds panel ids ordered bottom -> top
 BC_PN=0
 declare -A BC_PWIN=()   # panel id -> window id
@@ -341,6 +349,16 @@ BC_GMY=0
 BC_GMX=0
 BC_GBY=0
 BC_GBX=0
+BC_GPY=-1
+BC_GPX=-1
+bc_str=""
+bc_delay=0
+bc_parent=-1
+bc_top=0
+bc_bottom=0
+bc_chstr=()
+bc_chattr=()
+bc_chpair=()
 
 # ------------------------------------------------------------ internals
 _bc_init_window() { # w y x h
@@ -361,6 +379,14 @@ _bc_init_window() { # w y x h
   BC_WKEYPAD[$w]=0
   BC_WYOFF[$w]=0
   BC_WBUF[$w]=$w
+  BC_WPAR[$w]=-1
+  BC_WCLEAR[$w]=0
+  BC_WIDC[$w]=0
+  BC_WIDL[$w]=0
+  BC_WIMM[$w]=0
+  BC_WLEAVE[$w]=0
+  BC_WNOTIMEOUT[$w]=0
+  BC_WSYNC[$w]=0
   BC_SCROLL[$w]=0
   BC_SR[$w]=""
   BC_WLIST+=("$w")
@@ -1450,11 +1476,21 @@ derwin() { # win nlines ncol begin_y begin_x (absolute, within parent)
   BC_WN=$(( BC_WN + 1 ))
   _bc_init_window "$id" "$y" "$x" "$h" "$wd"
   BC_WBUF[$id]=$w
+  BC_WPAR[$id]=$w
   bc_win=$id
   return 0
 }
 
 subwin() { derwin "$@"; }
+
+mvwin() { # win y x
+  local w=$1
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  BC_WY[$w]=$2
+  BC_WX[$w]=$3
+  _bc_mark_all "$w"
+  return 0
+}
 
 scrollok() { # win bool
   local w=${1:-$BC_CURR} bf=${2:-0}
@@ -1468,8 +1504,127 @@ scrollok() { # win bool
 }
 
 idlok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WIDL[$w]=0
+  else
+    BC_WIDL[$w]=1
+  fi
+  return 0
+}
+
+clearok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WCLEAR[$w]=0
+  else
+    BC_WCLEAR[$w]=1
+  fi
+  return 0
+}
+
+idcok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WIDC[$w]=0
+  else
+    BC_WIDC[$w]=1
+  fi
+  return 0
+}
+
+immedok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WIMM[$w]=0
+  else
+    BC_WIMM[$w]=1
+  fi
+  return 0
+}
+
+leaveok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WLEAVE[$w]=0
+  else
+    BC_WLEAVE[$w]=1
+  fi
+  return 0
+}
+
+syncok() { # win bool
+  local w=${1:-$BC_CURR} bf=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ $bf == 0 || $bf == false ]]; then
+    BC_WSYNC[$w]=0
+  else
+    BC_WSYNC[$w]=1
+  fi
+  return 0
+}
+
+is_cleared() { [[ ${BC_WCLEAR[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_idcok() { [[ ${BC_WIDC[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_idlok() { [[ ${BC_WIDL[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_immedok() { [[ ${BC_WIMM[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_leaveok() { [[ ${BC_WLEAVE[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_syncok() { [[ ${BC_WSYNC[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_scrollok() { [[ ${BC_SCROLL[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_nodelay() { [[ ${BC_WDELAY[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_notimeout() { [[ ${BC_WNOTIMEOUT[$1]:-0} == 1 ]] && return 0 || return 1; }
+is_subwin() { [[ ${BC_WPAR[$1]:--1} != -1 ]] && return 0 || return 1; }
+
+wgetdelay() { # win -> bc_delay
   local w=${1:-$BC_CURR}
   [[ -n ${BC_WY[$w]:-} ]] || return 1
+  bc_delay=${BC_WDELAY[$w]:-0}
+  return 0
+}
+
+wgetparent() { # win -> bc_parent
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  bc_parent=${BC_WPAR[$w]:--1}
+  return 0
+}
+
+wgetscrreg() { # win -> bc_top bc_bottom
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if [[ -n ${BC_SR[$w]:-} ]]; then
+    read -r bc_top bc_bottom <<< "${BC_SR[$w]}"
+    return 0
+  fi
+  bc_top=0
+  bc_bottom=$(( BC_WH[$w] - 1 ))
+  return 1
+}
+
+getpary() { # win -> BC_GPY
+  local w=${1:-$BC_CURR}
+  local p=${BC_WPAR[$w]:--1}
+  if (( p >= 0 )); then
+    BC_GPY=${BC_WY[$p]}
+  else
+    BC_GPY=-1
+  fi
+  return 0
+}
+
+getparx() { # win -> BC_GPX
+  local w=${1:-$BC_CURR}
+  local p=${BC_WPAR[$w]:--1}
+  if (( p >= 0 )); then
+    BC_GPX=${BC_WX[$p]}
+  else
+    BC_GPX=-1
+  fi
   return 0
 }
 
@@ -1511,6 +1666,8 @@ delwin() {
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
   unset "BC_WAX[$w]" "BC_WAY[$w]" "BC_WCURA[$w]" "BC_WCURP[$w]" "BC_WDELAY[$w]"
   unset "BC_WTIMEOUT[$w]" "BC_WYOFF[$w]"
+  unset "BC_WPAR[$w]" "BC_WCLEAR[$w]" "BC_WIDC[$w]" "BC_WIDL[$w]"
+  unset "BC_WIMM[$w]" "BC_WLEAVE[$w]" "BC_WNOTIMEOUT[$w]" "BC_WSYNC[$w]"
   unset "BC_SCROLL[$w]" "BC_SR[$w]"
   local -a nl=()
   local z
@@ -1771,6 +1928,291 @@ mvwinch() { # win y x -> sets wch, wcha, wchp
   wcha=${BC_A[$k]:-0}
   wchp=${BC_P[$k]:-0}
   return 0
+}
+
+winch() { # win -> sets wch, wcha, wchp
+  local w=${1:-$BC_CURR}
+  mvwinch "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}"
+}
+
+inch() { winch "$BC_STDSCR"; }
+
+mvwinchnstr() { # win y x n -> bc_chstr bc_chattr bc_chpair bc_str
+  wmove "$1" "$2" "$3" && inchnstr "$1" "$4"
+}
+
+mvwinchstr() { # win y x -> bc_chstr bc_chattr bc_chpair bc_str
+  wmove "$1" "$2" "$3" && inchstr "$1"
+}
+
+inchnstr() { # win n -> bc_chstr bc_chattr bc_chpair bc_str
+  local w=${1:-$BC_CURR} n=${2:-0}
+  local y=${BC_WAY[$w]} x=${BC_WAX[$w]} ww=${BC_WW[$w]}
+  local buf=${BC_WBUF[$w]} ay=$(( BC_WY[$w] + y ))
+  bc_chstr=(); bc_chattr=(); bc_chpair=(); bc_str=""
+  local i=0 k
+  while (( x < ww && (n <= 0 || i < n) )); do
+    k="$buf/$ay $(( BC_WX[$w] + x ))"
+    bc_chstr+=("${BC_C[$k]:- }")
+    bc_chattr+=("${BC_A[$k]:-0}")
+    bc_chpair+=("${BC_P[$k]:-0}")
+    bc_str+="${BC_C[$k]:- }"
+    x=$(( x + 1 ))
+    i=$(( i + 1 ))
+  done
+  return 0
+}
+
+inchstr() { inchnstr "${1:-$BC_CURR}" 0; }
+
+instr() { # win n -> bc_str
+  local w=${1:-$BC_CURR} n=${2:-0}
+  local y=${BC_WAY[$w]} x=${BC_WAX[$w]} ww=${BC_WW[$w]}
+  local buf=${BC_WBUF[$w]} ay=$(( BC_WY[$w] + y ))
+  bc_str=""
+  local i=0 k
+  while (( x < ww && (n <= 0 || i < n) )); do
+    k="$buf/$ay $(( BC_WX[$w] + x ))"
+    bc_str+="${BC_C[$k]:- }"
+    x=$(( x + 1 ))
+    i=$(( i + 1 ))
+  done
+  return 0
+}
+
+innstr() { instr "${1:-$BC_CURR}" "$2"; }
+
+mvwinstr() { # win y x -> bc_str
+  wmove "$1" "$2" "$3" && instr "$1"
+}
+
+mvwinnstr() { # win y x n -> bc_str
+  wmove "$1" "$2" "$3" && innstr "$1" "$4"
+}
+
+waddchstr() { # win str
+  local w=${1:-$BC_CURR}
+  _bc_emit "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "$2" "${BC_WCURA[$w]}" "${BC_WCURP[$w]}"
+  return 0
+}
+
+addchstr() { waddchstr "$BC_CURR" "$@"; }
+
+mvwaddchstr() { # win y x str
+  wmove "$1" "$2" "$3" && waddchstr "$1" "$4"
+}
+
+mvaddchstr() { mvwaddchstr "$BC_STDSCR" "$@"; }
+
+waddchnstr() { # win str n
+  local w=${1:-$BC_CURR}
+  local s=$2
+  if (( $3 >= 0 )); then
+    s=${s:0:$3}
+  fi
+  _bc_emit "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "$s" "${BC_WCURA[$w]}" "${BC_WCURP[$w]}"
+  return 0
+}
+
+addchnstr() { waddchnstr "$BC_CURR" "$@"; }
+
+mvwaddchnstr() { # win y x str n
+  wmove "$1" "$2" "$3" && waddchnstr "$1" "$4" "$5"
+}
+
+mvaddchnstr() { mvwaddchnstr "$BC_STDSCR" "$@"; }
+
+_bc_ins_cell() { # w y x ch a p
+  local w=$1 y=$2 x=$3
+  local ww=${BC_WW[$w]} buf=${BC_WBUF[$w]}
+  (( y < 0 || y >= BC_WH[$w] || x < 0 || x >= ww )) && return 0
+  _bc_render "$w" "$4" "$5" "$6"
+  local ch=$BC_RCH a=$BC_RA p=$BC_RP
+  local ay=$(( BC_WY[$w] + y )) ax sk dk
+  for (( ax = ww - 1; ax > x; ax-- )); do
+    sk="$buf/$ay $(( BC_WX[$w] + ax - 1 ))"
+    dk="$buf/$ay $(( BC_WX[$w] + ax ))"
+    if [[ -n ${BC_C[$sk]+set} ]]; then
+      BC_C[$dk]=${BC_C[$sk]}
+      BC_A[$dk]=${BC_A[$sk]:-0}
+      BC_P[$dk]=${BC_P[$sk]:-0}
+    else
+      unset "BC_C[$dk]" "BC_A[$dk]" "BC_P[$dk]"
+    fi
+  done
+  _bc_cell "$w" "$ay" "$(( BC_WX[$w] + x ))" "$ch" "$a" "$p"
+  _bc_mark_region "$w" "$ay" "$(( BC_WX[$w] + x ))" 1 $(( ww - x ))
+  return 0
+}
+
+_bc_del_cell() { # w y x
+  local w=$1 y=$2 x=$3
+  local ww=${BC_WW[$w]} buf=${BC_WBUF[$w]}
+  (( y < 0 || y >= BC_WH[$w] || x < 0 || x >= ww )) && return 0
+  local ay=$(( BC_WY[$w] + y )) ax sk dk
+  for (( ax = x; ax < ww - 1; ax++ )); do
+    sk="$buf/$ay $(( BC_WX[$w] + ax + 1 ))"
+    dk="$buf/$ay $(( BC_WX[$w] + ax ))"
+    if [[ -n ${BC_C[$sk]+set} ]]; then
+      BC_C[$dk]=${BC_C[$sk]}
+      BC_A[$dk]=${BC_A[$sk]:-0}
+      BC_P[$dk]=${BC_P[$sk]:-0}
+    else
+      unset "BC_C[$dk]" "BC_A[$dk]" "BC_P[$dk]"
+    fi
+  done
+  _bc_clear_cell "$w" "$ay" "$(( BC_WX[$w] + ww - 1 ))"
+  _bc_mark_region "$w" "$ay" "$(( BC_WX[$w] + x ))" 1 $(( ww - x ))
+  return 0
+}
+
+winsch() { # win ch [a p]
+  local w=${1:-$BC_CURR}
+  local a=${3:-${BC_WCURA[$w]}}
+  local p=${4:-${BC_WCURP[$w]}}
+  _bc_ins_cell "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "${2:- }" "$a" "$p"
+  if (( BC_WAX[$w] + 1 < BC_WW[$w] )); then
+    BC_WAX[$w]=$(( BC_WAX[$w] + 1 ))
+  fi
+  return 0
+}
+
+insch() { winsch "$BC_CURR" "$@"; }
+
+mvwinsch() { # win y x ch [a p]
+  wmove "$1" "$2" "$3" && winsch "$1" "${4:- }" ${5:+"$5"} ${6:+"$6"}
+}
+
+mvinsch() { mvwinsch "$BC_STDSCR" "$@"; }
+
+winsnstr() { # win n str
+  local w=${1:-$BC_CURR} n=$2 str=$3
+  local len=${#str}
+  (( n < 0 )) && n=$len
+  (( n > len )) && n=$len
+  local i=0
+  for (( i = 0; i < n; i++ )); do
+    _bc_ins_cell "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "${str:i:1}" "${BC_WCURA[$w]}" "${BC_WCURP[$w]}"
+    if (( BC_WAX[$w] + 1 < BC_WW[$w] )); then
+      BC_WAX[$w]=$(( BC_WAX[$w] + 1 ))
+    fi
+  done
+  return 0
+}
+
+insnstr() { winsnstr "$BC_CURR" "$@"; }
+
+winsstr() { winsnstr "${1:-$BC_CURR}" -1 "$2"; }
+
+insstr() { winsstr "$BC_CURR" "$@"; }
+
+mvwinsnstr() { # win y x n str
+  wmove "$1" "$2" "$3" && winsnstr "$1" "$4" "$5"
+}
+
+mvwinsstr() { # win y x str
+  wmove "$1" "$2" "$3" && winsstr "$1" "$4"
+}
+
+mvinsnstr() { mvwinsnstr "$BC_STDSCR" "$@"; }
+
+mvinsstr() { mvwinsstr "$BC_STDSCR" "$@"; }
+
+wdelch() { # win
+  local w=${1:-$BC_CURR}
+  _bc_del_cell "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}"
+  return 0
+}
+
+delch() { wdelch "$BC_CURR"; }
+
+mvwdelch() { # win y x
+  wmove "$1" "$2" "$3" && wdelch "$1"
+}
+
+mvdelch() { mvwdelch "$BC_STDSCR" "$@"; }
+
+wdeleteln() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local y=${BC_WAY[$w]} h=${BC_WH[$w]}
+  _bc_scroll_window_cells "$w" "$(( BC_WY[$w] + y ))" "$(( BC_WY[$w] + h - 1 ))" 1
+  _bc_mark_region "$w" "$(( BC_WY[$w] + y ))" "${BC_WX[$w]}" $(( h - y )) "${BC_WW[$w]}"
+  return 0
+}
+
+deleteln() { wdeleteln "$BC_CURR"; }
+
+winsertln() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local y=${BC_WAY[$w]} h=${BC_WH[$w]}
+  _bc_scroll_window_cells "$w" "$(( BC_WY[$w] + y ))" "$(( BC_WY[$w] + h - 1 ))" -1
+  _bc_mark_region "$w" "$(( BC_WY[$w] + y ))" "${BC_WX[$w]}" $(( h - y )) "${BC_WW[$w]}"
+  return 0
+}
+
+insertln() { winsertln "$BC_CURR"; }
+
+winsdelln() { # win n
+  local w=${1:-$BC_CURR} n=${2:-0}
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  (( n == 0 )) && return 0
+  local y=${BC_WAY[$w]} h=${BC_WH[$w]}
+  _bc_scroll_window_cells "$w" "$(( BC_WY[$w] + y ))" "$(( BC_WY[$w] + h - 1 ))" "$(( -n ))"
+  _bc_mark_region "$w" "$(( BC_WY[$w] + y ))" "${BC_WX[$w]}" $(( h - y )) "${BC_WW[$w]}"
+  return 0
+}
+
+insdelln() { winsdelln "$BC_CURR" "$@"; }
+
+copywin() { # src dst sminy sminx dminy dminx dmaxy dmaxx overlay
+  local src=$1 dst=$2 sminy=$3 sminx=$4 dminy=$5 dminx=$6 dmaxy=$7 dmaxx=$8 ov=${9:-0}
+  [[ -n ${BC_WY[$src]:-} && -n ${BC_WY[$dst]:-} ]] || return 1
+  local sh=${BC_WH[$src]} sw=${BC_WW[$src]} dh=${BC_WH[$dst]} dw=${BC_WW[$dst]}
+  local rows=$(( dmaxy - dminy + 1 )) cols=$(( dmaxx - dminx + 1 ))
+  if (( sminy < 0 )); then dminy=$(( dminy - sminy )); sminy=0; fi
+  if (( sminx < 0 )); then dminx=$(( dminx - sminx )); sminx=0; fi
+  if (( dminy < 0 )); then sminy=$(( sminy - dminy )); dminy=0; fi
+  if (( dminx < 0 )); then sminx=$(( sminx - dminx )); dminx=0; fi
+  if (( sminy + rows > sh )); then rows=$(( sh - sminy )); fi
+  if (( sminx + cols > sw )); then cols=$(( sw - sminx )); fi
+  if (( dminy + rows > dh )); then rows=$(( dh - dminy )); fi
+  if (( dminx + cols > dw )); then cols=$(( dw - dminx )); fi
+  (( rows <= 0 || cols <= 0 )) && return 0
+  local sbuf=${BC_WBUF[$src]} dbuf=${BC_WBUF[$dst]}
+  local -a dk=() dc=() da=() dp=()
+  local y x sk ch a p
+  for (( y = 0; y < rows; y++ )); do
+    for (( x = 0; x < cols; x++ )); do
+      sk="$sbuf/$(( sminy + y )) $(( sminx + x ))"
+      ch=${BC_C[$sk]:- }
+      if [[ $ov != 0 && $ov != false && $ch == ' ' ]]; then
+        continue
+      fi
+      a=${BC_A[$sk]:-0}
+      p=${BC_P[$sk]:-0}
+      dk+=("$(( dminy + y )) $(( dminx + x ))")
+      dc+=("$ch")
+      da+=("$a")
+      dp+=("$p")
+    done
+  done
+  local i
+  for i in "${!dk[@]}"; do
+    _bc_cell "$dst" "$(( BC_WY[$dst] + ${dk[i]%% *} ))" "$(( BC_WX[$dst] + ${dk[i]##* } ))" "${dc[i]}" "${da[i]}" "${dp[i]}"
+  done
+  return 0
+}
+
+overlay() { # src dst
+  local src=$1 dst=$2
+  copywin "$src" "$dst" 0 0 0 0 $(( BC_WH[$dst] - 1 )) $(( BC_WW[$dst] - 1 )) 1
+}
+
+overwrite() { # src dst
+  local src=$1 dst=$2
+  copywin "$src" "$dst" 0 0 0 0 $(( BC_WH[$dst] - 1 )) $(( BC_WW[$dst] - 1 )) 0
 }
 
 # -------------------------------------------------------------- graphics
@@ -2665,9 +3107,9 @@ notimeout() { # win bf
   local w=${1:-$BC_CURR} bf=${2:-0}
   [[ -n ${BC_WY[$w]:-} ]] || return 1
   if [[ $bf == 0 || $bf == false ]]; then
-    BC_WDELAY[$w]=0
+    BC_WNOTIMEOUT[$w]=0
   else
-    BC_WDELAY[$w]=1
+    BC_WNOTIMEOUT[$w]=1
   fi
   return 0
 }
