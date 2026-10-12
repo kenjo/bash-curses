@@ -117,6 +117,7 @@ menu_sel=0       # selected item (index over real, non-separator items)
 MC_MOUSE_IDX=-1  # panel entry hit by the last mouse event
 MC_MOUSE_MENU=-1 # menu bar item hit by the last mouse event
 MC_MOUSE_CHOOSE=0
+MC_MOUSE_DRAG=0
 
 # ------------------------------------------------------------------ helpers
 hum_bytes() { # bytes -> human
@@ -2607,6 +2608,17 @@ user_menu() {
       $KEY_DOWN)    (( cur < n - 1 )) && cur=$(( cur + 1 )) ;;
       $'\r'|$'\x1b'|"q"|"Q") break ;;
       $KEY_RESIZE) BC_WINCH=1; break ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if (( BC_ME_BSTATE & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
+            local row=$(( BC_ME_Y - y - 1 ))
+            if (( row >= 0 && row < n && BC_ME_X >= x && BC_ME_X < x + w )); then
+              cur=$row
+              break 2
+            fi
+          fi
+        done
+        ;;
       *) : ;;
     esac
   done
@@ -2703,6 +2715,40 @@ handle_panel_mouse() { # y x bstate
     fi
     if (( idx >= 0 && (b & (BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED)) )); then
       do_open
+    fi
+    return 0
+  fi
+
+  if (( b & BUTTON1_PRESSED )); then
+    MC_MOUSE_DRAG=1
+  fi
+  if (( b & BUTTON1_RELEASED )); then
+    MC_MOUSE_DRAG=0
+    return 0
+  fi
+  if (( b & REPORT_MOUSE_POSITION )) && (( MC_MOUSE_DRAG )); then
+    if mouse_panel_entry "$p" "$y" "$x"; then
+      idx=$MC_MOUSE_IDX
+    else
+      idx=-1
+    fi
+    if (( idx >= 0 )); then
+      if (( p != CUR )); then
+        old_cur=$CUR
+        prev_pos=${POS[$p]}
+        CUR=$p
+        switch_panel "$old_cur"
+        if (( POS[$p] != idx )); then
+          POS[$p]=$idx
+          update_selection "$p" "$prev_pos" || { draw_panel "$p"; wrefresh "${WIN[$p]}"; }
+        fi
+      else
+        prev_pos=${POS[$p]}
+        if (( POS[$p] != idx )); then
+          POS[$p]=$idx
+          update_selection "$p" "$prev_pos" || { draw_panel "$p"; wrefresh "${WIN[$p]}"; }
+        fi
+      fi
     fi
     return 0
   fi
@@ -3072,7 +3118,7 @@ main() {
   cbreak
   noecho
   keypad 0 1
-  mousemask "$ALL_MOUSE_EVENTS"
+  mousemask "$(( ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION ))"
   mouseinterval 200
   start_color
   trap 'endwin' EXIT INT TERM
@@ -3138,11 +3184,28 @@ main() {
       $KEY_END)   POS[$CUR]=$(( ${#_CN[@]} - 1 )); nav=1 ;;
       $KEY_PPAGE) POS[$CUR]=$(( POS[$CUR] - $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
       $KEY_NPAGE) POS[$CUR]=$(( POS[$CUR] + $(page_rows "$CUR") )); clamp_pos "$CUR"; nav=1 ;;
-       $KEY_LEFT)   : ;;
-       $KEY_RIGHT)  : ;;
+       $KEY_LEFT)
+         if [[ -n $CMD_LINE ]]; then
+           (( CMD_CARET > 0 )) && CMD_CARET=$(( CMD_CARET - 1 ))
+           draw_cmdline
+           doupdate
+           continue
+         fi
+         ;;
+       $KEY_RIGHT)
+         if [[ -n $CMD_LINE ]]; then
+           (( CMD_CARET < ${#CMD_LINE} )) && CMD_CARET=$(( CMD_CARET + 1 ))
+           draw_cmdline
+           doupdate
+           continue
+         fi
+         ;;
        $KEY_RESIZE) do_resize ;;
         $KEY_MOUSE)
           while getmouse; do
+            if (( BC_ME_BSTATE & BUTTON1_RELEASED )); then
+              MC_MOUSE_DRAG=0
+            fi
             if handle_panel_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then
               :
             elif handle_buttonbar_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"; then

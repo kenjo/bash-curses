@@ -67,6 +67,15 @@ double_click() {
     1b 5b 3c 30 3b $(hexstr "$sx") 3b $(hexstr "$sy") 6d
   sleep 1.0
 }
+drag() {
+  local x1=$1 y1=$2 x2=$3 y2=$4
+  local sx1=$(( $1 + 1 )) sy1=$(( $2 + 1 )) sx2=$(( $3 + 1 )) sy2=$(( $4 + 1 ))
+  tmux -S "$SOCK" send-keys -H -t "$T" \
+    1b 5b 3c 30 3b $(hexstr "$sx1") 3b $(hexstr "$sy1") 4d \
+    1b 5b 3c $(hexstr "3") 3b $(hexstr "$sx2") 3b $(hexstr "$sy2") 4d \
+    1b 5b 3c 30 3b $(hexstr "$sx2") 3b $(hexstr "$sy2") 6d
+  sleep 1.0
+}
 wheel_down() {
   local x=$1 y=$2 sx=$(( $1 + 1 )) sy=$(( $2 + 1 ))
   tmux -S "$SOCK" send-keys -H -t "$T" 1b 5b 3c $(hexstr "65") 3b $(hexstr "$sx") 3b $(hexstr "$sy") 4d
@@ -127,14 +136,14 @@ check_not "Esc closes menu" "File listing"
 # Help button opens the help dialog
 click 5 29
 check "Help click opens help" "Commander"
-esc
-check_not "Esc closes help" "Commander"
+click 50 10
+check_not "Help click closes help" "Commander"
 
 # Menu button opens the user menu
 click 15 29
 check "Menu click opens user menu" "User menu"
-esc
-check_not "Esc closes user menu" "User menu"
+click 30 10
+check_not "User menu click closes menu" "User menu"
 
 # View button opens the viewer for the selected file
 click 55 4
@@ -167,6 +176,20 @@ tmux -S "$SOCK" send-keys -t "$T" X
 sleep 1
 check_line 29 "qX7z" "command line click sets caret"
 esc
+
+# command line Left moves the caret
+tmux -S "$SOCK" send-keys -t "$T" abc
+sleep 1
+tmux -S "$SOCK" send-keys -t "$T" Left
+sleep 1
+tmux -S "$SOCK" send-keys -t "$T" X
+sleep 1
+check_line 29 "abXc" "command line Left moves caret"
+esc
+
+# panel drag selection
+drag 5 6 5 5
+check_line_count 26 "alpha" 1 "panel drag selects alpha"
 
 # Quit button exits
 click 95 29
