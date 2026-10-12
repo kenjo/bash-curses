@@ -45,9 +45,9 @@ terminal is restored even if the script dies.
 
 ## Examples
 
-`examples/` holds ports of ncurses test-suite demos. `examples/newdemo.sh`
-was frame-diffed against the C reference: 0 differing cells of 672 written
-(see DESIGN.md "Verification").
+`examples/` holds ports of ncurses test-suite demos. `tests/examples.sh`
+smoke-tests them in tmux. `examples/newdemo.sh` was frame-diffed against the C
+reference: 0 differing cells of 672 written (see DESIGN.md "Verification").
 
 ```sh
 tmux new-session -d -s bc -x 100 -y 30 bash examples/newdemo.sh
@@ -140,6 +140,8 @@ bash tests/run.sh
 - `tests/integration.sh` — tmux-driven: runs `tests/battery_app.sh` in a pane,
   injects key and mouse bytes via `send-keys -H`, and asserts the decoded
   `KEY`/`EV` output.
+- `tests/examples.sh` — tmux-driven: runs `examples/*.sh` smoke tests in a real
+  tty, feeds keys (including raw SGR mouse bytes), and requires clean exits.
 - `tests/mc_*.sh` — tmux-driven regression tests for the `mc` clone: navigation,
   menus, viewer, resize, dialogs, actions, and MC-vs-clone parity checks.
 
