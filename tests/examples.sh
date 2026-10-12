@@ -87,7 +87,12 @@ for ex in \
   32-movewindow.sh \
   33-clip-printw.sh \
   34-test-opaque.sh \
-  35-test-delwin.sh
+  35-test-delwin.sh \
+  36-wresize.sh \
+  37-use-window.sh \
+  38-touch-lines.sh \
+  39-echochar.sh \
+  40-defkey.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -137,6 +142,21 @@ do
       ;;
     35-test-delwin.sh)
       run_example "$ex" c d c d
+      ;;
+    36-wresize.sh)
+      run_example "$ex" + - r
+      ;;
+    37-use-window.sh)
+      run_example "$ex" 1 2 s d
+      ;;
+    38-touch-lines.sh)
+      run_example "$ex" t u l w
+      ;;
+    39-echochar.sh)
+      run_example "$ex" e w u
+      ;;
+    40-defkey.sh)
+      run_example "$ex" d k b o
       ;;
     *)
       run_example "$ex"
