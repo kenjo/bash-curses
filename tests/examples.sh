@@ -37,7 +37,11 @@ run_example() {
   sleep 1
   local k
   for k in "$@"; do
-    tmux -S "$SOCK" send-keys -t "$T" "$k" 2>/dev/null || true
+    if [[ $k == raw:* ]]; then
+      tmux -S "$SOCK" send-keys -H -t "$T" ${k#raw:} 2>/dev/null || true
+    else
+      tmux -S "$SOCK" send-keys -t "$T" "$k" 2>/dev/null || true
+    fi
     sleep 0.3
   done
   tmux -S "$SOCK" send-keys -t "$T" q 2>/dev/null || true
@@ -68,9 +72,36 @@ for ex in \
   15-window-dump.sh \
   18-pads.sh \
   19-scroll-regions.sh \
-  20-copywin-overlay.sh
+  20-copywin-overlay.sh \
+  21-color-content.sh \
+  22-scanw-getstr.sh \
+  23-halfdelay.sh \
+  24-mouse-buttons.sh \
+  27-keyname.sh
 do
-  run_example "$ex"
+  case $ex in
+    13-screen-dump.sh)
+      run_example "$ex" r
+      ;;
+    15-window-dump.sh)
+      run_example "$ex" g d
+      ;;
+    18-pads.sh)
+      run_example "$ex" Up Down Left Right
+      ;;
+    19-scroll-regions.sh)
+      run_example "$ex" Down Up NPage PPage
+      ;;
+    24-mouse-buttons.sh)
+      run_example "$ex" "raw:1b 5b 3c 30 3b 35 3b 36 4d 1b 5b 3c 30 3b 35 3b 36 6d"
+      ;;
+    27-keyname.sh)
+      run_example "$ex" Up F1 a
+      ;;
+    *)
+      run_example "$ex"
+      ;;
+  esac
 done
 
 echo

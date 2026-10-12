@@ -274,6 +274,7 @@ LINES=24
 COLORS=0
 COLOR_PAIRS=0
 ESCDELAY=1000
+BC_HALFTENTHS=0
 TABSIZE=8
 PC=0                # termcap: padding char
 BC=$'\b'            # termcap: backspace char
@@ -399,7 +400,11 @@ _bc_init_window() { # w y x h
   BC_WCURA[$w]=0
   BC_WCURP[$w]=0
   BC_WDELAY[$w]=0
-  BC_WTIMEOUT[$w]=-1
+  if (( BC_HALFTENTHS )); then
+    BC_WTIMEOUT[$w]=$(( BC_HALFTENTHS * 100 ))
+  else
+    BC_WTIMEOUT[$w]=-1
+  fi
   BC_WKEYPAD[$w]=0
   BC_WYOFF[$w]=0
   BC_WBUF[$w]=$w
@@ -3670,7 +3675,14 @@ nodelay() { # win nodelay
 }
 
 halfdelay() { # tenths
-  BC_HALFTENTHS=${1:-10}
+  local t=${1:-10}
+  [[ $t =~ ^[0-9]+$ ]] || t=10
+  BC_HALFTENTHS=$t
+  local w
+  for w in "${!BC_WY[@]}"; do
+    BC_WTIMEOUT[$w]=$(( t * 100 ))
+    BC_WDELAY[$w]=0
+  done
   return 0
 }
 
