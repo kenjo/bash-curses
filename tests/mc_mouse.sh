@@ -137,6 +137,12 @@ check_line 1 "beta" "View click opens viewer"
 esc
 check_line 30 "Quit" "Esc closes viewer"
 
+# Copy button opens the Copy dialog; Cancel button closes it
+click 45 29
+check_line 8 " Copy " "Copy click opens dialog"
+click 60 17
+check_line_not 8 " Copy " "Cancel click closes dialog"
+
 # Quit button exits
 click 95 29
 gone=0

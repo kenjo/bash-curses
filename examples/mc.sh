@@ -1032,6 +1032,36 @@ dlg_button() { # row col label style mnemidx [fp [tp [focused]]]
   else mvwaddstr "$dw" "$row" $(( tcol + ${#label} )) " ]"; fi
 }
 
+dlg_button_width() { # label style
+  local label=$1 style=$2 pad=2 suffix=2
+  [[ $style == ok ]] && { pad=3; suffix=3; }
+  echo $(( pad + ${#label} + suffix ))
+}
+
+dlg_hit_button() { # win y x row col label style
+  local win=$1 y=$2 x=$3 row=$4 col=$5 label=$6 style=$7
+  wmouse_trafo "$win" "$y" "$x" 0 || return 1
+  local wy=$BC_MT_Y wx=$BC_MT_X w
+  w=$(dlg_button_width "$label" "$style")
+  (( wy == row && wx >= col && wx < col + w ))
+}
+
+dlg_hit_checkbox() { # win y x row col label
+  local win=$1 y=$2 x=$3 row=$4 col=$5 label=$6
+  wmouse_trafo "$win" "$y" "$x" 0 || return 1
+  local wy=$BC_MT_Y wx=$BC_MT_X w=$(( 4 + ${#label} ))
+  (( wy == row && wx >= col && wx < col + w ))
+}
+
+dlg_hit_field() { # win y x row col width -> DLG_FIELD_X
+  local win=$1 y=$2 x=$3 row=$4 col=$5 width=$6
+  wmouse_trafo "$win" "$y" "$x" 0 || return 1
+  local wy=$BC_MT_Y wx=$BC_MT_X
+  (( wy == row && wx >= col && wx < col + width - 3 )) || return 1
+  DLG_FIELD_X=$(( wx - col ))
+  return 0
+}
+
 # generic modal dialogs ---------------------------------------------
 message_dialog() { # title line1 [line2 ...]
   local title=$1; shift
@@ -1051,6 +1081,13 @@ message_dialog() { # title line1 [line2 ...]
     wgetch "$dw" || break
     case $key in
       $'\r'|$'q'|$'Q'|$'\x1b') break ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" "$(( h - 2 ))" $(( (w - 9) / 2 )) "OK" ok; then
+            break 2
+          fi
+        done
+        ;;
     esac
   done
   delwin "$dw"
@@ -1513,7 +1550,7 @@ list_dialog() { # title item...
   local title=$1; shift
   local -a items=("$@")
   (( ${#items[@]} )) || { message_dialog "$title" "No entries."; return 1; }
-  local n=${#items[@]} sel=0 top=0 maxl=0 e
+  local n=${#items[@]} sel=0 top=0 maxl=0 e wy wx idx
   for e in "${items[@]}"; do (( ${#e} > maxl )) && maxl=${#e}; done
   local w=$(( maxl + 6 )); (( w < 40 )) && w=40; (( w > COLS - 4 )) && w=$(( COLS - 4 ))
   local maxh=$(( LINES - 4 )); (( maxh < 4 )) && maxh=4
@@ -1552,6 +1589,24 @@ list_dialog() { # title item...
       $KEY_END)   sel=$(( n - 1 )); if (( n > visible )); then top=$(( n - visible )); else top=0; fi ;;
       $KEY_PPAGE) sel=$(( sel - visible )); (( sel < 0 )) && sel=0; (( sel < top )) && top=$sel ;;
       $KEY_NPAGE) sel=$(( sel + visible )); (( sel > n - 1 )) && sel=$(( n - 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )) ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if (( BC_ME_BSTATE & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
+            if wmouse_trafo "$lw" "$BC_ME_Y" "$BC_ME_X" 0; then
+              wy=$BC_MT_Y; wx=$BC_MT_X
+              if (( wy >= 1 && wy < h - 1 && wx >= 1 && wx < w - 1 )); then
+                idx=$(( top + wy - 1 ))
+                if (( idx < n )); then
+                  sel=$idx
+                  if (( BC_ME_BSTATE & (BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
+                    LIST_RESULT=${items[sel]}; delwin "$lw"; return 0
+                  fi
+                fi
+              fi
+            fi
+          fi
+        done
+        ;;
       $'\r')      LIST_RESULT=${items[sel]}; delwin "$lw"; return 0 ;;
       $'\x1b'|$KEY_F10|q|Q) delwin "$lw"; return 1 ;;
     esac
@@ -1649,6 +1704,28 @@ copy_move_dialog() { # verb
           dst) field_history_popup "$anchor" && { dst="$HIST_RESULT"; dc=${#dst}; } ;;
         esac
         draw_all; doupdate; cm_redraw_full ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 10 16 "OK" ok; then break 2; fi
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 10 25 "Background" plain; then break 2; fi
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 10 40 "Cancel" plain; then cancelled=1; break 2; fi
+          if dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 3 33 "Using shell patterns"; then
+            c_shell=$(( 1 - c_shell )); fi=1
+          elif dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 7 2 "Follow links"; then
+            c_follow=$(( 1 - c_follow )); fi=3
+          elif dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 7 33 "Dive into subdir if exists"; then
+            c_dive=$(( 1 - c_dive )); fi=5
+          elif dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 8 2 "Preserve attributes"; then
+            c_preserve=$(( 1 - c_preserve )); fi=4
+          elif dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 8 33 "Stable symlinks"; then
+            c_stable=$(( 1 - c_stable )); fi=6
+          elif dlg_hit_field "$dw" "$BC_ME_Y" "$BC_ME_X" 2 2 62; then
+            fi=0; sc=$DLG_FIELD_X; (( sc > ${#src} )) && sc=${#src}
+          elif dlg_hit_field "$dw" "$BC_ME_Y" "$BC_ME_X" 5 2 62; then
+            fi=2; dc=$DLG_FIELD_X; (( dc > ${#dst} )) && dc=${#dst}
+          fi
+        done
+        cm_draw ;;
       $'\x7f'|$'\x08')
         case ${ET[$fi]} in
           src) if (( sc > 0 )); then src="${src:0:sc-1}${src:sc}"; sc=$(( sc - 1 )); fi ;;
@@ -1711,6 +1788,16 @@ text_field_dialog() { # title prompt default
       $KEY_HOME) caret=0 ;;
       $KEY_END) caret=${#name} ;;
       $'\x7f'|$'\x08') if (( caret > 0 )); then name="${name:0:caret-1}${name:caret}"; caret=$(( caret - 1 )); fi ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 4 9 "OK" ok; then break 2; fi
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 4 18 "Cancel" plain; then cancelled=1; break 2; fi
+          if dlg_hit_field "$dw" "$BC_ME_Y" "$BC_ME_X" 2 2 $(( w - 4 )); then
+            caret=$DLG_FIELD_X
+            (( caret > ${#name} )) && caret=${#name}
+          fi
+        done
+        ;;
       *) if [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then name="${name:0:caret}$key${name:caret}"; caret=$(( caret + 1 )); fi ;;
     esac
     tf_draw
@@ -1731,12 +1818,12 @@ delete_dialog() { # kind real
   (( ${#name} + 6 > w )) && w=$(( ${#name} + 6 ))
   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
   mc_dialog "$w" 6 "Delete" 1
+  local c=$(( (w - 14) / 2 ))
   dd_draw() {
     wattrset "$dw" 0 26
     mvwaddstr "$dw" 1 2 "$prompt"
     mvwaddstr "$dw" 2 $(( (w - ${#name}) / 2 )) "$name"
     dlg_divider 3 26
-    local c=$(( (w - 14) / 2 ))
     dlg_button 4 "$c"     "Yes" plain 0 26 27
     dlg_button 4 "$(( c + 8 ))" "No" plain 0 26 27
     wrefresh "$dw"
@@ -1749,6 +1836,12 @@ delete_dialog() { # kind real
       $KEY_RESIZE) yes=0; break ;;
       $'\r'|y|Y) yes=1; break ;;
       n|N|$'\x1b') yes=0; break ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 4 "$c" "Yes" plain; then yes=1; break 2; fi
+          if dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 4 "$(( c + 8 ))" "No" plain; then yes=0; break 2; fi
+        done
+        ;;
     esac
   done
   delwin "$dw"
@@ -1949,6 +2042,19 @@ select_group_dialog() {
       $KEY_RIGHT) (( caret < ${#pat} )) && caret=$(( caret + 1 )) ;;
       $KEY_HOME) caret=0 ;;
       $KEY_END) caret=${#pat} ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 2 2 "Files only"; then
+            files_only=$(( 1 - files_only )); focus=1
+          elif dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 2 27 "Case sensitive"; then
+            case_sens=$(( 1 - case_sens )); focus=2
+          elif dlg_hit_checkbox "$dw" "$BC_ME_Y" "$BC_ME_X" 3 2 "Using shell patterns"; then
+            shell_pat=$(( 1 - shell_pat )); focus=3
+          elif dlg_hit_field "$dw" "$BC_ME_Y" "$BC_ME_X" 1 2 49; then
+            focus=0; caret=$DLG_FIELD_X; (( caret > ${#pat} )) && caret=${#pat}
+          fi
+        done
+        ;;
       $'\x7f'|$'\x08')
         if (( caret > 0 )); then
           pat="${pat:0:caret-1}${pat:caret}"
