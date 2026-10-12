@@ -336,6 +336,7 @@ declare -A BC_WIMM=()
 declare -A BC_WLEAVE=()
 declare -A BC_WNOTIMEOUT=()
 declare -A BC_WSYNC=()
+declare -A BC_WPAD=()
 # panel state: BC_PSTACK holds panel ids ordered bottom -> top
 BC_PN=0
 declare -A BC_PWIN=()   # panel id -> window id
@@ -409,6 +410,7 @@ _bc_init_window() { # w y x h
   BC_WLEAVE[$w]=0
   BC_WNOTIMEOUT[$w]=0
   BC_WSYNC[$w]=0
+  BC_WPAD[$w]=0
   BC_SCROLL[$w]=0
   BC_SR[$w]=""
   BC_WLIST+=("$w")
@@ -1690,6 +1692,114 @@ dupwin() { # win -> bc_win
   _bc_mark_all "$id"
   bc_win=$id
   return 0
+}
+
+newpad() { # nlines ncols
+  if (( $1 < 1 || $2 < 1 )); then
+    return 1
+  fi
+  local id=$BC_WN
+  BC_WN=$(( BC_WN + 1 ))
+  _bc_init_window "$id" 0 0 "$1" "$2"
+  BC_WPAD[$id]=1
+  bc_win=$id
+  return 0
+}
+
+subpad() { # win nlines ncols begin_y begin_x (absolute, within parent pad)
+  local w=$1 h=$2 wd=$3 y=$4 x=$5
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if (( y < BC_WY[$w] || x < BC_WX[$w] )); then
+    return 1
+  fi
+  if (( y + h > BC_WY[$w] + BC_WH[$w] || x + wd > BC_WX[$w] + BC_WW[$w] )); then
+    return 1
+  fi
+  local id=$BC_WN
+  BC_WN=$(( BC_WN + 1 ))
+  _bc_init_window "$id" "$y" "$x" "$h" "$wd"
+  BC_WBUF[$id]=$w
+  BC_WPAR[$id]=$w
+  BC_WPAD[$id]=1
+  bc_win=$id
+  return 0
+}
+
+is_pad() { # win
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WPAD[$w]:-} && ${BC_WPAD[$w]} != 0 ]]
+}
+
+_bc_prefresh_copy() { # pad pminrow pmincol sminrow smincol smaxrow smaxcol
+  local w=$1 pminrow=$2 pmincol=$3 sminrow=$4 smincol=$5 smaxrow=$6 smaxcol=$7
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  local buf=${BC_WBUF[$w]}
+  local h=$(( smaxrow - sminrow + 1 ))
+  local wd=$(( smaxcol - smincol + 1 ))
+  if (( h < 0 || wd < 0 )); then
+    return 1
+  fi
+  if (( pminrow < 0 )); then
+    sminrow=$(( sminrow - pminrow ))
+    h=$(( h + pminrow ))
+    pminrow=0
+  fi
+  if (( pmincol < 0 )); then
+    smincol=$(( smincol - pmincol ))
+    wd=$(( wd + pmincol ))
+    pmincol=0
+  fi
+  if (( pminrow + h > BC_WH[$w] )); then
+    h=$(( BC_WH[$w] - pminrow ))
+  fi
+  if (( pmincol + wd > BC_WW[$w] )); then
+    wd=$(( BC_WW[$w] - pmincol ))
+  fi
+  if (( sminrow < 0 )); then
+    pminrow=$(( pminrow - sminrow ))
+    h=$(( h + sminrow ))
+    sminrow=0
+  fi
+  if (( smincol < 0 )); then
+    pmincol=$(( pmincol - smincol ))
+    wd=$(( wd + smincol ))
+    smincol=0
+  fi
+  if (( sminrow + h > BC_LINES )); then
+    h=$(( BC_LINES - sminrow ))
+  fi
+  if (( smincol + wd > BC_COLS )); then
+    wd=$(( BC_COLS - smincol ))
+  fi
+  if (( h <= 0 || wd <= 0 )); then
+    return 0
+  fi
+  local y x sy sx k
+  for (( y = 0; y < h; y++ )); do
+    sy=$(( sminrow + y ))
+    for (( x = 0; x < wd; x++ )); do
+      sx=$(( smincol + x ))
+      k="$buf/$(( pminrow + y )) $(( pmincol + x ))"
+      _bc_cell "$BC_STDSCR" "$sy" "$sx" "${BC_C[$k]:- }" "${BC_A[$k]:-0}" "${BC_P[$k]:-0}"
+    done
+  done
+  return 0
+}
+
+pnoutrefresh() { # pad pminrow pmincol sminrow smincol smaxrow smaxcol
+  _bc_prefresh_copy "$@"
+}
+
+prefresh() { # pad pminrow pmincol sminrow smincol smaxrow smaxcol
+  _bc_prefresh_copy "$@" || return 1
+  wrefresh "$BC_STDSCR"
+}
+
+pechochar() { # pad ch
+  local w=${1:-$BC_CURR}
+  [[ -n ${BC_WPAD[$w]:-} && ${BC_WPAD[$w]} != 0 ]] || return 1
+  waddch "$w" "$2" || return 1
+  prefresh "$w" 0 0 0 0 $(( BC_LINES - 1 )) $(( BC_COLS - 1 ))
 }
 
 scrollok() { # win bool
@@ -3690,21 +3800,4 @@ delay_output() { # ms
   return 0
 }
 
-# ------------------------------------------------------------------ pads
-newpad() { # lines cols
-  if (( $1 < 1 || $2 < 1 )); then
-    return 1
-  fi
-  local id=$BC_WN
-  BC_WN=$(( BC_WN + 1 ))
-  _bc_init_window "$id" 0 0 "$1" "$2"
-  bc_win=$id
-  return 0
-}
 
-prefresh() { # pad pmin_y pmin_x smin_y smin_x x1 y1 x2 y2
-  local w=$1
-  werase "$BC_STDSCR"
-  wrefresh "$BC_STDSCR"
-  return 0
-}

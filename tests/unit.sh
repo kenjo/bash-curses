@@ -403,6 +403,24 @@ check "dupwin copies"            "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; 
 check "dupwin independent"       "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; mvwaddstr $src 0 0 AB; dupwin $src; dst=$bc_win; mvwaddstr $src 0 0 C; row $dst 5 5 2')"
 check "dupwin cursor"            "1 1"     "$(scr 'newwin 2 2 5 5; src=$bc_win; wmove $src 1 1; dupwin $src; dst=$bc_win; printf "%s %s" "${BC_WAY[$dst]}" "${BC_WAX[$dst]}"')"
 
+# --- H6. pad API (headless) ---
+check "newpad size"              "30 100"  "$(scr 'newpad 30 100; printf "%s %s" "${BC_WH[$bc_win]}" "${BC_WW[$bc_win]}"')"
+check "newpad invalid"           "1"       "$(scr 'newpad 0 10; printf "%s" "$?"')"
+check "is_pad true"              "yes"     "$(scr 'newpad 3 3; is_pad $bc_win && echo yes || echo no')"
+check "is_pad false"             "no"      "$(scr 'newwin 3 3 0 0; is_pad $bc_win && echo yes || echo no')"
+check "is_pad uninitialized"     "no"      "$(scr 'is_pad 99 && echo yes || echo no')"
+check "subpad is pad"            "yes"     "$(scr 'newpad 5 5; p=$bc_win; subpad $p 2 2 1 1; c=$bc_win; is_pad $c && echo yes || echo no')"
+check "subpad parent"            "1 1"     "$(scr 'newpad 5 5; p=$bc_win; subpad $p 2 2 1 1; c=$bc_win; wgetparent $c; printf "%s %s" "$bc_parent" "$p"')"
+check "subpad invalid"           "1"       "$(scr 'newpad 5 5; p=$bc_win; subpad $p 2 2 5 5; printf "%s" "$?"')"
+check "pnoutrefresh copies"      "ABC"     "$(scr 'newpad 3 3; p=$bc_win; mvwaddstr $p 0 0 ABC; mvwaddstr $p 1 0 DEF; mvwaddstr $p 2 0 GHI; pnoutrefresh $p 0 0 1 1 3 3; row 0 1 1 3')"
+check "pnoutrefresh clips right" "AB"      "$(scr 'newpad 3 3; p=$bc_win; mvwaddstr $p 0 0 ABC; pnoutrefresh $p 0 0 0 78 0 79; row 0 0 78 2')"
+check "pnoutrefresh clips bottom" "A"      "$(scr 'newpad 3 3; p=$bc_win; mvwaddstr $p 0 0 ABC; mvwaddstr $p 1 0 DEF; pnoutrefresh $p 0 0 23 0 23 2; row 0 23 0 1')"
+check "pnoutrefresh invalid"     "1"       "$(scr 'pnoutrefresh 99 0 0 0 0 0 0; printf "%s" "$?"')"
+check "prefresh copies"          "ABC"     "$(scr 'newpad 3 3; p=$bc_win; mvwaddstr $p 0 0 ABC; mvwaddstr $p 1 0 DEF; mvwaddstr $p 2 0 GHI; prefresh $p 0 0 1 1 3 3 >/dev/null; row 0 1 1 3')"
+check "prefresh invalid"         "1"       "$(scr 'prefresh 99 0 0 0 0 0 0 >/dev/null; printf "%s" "$?"')"
+check "pechochar writes"         "A"       "$(scr 'newpad 3 3; p=$bc_win; pechochar $p A >/dev/null; row 0 0 0 1')"
+check "pechochar not pad"        "1"       "$(scr 'newwin 3 3 0 0; pechochar $bc_win A >/dev/null; printf "%s" "$?"')"
+
 # --- I. wchgat window x-offset (regression: changed cell must land at the
 #        window's absolute X, not at X=0 of the buffer) ---
 check "wchgat win x-offset attr" "9 0" "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; wmove 5 0 0; wchgat 5 -1 9 4; printf "%s %s" "${BC_A["5/2 3"]:-0}" "${BC_A["5/2 0"]:-0}" ) )"
