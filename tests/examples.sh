@@ -102,7 +102,12 @@ for ex in \
   47-wide-input.sh \
   48-wide-insert.sh \
   49-dupwin.sh \
-  50-mcprint.sh
+  50-mcprint.sh \
+  51-wenclose.sh \
+  52-pad-extra.sh \
+  53-putwin-getwin.sh \
+  54-chgat-attrs.sh \
+  55-border-lines.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -197,6 +202,21 @@ do
       ;;
     50-mcprint.sh)
       run_example "$ex" m n c w
+      ;;
+    51-wenclose.sh)
+      run_example "$ex" u d l r t
+      ;;
+    52-pad-extra.sh)
+      run_example "$ex" Up Down Left Right s p n e
+      ;;
+    53-putwin-getwin.sh)
+      run_example "$ex" s l
+      ;;
+    54-chgat-attrs.sh)
+      run_example "$ex" c w m s o f
+      ;;
+    55-border-lines.sh)
+      run_example "$ex" b x m h v
       ;;
     *)
       run_example "$ex"
