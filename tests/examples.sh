@@ -97,7 +97,12 @@ for ex in \
   42-prog-mode.sh \
   43-filter.sh \
   44-vidattr.sh \
-  45-color-pair.sh
+  45-color-pair.sh \
+  46-wide-output.sh \
+  47-wide-input.sh \
+  48-wide-insert.sh \
+  49-dupwin.sh \
+  50-mcprint.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -177,6 +182,21 @@ do
       ;;
     45-color-pair.sh)
       run_example "$ex" p e a
+      ;;
+    46-wide-output.sh)
+      run_example "$ex" a w n s e
+      ;;
+    47-wide-input.sh)
+      run_example "$ex" w g m i n s u
+      ;;
+    48-wide-insert.sh)
+      run_example "$ex" w i m n s
+      ;;
+    49-dupwin.sh)
+      run_example "$ex" d d
+      ;;
+    50-mcprint.sh)
+      run_example "$ex" m n c w
       ;;
     *)
       run_example "$ex"
