@@ -1363,6 +1363,23 @@ view_loop() { # modal key loop; returns 0 to close the viewer
         ;;
       "q"|"Q"|$'\x1b'|"$KEY_F3"|"$KEY_F10") return 0 ;;
       $KEY_RESIZE) BC_WINCH=1; return 0 ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if (( BC_ME_BSTATE & (BUTTON4_PRESSED | BUTTON4_CLICKED) )); then
+            V_TARGET=$V_OFF
+            (( V_TARGET > 0 )) && V_TARGET=$(( V_TARGET - 1 ))
+            view_scroll_to "$V_TARGET"
+          elif (( BC_ME_BSTATE & (BUTTON5_PRESSED | BUTTON5_CLICKED) )); then
+            V_TARGET=$V_OFF
+            (( V_TARGET < V_MAXOFF )) && V_TARGET=$(( V_TARGET + 1 ))
+            view_scroll_to "$V_TARGET"
+          elif (( BC_ME_Y == LINES - 1 && (BC_ME_BSTATE & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED)) )); then
+            case $(( BC_ME_X / 10 )) in
+              2|9) return 0 ;;
+            esac
+          fi
+        done
+        ;;
       *) continue ;;
     esac
   done

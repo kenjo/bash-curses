@@ -18,6 +18,7 @@ rm -rf "$TREE"
 mkdir -p "$TREE/sub"
 printf 'hello\n' > "$TREE/alpha"
 printf 'beta\n' > "$TREE/sub/beta"
+seq 1 100 > "$TREE/big"
 
 tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 -c "$TREE" bash "$REPO/examples/mc.sh"
 
@@ -64,6 +65,11 @@ double_click() {
     1b 5b 3c 30 3b $(hexstr "$sx") 3b $(hexstr "$sy") 6d \
     1b 5b 3c 30 3b $(hexstr "$sx") 3b $(hexstr "$sy") 4d \
     1b 5b 3c 30 3b $(hexstr "$sx") 3b $(hexstr "$sy") 6d
+  sleep 1.0
+}
+wheel_down() {
+  local x=$1 y=$2 sx=$(( $1 + 1 )) sy=$(( $2 + 1 ))
+  tmux -S "$SOCK" send-keys -H -t "$T" 1b 5b 3c $(hexstr "65") 3b $(hexstr "$sx") 3b $(hexstr "$sy") 4d
   sleep 1.0
 }
 esc() { tmux -S "$SOCK" send-keys -H -t "$T" 1b; sleep 1.5; }
@@ -134,14 +140,22 @@ check_not "Esc closes user menu" "User menu"
 click 55 4
 click 25 29
 check_line 1 "beta" "View click opens viewer"
-esc
-check_line 30 "Quit" "Esc closes viewer"
+click 25 29
+check_line 30 "Quit" "Viewer Quit click closes viewer"
 
 # Copy button opens the Copy dialog; Cancel button closes it
 click 45 29
 check_line 8 " Copy " "Copy click opens dialog"
 click 60 17
 check_line_not 8 " Copy " "Cancel click closes dialog"
+
+# wheel scrolling in the viewer
+double_click 5 3
+double_click 5 6
+check_line 1 " 0/" "viewer starts at top"
+wheel_down 5 10
+check_line_not 1 " 0/" "wheel down scrolls viewer"
+click 25 29
 
 # Quit button exits
 click 95 29
