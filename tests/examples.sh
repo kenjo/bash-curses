@@ -82,7 +82,12 @@ for ex in \
   27-keyname.sh \
   28-inchs.sh \
   29-addchstr.sh \
-  30-instr.sh
+  30-instr.sh \
+  31-subwin.sh \
+  32-movewindow.sh \
+  33-clip-printw.sh \
+  34-test-opaque.sh \
+  35-test-delwin.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -117,6 +122,21 @@ do
       ;;
     30-instr.sh)
       run_example "$ex" i n m b
+      ;;
+    31-subwin.sh)
+      run_example "$ex" p c m
+      ;;
+    32-movewindow.sh)
+      run_example "$ex" p c
+      ;;
+    33-clip-printw.sh)
+      run_example "$ex" a b
+      ;;
+    34-test-opaque.sh)
+      run_example "$ex" c i l m v s n t
+      ;;
+    35-test-delwin.sh)
+      run_example "$ex" c d c d
       ;;
     *)
       run_example "$ex"
