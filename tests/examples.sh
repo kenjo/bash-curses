@@ -122,7 +122,12 @@ for ex in \
   67-scroll-regions-extra.sh \
   68-border-line-extra.sh \
   69-input-wrappers.sh \
-  70-wide-stdscr.sh
+  70-wide-stdscr.sh \
+  71-stdscr-del-ins.sh \
+  72-stdscr-in.sh \
+  73-stdscr-add.sh \
+  74-wide-mv.sh \
+  75-attr-bg-extra.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -277,6 +282,21 @@ do
       ;;
     70-wide-stdscr.sh)
       run_example "$ex" a 1 m 2 i 3 4 n 5 s
+      ;;
+    71-stdscr-del-ins.sh)
+      run_example "$ex" d 1 w 2 i 3 m 4 s 5 n 6
+      ;;
+    72-stdscr-in.sh)
+      run_example "$ex" i 1 m n 2 r s t 3 u
+      ;;
+    73-stdscr-add.sh)
+      run_example "$ex" a 1 m 2 n 3 r s t u v w
+      ;;
+    74-wide-mv.sh)
+      run_example "$ex" a 1 w 2 g a 3 b i 4 n 5 s 6
+      ;;
+    75-attr-bg-extra.sh)
+      run_example "$ex" a o f 1 2 3 b 4 k 5 g p v 6 u t
       ;;
     *)
       run_example "$ex"
