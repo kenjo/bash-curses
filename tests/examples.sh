@@ -107,7 +107,12 @@ for ex in \
   52-pad-extra.sh \
   53-putwin-getwin.sh \
   54-chgat-attrs.sh \
-  55-border-lines.sh
+  55-border-lines.sh \
+  56-input-misc.sh \
+  57-mouse-extra.sh \
+  58-color-extended.sh \
+  59-wide-extra.sh \
+  60-attr-get.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -217,6 +222,21 @@ do
       ;;
     55-border-lines.sh)
       run_example "$ex" b x m h v
+      ;;
+    56-input-misc.sh)
+      run_example "$ex" m e k 1 2 i u n d f b l c
+      ;;
+    57-mouse-extra.sh)
+      run_example "$ex" i h u s
+      ;;
+    58-color-extended.sh)
+      run_example "$ex" c p a f r
+      ;;
+    59-wide-extra.sh)
+      run_example "$ex" n a i s r
+      ;;
+    60-attr-get.sh)
+      run_example "$ex" s e g w a o f
       ;;
     *)
       run_example "$ex"
