@@ -581,6 +581,10 @@ check "doupdate honors BC_NO_SCROLLREG" "no" "$(scr 'BC_NO_SCROLLREG=1; mvaddstr
 check "wrefresh after wscrl repaints region" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(wrefresh 0); pat=$(printf "\033[1;3r"); [[ $out != *"$pat"* ]] && echo yes || echo no')"
 check "wscrl twice marks net new rows" "1" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; wscrl 0 1; [[ -n ${BC_MK["0/1 0"]+set} ]] && echo 1 || echo 0')"
 
+# J3. status-line free space uses rounded G/M like mc (not floor division)
+check "mc hum rounds G" "25G" "$(mc 'hum 25969664')"
+check "mc hum rounds M" "1024M" "$(mc 'hum 1048575')"
+
 # J4. list_dir: parent first, directories before files, hidden filtering, exec marker
 check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(
   d="$REPO/tmp/list_dir_test.$$"

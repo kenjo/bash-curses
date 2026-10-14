@@ -146,8 +146,8 @@ selection_summary() { # p -> SEL_SUMMARY
 
 hum() { # kb -> human
   local kb=$1
-  if (( kb >= 10240 * 1024 )); then printf '%dG' "$(( kb / 1048576 ))"
-  elif (( kb >= 1024 )); then printf '%dM' "$(( kb / 1024 ))"
+  if (( kb >= 10240 * 1024 )); then printf '%dG' "$(( (kb + 524288) / 1048576 ))"
+  elif (( kb >= 1024 )); then printf '%dM' "$(( (kb + 512) / 1024 ))"
   else printf '%dK' "$kb"; fi
 }
 
