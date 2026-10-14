@@ -127,7 +127,12 @@ for ex in \
   72-stdscr-in.sh \
   73-stdscr-add.sh \
   74-wide-mv.sh \
-  75-attr-bg-extra.sh
+  75-attr-bg-extra.sh \
+  76-panel-bottom.sh \
+  77-wide-insert-extra.sh \
+  78-scanw-getstr-extra.sh \
+  79-hline-set-extra.sh \
+  80-copywin-clrtobot.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -297,6 +302,21 @@ do
       ;;
     75-attr-bg-extra.sh)
       run_example "$ex" a o f 1 2 3 b 4 k 5 g p v 6 u t
+      ;;
+    76-panel-bottom.sh)
+      run_example "$ex" b t h s m r w u
+      ;;
+    77-wide-insert-extra.sh)
+      run_example "$ex" w 1 s 2 n i 3 m 4
+      ;;
+    78-scanw-getstr-extra.sh)
+      run_example "$ex" s 4 2 Enter w 4 3 Enter g a b c Enter
+      ;;
+    79-hline-set-extra.sh)
+      run_example "$ex" h v m n w 1
+      ;;
+    80-copywin-clrtobot.sh)
+      run_example "$ex" c 1 2 l i
       ;;
     *)
       run_example "$ex"
