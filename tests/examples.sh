@@ -117,7 +117,12 @@ for ex in \
   62-window-query.sh \
   63-clear-refresh.sh \
   64-slk-extra.sh \
-  65-varargs-scanw.sh
+  65-varargs-scanw.sh \
+  66-screen-dump-sp.sh \
+  67-scroll-regions-extra.sh \
+  68-border-line-extra.sh \
+  69-input-wrappers.sh \
+  70-wide-stdscr.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -257,6 +262,21 @@ do
       ;;
     65-varargs-scanw.sh)
       run_example "$ex" p v 1 s 42 Enter w 43 Enter 2 44 Enter
+      ;;
+    66-screen-dump-sp.sh)
+      run_example "$ex" d i r s
+      ;;
+    67-scroll-regions-extra.sh)
+      run_example "$ex" u d s r c
+      ;;
+    68-border-line-extra.sh)
+      run_example "$ex" b 1 m h v 2 3 4 s t
+      ;;
+    69-input-wrappers.sh)
+      run_example "$ex" k a g b w c n 12345 Enter s abc Enter 1 67890 Enter 2 def Enter
+      ;;
+    70-wide-stdscr.sh)
+      run_example "$ex" a 1 m 2 i 3 4 n 5 s
       ;;
     *)
       run_example "$ex"
