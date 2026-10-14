@@ -248,8 +248,9 @@ terminal usable.
 - A failed partial mouse-read loses the bytes consumed so far (no
   push-back of partial SGR payloads).
 - `beep()` emits `ESC [ bel` via `\a`.
-- `PAIR_NUMBER` is not provided: the pair is a separate argument, so there
-  is no packed chtype to extract it from.
+- `PAIR_NUMBER` is provided as a compatibility wrapper; because this library
+  keeps attributes and color pairs separate, it simply masks the low 9 bits of
+  the value passed to it.
 - `ESCDELAY` (default 1000 ms) is the timeout used when `wgetch` decides
   whether an ESC is a key-sequence leader or a bare ESC.
 - `use_screen` is not implemented (bash cannot run a second curses context

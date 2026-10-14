@@ -47,8 +47,10 @@ terminal is restored even if the script dies.
 ## Examples
 
 `examples/` holds ports of ncurses test-suite demos. `tests/examples.sh`
-smoke-tests them in tmux. `examples/newdemo.sh` was frame-diffed against the C
-reference: 0 differing cells of 672 written (see DESIGN.md "Verification").
+smoke-tests them in tmux. The current example set also exercises every public
+wrapper in `lib/bc.sh` at least once. `examples/newdemo.sh` was frame-diffed
+against the C reference: 0 differing cells of 672 written (see DESIGN.md
+"Verification").
 
 ```sh
 tmux new-session -d -s bc -x 100 -y 30 bash examples/newdemo.sh
