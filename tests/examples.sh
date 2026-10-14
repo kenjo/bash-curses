@@ -112,7 +112,12 @@ for ex in \
   57-mouse-extra.sh \
   58-color-extended.sh \
   59-wide-extra.sh \
-  60-attr-get.sh
+  60-attr-get.sh \
+  61-string-wrappers.sh \
+  62-window-query.sh \
+  63-clear-refresh.sh \
+  64-slk-extra.sh \
+  65-varargs-scanw.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -237,6 +242,21 @@ do
       ;;
     60-attr-get.sh)
       run_example "$ex" s e g w a o f
+      ;;
+    61-string-wrappers.sh)
+      run_example "$ex" a n m b w c s i
+      ;;
+    62-window-query.sh)
+      run_example "$ex" c b m a k d e h
+      ;;
+    63-clear-refresh.sh)
+      run_example "$ex" c t e n d s u o r
+      ;;
+    64-slk-extra.sh)
+      run_example "$ex" a o f s 1 2 c n
+      ;;
+    65-varargs-scanw.sh)
+      run_example "$ex" p v 1 s 42 Enter w 43 Enter 2 44 Enter
       ;;
     *)
       run_example "$ex"
