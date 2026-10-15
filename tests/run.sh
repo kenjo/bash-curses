@@ -10,7 +10,7 @@ export BC_TEST_JOBS=${BC_TEST_JOBS:-4}
 rm -rf "$LOGDIR"
 mkdir -p "$LOGDIR"
 
-tests=(unit.sh unit_screen.sh integration.sh examples.sh mc_nav.sh mc_menu.sh mc_view.sh mc_resize.sh mc_dialog.sh mc_actions.sh mc_parity.sh mc_mouse.sh)
+tests=(unit.sh unit_screen.sh integration.sh examples_c.sh examples.sh mc_nav.sh mc_menu.sh mc_view.sh mc_resize.sh mc_dialog.sh mc_actions.sh mc_parity.sh mc_mouse.sh)
 PIDS=()
 for t in "${tests[@]}"; do
   (

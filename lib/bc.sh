@@ -3686,7 +3686,11 @@ move_panel() { # p ny nx
 }
 
 replace_panel() { # p win
-  BC_PWIN[$1]=$2
+  local p=$1 old=${BC_PWIN[$1]}
+  if [[ -n ${BC_WY[$old]:-} ]]; then
+    BC_DELRECTS+="|${BC_WY[$old]} ${BC_WX[$old]} ${BC_WH[$old]} ${BC_WW[$old]}"
+  fi
+  BC_PWIN[$p]=$2
   return 0
 }
 
