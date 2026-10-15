@@ -167,7 +167,8 @@ wait_seq() {
 after_key() {
   local which=$1 before=$2 k=$3
   if [[ $which == clone ]]; then
-    wait_seq "$before" || sleep "${PARITY_KEY_SLEEP:-0.2}"
+    wait_seq "$before" || true
+    if [[ $k == Escape ]]; then sleep "${PARITY_ESC_SLEEP:-0.15}"; else sleep "${PARITY_KEY_SLEEP:-0.1}"; fi
   else
     if [[ $k == Escape ]]; then sleep "${PARITY_ESC_SLEEP:-0.15}"; else sleep "${PARITY_KEY_SLEEP:-0.02}"; fi
   fi

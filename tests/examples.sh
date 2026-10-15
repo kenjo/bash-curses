@@ -2,69 +2,98 @@
 # tmux-driven smoke tests for examples/*.sh.
 # Each example is run in a real tty, sent a few keys, and must exit cleanly.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_examples.sock"
-T=bexamples
-pass=0
-fail=0
+RES="$REPO/tmp/examples_results"
+LOGS="$REPO/tmp/examples_logs"
+JOBS=${BC_TEST_JOBS:-$(nproc)}
+(( JOBS > 8 )) && JOBS=8
+(( JOBS < 1 )) && JOBS=1
 
-ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
-bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
-
-cleanup() { tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null; }
+cleanup() {
+  for sock in "$REPO"/tmp/bc_example_*.sock; do
+    [[ -e $sock ]] || continue
+    base=${sock##*/bc_example_}
+    base=${base%.sock}
+    tmux -S "$sock" kill-session -t "bc_${base}" 2>/dev/null || true
+    rm -f "$sock"
+  done
+}
 trap cleanup EXIT
 
 mkdir -p "$REPO/tmp"
-tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
-rm -f "$SOCK"
+rm -rf "$RES" "$LOGS"
+mkdir -p "$RES" "$LOGS"
+rm -f "$REPO"/tmp/bc_example_*.sock "$REPO"/tmp/bc_example_*.out "$REPO"/tmp/bc_example_*.log
 
-run_example() {
+PIDS=()
+start_example() {
   local name=$1
   shift
   local base="${name%.sh}"
+  local sock="$REPO/tmp/bc_example_${base}.sock"
+  local sess="bc_${base}"
   local out="$REPO/tmp/bc_example_${base}.out"
+  local log="$LOGS/${base}.log"
+  local res="$RES/${base}.res"
   local script="$REPO/examples/$name"
-  rm -f "$out"
+  rm -f "$out" "$log" "$res"
 
   if [[ ! -f "$script" ]]; then
-    bad "$name missing"
+    printf 'FAIL %s missing\n' "$name" > "$res"
     return
   fi
 
-  tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
-  tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 \
-    bash -c 'bash "$1"; rc=$?; printf "%s\n" "$rc" > "$2"' _ "$script" "$out"
+  (
+    tmux -S "$sock" kill-session -t "$sess" 2>/dev/null
+    rm -f "$sock"
+    tmux -S "$sock" new-session -d -s "$sess" -x 100 -y 30 \
+      bash -c 'bash "$1"; rc=$?; printf "%s\n" "$rc" > "$2"' _ "$script" "$out"
 
-  sleep 1
-  local k
-  for k in "$@"; do
-    if [[ $k == raw:* ]]; then
-      tmux -S "$SOCK" send-keys -H -t "$T" ${k#raw:} 2>/dev/null || true
+    sleep 1
+    local k
+    for k in "$@"; do
+      if [[ $k == raw:* ]]; then
+        tmux -S "$sock" send-keys -H -t "$sess" ${k#raw:} 2>/dev/null || true
+      else
+        tmux -S "$sock" send-keys -t "$sess" "$k" 2>/dev/null || true
+      fi
+      sleep 0.3
+    done
+    tmux -S "$sock" send-keys -t "$sess" q 2>/dev/null || true
+
+    local waited=0
+    while [[ ! -f "$out" ]] && (( waited < 80 )); do
+      sleep 0.1
+      waited=$((waited+1))
+    done
+
+    if [[ ! -f "$out" ]]; then
+      printf 'FAIL %s timed out\n' "$name" > "$res"
     else
-      tmux -S "$SOCK" send-keys -t "$T" "$k" 2>/dev/null || true
+      local rc
+      rc=$(cat "$out")
+      if [[ "$rc" == "0" ]]; then
+        printf 'ok   %s\n' "$name" > "$res"
+      else
+        printf 'FAIL %s exited %s\n' "$name" "$rc" > "$res"
+      fi
     fi
-    sleep 0.3
-  done
-  tmux -S "$SOCK" send-keys -t "$T" q 2>/dev/null || true
 
-  local waited=0
-  while [[ ! -f "$out" ]] && (( waited < 80 )); do
-    sleep 0.1
-    waited=$((waited+1))
-  done
+    tmux -S "$sock" kill-session -t "$sess" 2>/dev/null
+    rm -f "$sock"
+  ) > "$log" 2>&1 &
 
-  if [[ ! -f "$out" ]]; then
-    bad "$name timed out"
-  else
-    local rc
-    rc=$(cat "$out")
-    if [[ "$rc" == "0" ]]; then
-      ok "$name"
-    else
-      bad "$name exited $rc"
-    fi
+  PIDS+=("$!")
+  if (( ${#PIDS[@]} >= JOBS )); then
+    wait -n
+    local live=()
+    local p
+    for p in "${PIDS[@]}"; do
+      if kill -0 "$p" 2>/dev/null; then
+        live+=("$p")
+      fi
+    done
+    PIDS=("${live[@]}")
   fi
-
-  tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 }
 
 for ex in \
@@ -136,192 +165,207 @@ for ex in \
 do
   case $ex in
     13-screen-dump.sh)
-      run_example "$ex" r
+      start_example "$ex" r
       ;;
     15-window-dump.sh)
-      run_example "$ex" g d
+      start_example "$ex" g d
       ;;
     18-pads.sh)
-      run_example "$ex" Up Down Left Right
+      start_example "$ex" Up Down Left Right
       ;;
     19-scroll-regions.sh)
-      run_example "$ex" Down Up NPage PPage
+      start_example "$ex" Down Up NPage PPage
       ;;
     24-mouse-buttons.sh)
-      run_example "$ex" "raw:1b 5b 3c 30 3b 35 3b 36 4d 1b 5b 3c 30 3b 35 3b 36 6d"
+      start_example "$ex" "raw:1b 5b 3c 30 3b 35 3b 36 4d 1b 5b 3c 30 3b 35 3b 36 6d"
       ;;
     25-background.sh)
-      run_example "$ex" b s g
+      start_example "$ex" b s g
       ;;
     26-inserts.sh)
-      run_example "$ex" i n s d I D
+      start_example "$ex" i n s d I D
       ;;
     27-keyname.sh)
-      run_example "$ex" Up F1 a
+      start_example "$ex" Up F1 a
       ;;
     28-inchs.sh)
-      run_example "$ex" i n s m
+      start_example "$ex" i n s m
       ;;
     29-addchstr.sh)
-      run_example "$ex" a n m b
+      start_example "$ex" a n m b
       ;;
     30-instr.sh)
-      run_example "$ex" i n m b
+      start_example "$ex" i n m b
       ;;
     31-subwin.sh)
-      run_example "$ex" p c m
+      start_example "$ex" p c m
       ;;
     32-movewindow.sh)
-      run_example "$ex" p c
+      start_example "$ex" p c
       ;;
     33-clip-printw.sh)
-      run_example "$ex" a b
+      start_example "$ex" a b
       ;;
     34-test-opaque.sh)
-      run_example "$ex" c i l m v s n t
+      start_example "$ex" c i l m v s n t
       ;;
     35-test-delwin.sh)
-      run_example "$ex" c d c d
+      start_example "$ex" c d c d
       ;;
     36-wresize.sh)
-      run_example "$ex" + - r
+      start_example "$ex" + - r
       ;;
     37-use-window.sh)
-      run_example "$ex" 1 2 s d
+      start_example "$ex" 1 2 s d
       ;;
     38-touch-lines.sh)
-      run_example "$ex" t u l w
+      start_example "$ex" t u l w
       ;;
     39-echochar.sh)
-      run_example "$ex" e w u
+      start_example "$ex" e w u
       ;;
     40-defkey.sh)
-      run_example "$ex" d k b o
+      start_example "$ex" d k b o
       ;;
     41-slk.sh)
-      run_example "$ex" c r t l a
+      start_example "$ex" c r t l a
       ;;
     42-prog-mode.sh)
-      run_example "$ex" d r
+      start_example "$ex" d r
       ;;
     43-filter.sh)
-      run_example "$ex" f n
+      start_example "$ex" f n
       ;;
     44-vidattr.sh)
-      run_example "$ex" a p
+      start_example "$ex" a p
       ;;
     45-color-pair.sh)
-      run_example "$ex" p e a
+      start_example "$ex" p e a
       ;;
     46-wide-output.sh)
-      run_example "$ex" a w n s e
+      start_example "$ex" a w n s e
       ;;
     47-wide-input.sh)
-      run_example "$ex" w g m i n s u
+      start_example "$ex" w g m i n s u
       ;;
     48-wide-insert.sh)
-      run_example "$ex" w i m n s
+      start_example "$ex" w i m n s
       ;;
     49-dupwin.sh)
-      run_example "$ex" d d
+      start_example "$ex" d d
       ;;
     50-mcprint.sh)
-      run_example "$ex" m n c w
+      start_example "$ex" m n c w
       ;;
     51-wenclose.sh)
-      run_example "$ex" u d l r t
+      start_example "$ex" u d l r t
       ;;
     52-pad-extra.sh)
-      run_example "$ex" Up Down Left Right s p n e
+      start_example "$ex" Up Down Left Right s p n e
       ;;
     53-putwin-getwin.sh)
-      run_example "$ex" s l
+      start_example "$ex" s l
       ;;
     54-chgat-attrs.sh)
-      run_example "$ex" c w m s o f
+      start_example "$ex" c w m s o f
       ;;
     55-border-lines.sh)
-      run_example "$ex" b x m h v
+      start_example "$ex" b x m h v
       ;;
     56-input-misc.sh)
-      run_example "$ex" m e k 1 2 i u n d f b l c
+      start_example "$ex" m e k 1 2 i u n d f b l c
       ;;
     57-mouse-extra.sh)
-      run_example "$ex" i h u s
+      start_example "$ex" i h u s
       ;;
     58-color-extended.sh)
-      run_example "$ex" c p a f r
+      start_example "$ex" c p a f r
       ;;
     59-wide-extra.sh)
-      run_example "$ex" n a i s r
+      start_example "$ex" n a i s r
       ;;
     60-attr-get.sh)
-      run_example "$ex" s e g w a o f
+      start_example "$ex" s e g w a o f
       ;;
     61-string-wrappers.sh)
-      run_example "$ex" a n m b w c s i
+      start_example "$ex" a n m b w c s i
       ;;
     62-window-query.sh)
-      run_example "$ex" c b m a k d e h
+      start_example "$ex" c b m a k d e h
       ;;
     63-clear-refresh.sh)
-      run_example "$ex" c t e n d s u o r
+      start_example "$ex" c t e n d s u o r
       ;;
     64-slk-extra.sh)
-      run_example "$ex" a o f s 1 2 c n
+      start_example "$ex" a o f s 1 2 c n
       ;;
     65-varargs-scanw.sh)
-      run_example "$ex" p v 1 s 42 Enter w 43 Enter 2 44 Enter
+      start_example "$ex" p v 1 s 42 Enter w 43 Enter 2 44 Enter
       ;;
     66-screen-dump-sp.sh)
-      run_example "$ex" d i r s
+      start_example "$ex" d i r s
       ;;
     67-scroll-regions-extra.sh)
-      run_example "$ex" u d s r c
+      start_example "$ex" u d s r c
       ;;
     68-border-line-extra.sh)
-      run_example "$ex" b 1 m h v 2 3 4 s t
+      start_example "$ex" b 1 m h v 2 3 4 s t
       ;;
     69-input-wrappers.sh)
-      run_example "$ex" k a g b w c n 12345 Enter s abc Enter 1 67890 Enter 2 def Enter
+      start_example "$ex" k a g b w c n 12345 Enter s abc Enter 1 67890 Enter 2 def Enter
       ;;
     70-wide-stdscr.sh)
-      run_example "$ex" a 1 m 2 i 3 4 n 5 s
+      start_example "$ex" a 1 m 2 i 3 4 n 5 s
       ;;
     71-stdscr-del-ins.sh)
-      run_example "$ex" d 1 w 2 i 3 m 4 s 5 n 6
+      start_example "$ex" d 1 w 2 i 3 m 4 s 5 n 6
       ;;
     72-stdscr-in.sh)
-      run_example "$ex" i 1 m n 2 r s t 3 u
+      start_example "$ex" i 1 m n 2 r s t 3 u
       ;;
     73-stdscr-add.sh)
-      run_example "$ex" a 1 m 2 n 3 r s t u v w
+      start_example "$ex" a 1 m 2 n 3 r s t u v w
       ;;
     74-wide-mv.sh)
-      run_example "$ex" a 1 w 2 g a 3 b i 4 n 5 s 6
+      start_example "$ex" a 1 w 2 g a 3 b i 4 n 5 s 6
       ;;
     75-attr-bg-extra.sh)
-      run_example "$ex" a o f 1 2 3 b 4 k 5 g p v 6 u t
+      start_example "$ex" a o f 1 2 3 b 4 k 5 g p v 6 u t
       ;;
     76-panel-bottom.sh)
-      run_example "$ex" b t h s m r w u
+      start_example "$ex" b t h s m r w u
       ;;
     77-wide-insert-extra.sh)
-      run_example "$ex" w 1 s 2 n i 3 m 4
+      start_example "$ex" w 1 s 2 n i 3 m 4
       ;;
     78-scanw-getstr-extra.sh)
-      run_example "$ex" s 4 2 Enter w 4 3 Enter g a b c Enter
+      start_example "$ex" s 4 2 Enter w 4 3 Enter g a b c Enter
       ;;
     79-hline-set-extra.sh)
-      run_example "$ex" h v m n w 1
+      start_example "$ex" h v m n w 1
       ;;
     80-copywin-clrtobot.sh)
-      run_example "$ex" c 1 2 l i
+      start_example "$ex" c 1 2 l i
       ;;
     *)
-      run_example "$ex"
+      start_example "$ex"
       ;;
   esac
+done
+
+wait
+
+pass=0
+fail=0
+for res in "$RES"/*.res; do
+  [[ -e $res ]] || continue
+  line=$(cat "$res")
+  printf '%s\n' "$line"
+  if [[ $line == ok* ]]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+  fi
 done
 
 echo

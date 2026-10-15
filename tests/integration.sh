@@ -3,11 +3,12 @@
 # (tests/battery_app.sh) running on a real pty, then checks the decoded output.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$REPO/tmp/bc_out_int.txt"
+SOCK="$REPO/tmp/bc_int.sock"
 mkdir -p "$(dirname "$OUT")"
-rm -f "$OUT"
+rm -f "$OUT" "$SOCK"
 T=bcint
-tmux kill-session -t "$T" 2>/dev/null
-tmux new-session -d -s "$T" -x 100 -y 30 bash "$REPO/tests/battery_app.sh"
+tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
+tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 bash "$REPO/tests/battery_app.sh"
 
 ready=0
 for _ in $(seq 1 50); do
@@ -16,7 +17,8 @@ for _ in $(seq 1 50); do
 done
 if (( ! ready )); then
   echo "FAIL: battery app did not become READY"
-  tmux kill-session -t "$T" 2>/dev/null
+  tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
+  rm -f "$SOCK"
   exit 1
 fi
 
@@ -38,7 +40,7 @@ expect_ev_count() {
 }
 
 # ---------------- keys ----------------
-sendk() { tmux send-keys -H -t "$T" "$@"; sleep 0.3; }
+sendk() { tmux -S "$SOCK" send-keys -H -t "$T" "$@"; sleep 0.3; }
 sendk 1b 4f 41        # UP
 sendk 1b 4f 42        # DOWN
 sendk 1b 4f 44        # LEFT
@@ -78,7 +80,7 @@ Mr='1b 5b 3c 31 3b 35 3b 36 6d'    # middle release
 Wu='1b 5b 3c 36 34 3b 35 3b 36 4d' # wheel up (b=64)
 Lp2='1b 5b 3c 30 3b 39 3b 31 30 4d' # left press  (col 8, row 9)
 Lr2='1b 5b 3c 30 3b 39 3b 31 30 6d' # left release
-s() { tmux send-keys -H -t "$T" "$@"; }
+s() { tmux -S "$SOCK" send-keys -H -t "$T" "$@"; }
 
 sleep 0.6
 s $Lp; sleep 0.05; s $Lr; sleep 0.6          # click
@@ -99,14 +101,15 @@ expect_ev_count 4 5 65536 1   # wheel up
 expect_ev_count 8 9 8     1   # diff-position double: single event at second position
 
 # ---------------- done ----------------
-tmux send-keys -H -t "$T" 71
+tmux -S "$SOCK" send-keys -H -t "$T" 71
 done=0
 for _ in $(seq 1 50); do
   if grep -q '^DONE' "$OUT" 2>/dev/null; then done=1; break; fi
   sleep 0.1
 done
 if (( done )); then ok "DONE"; else bad "no DONE line"; fi
-tmux kill-session -t "$T" 2>/dev/null
+tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
+rm -f "$SOCK"
 
 echo
 if (( fail == 0 )); then echo "integration: $pass passed"; else echo "integration: $pass passed, $fail FAILED"; fi

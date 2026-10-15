@@ -1231,7 +1231,11 @@ view_title() { # win : redraw only the title bar
 
   # byte offset of first visible line; MC clamps to total (100%) at the bottom
   local off=${V_BTOFF[$V_OFF]:-0}
-  (( V_OFF >= V_MAXOFF && V_MAXOFF > 0 )) && off=$total
+  if (( V_MAXOFF == 0 )); then
+    off=$total
+  else
+    (( V_OFF >= V_MAXOFF )) && off=$total
+  fi
   (( off < 0 )) && off=0
   (( off > total )) && off=$total
   local pct=0
@@ -1239,11 +1243,11 @@ view_title() { # win : redraw only the title bar
 
   wattrset "$win" 0 6
   local offsettotal="${off}/${total}" pctpart="${pct}%" pctfield left_raw gap left title
-  pctfield=$(printf '%17s' "$pctpart")
-  gap=$(( COLS - 17 - ${#V_PATH} - ${#offsettotal} ))
+  pctfield=$(printf '%21s' "$pctpart")
+  gap=$(( COLS - 21 - ${#V_PATH} - ${#offsettotal} ))
   (( gap < 0 )) && gap=0
   left_raw="${V_PATH}$(printf '%*s' "$gap" '')${offsettotal}"
-  left=$(printf '%-*s' "$((COLS - 17))" "$left_raw")
+  left=$(printf '%-*s' "$((COLS - 21))" "$left_raw")
   title="${left}${pctfield}"
   mvwaddnstr "$win" 0 0 "$title" "$COLS"
 }

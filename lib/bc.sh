@@ -236,6 +236,7 @@ BC_MAXCLICK=166           # max interval (ms) to compose click gestures
 BC_OLD_MAXCLICK=0         # previous maxclick (mouseinterval)
 BC_MOUSE_TYPE=0           # 1 = mouse known to be available/enabled
 BC_PENDING_IN=""          # chars saved for the next wgetch (ungetch/ungetmouse)
+BC_PENDING_KEY=""         # function-key code saved for the next wgetch
 
 # -------------------------------------------------------- ncurses constants
 readonly SP=32             # the space character
@@ -3720,7 +3721,12 @@ flushinp() {
 }
 
 ungetch() { # $1 ch to push back
-  BC_PENDING_IN="${1:-$key}$BC_PENDING_IN"
+  local k=${1:-$key}
+  if [[ $k =~ ^[0-9]+$ ]] && (( k > 255 )); then
+    BC_PENDING_KEY=$k
+  else
+    BC_PENDING_IN="$k$BC_PENDING_IN"
+  fi
   return 0
 }
 
@@ -3732,6 +3738,11 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
     if (( BC_WINCH )); then
       BC_WINCH=0
       key=$KEY_RESIZE
+      return 0
+    fi
+    if [[ -n $BC_PENDING_KEY ]]; then
+      key=$BC_PENDING_KEY
+      BC_PENDING_KEY=""
       return 0
     fi
     if [[ -n $BC_PENDING_IN ]]; then

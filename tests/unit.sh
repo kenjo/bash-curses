@@ -506,6 +506,7 @@ check "ins_wchnstr inserts"      "XYA"     "$(scr 'mvwaddstr 0 0 0 A; wmove 0 0 
 check "mvwins_wchnstr moves inserts" "XYA" "$(scr 'mvwaddstr 0 0 0 A; mvwins_wchnstr 0 0 0 XYZ 2; row 0 0 0 3')"
 check "mvins_wchnstr moves inserts" "XYA"  "$(scr 'mvwaddstr 0 0 0 A; mvins_wchnstr 0 0 XYZ 2; row 0 0 0 3')"
 check "unget_wch"                "A"       "$(scr 'unget_wch A; wgetch 0 >/dev/null; printf "%s" "$key"')"
+check "ungetch function key"     "$KEY_F3" "$(scr 'ungetch "$KEY_F3"; wgetch 0 >/dev/null; printf "%s" "$key"')"
 check "napms rc"                 "0"       "$(scr 'napms 1; printf "%s" "$?"')"
 check "mcprint rc"               "1"       "$(scr 'mcprint hello; printf "%s" "$?"')"
 check "setcchar getcchar"        "A 8 3"   "$(scr 'setcchar c A 8 3; getcchar "$bc_cchar"; printf "%s %s %s" "$wch" "$wcha" "$wchp"')"
@@ -589,6 +590,7 @@ check "mc hum rounds M" "1024M" "$(mc 'hum 1048575')"
 check "mc hintbar enabled layout" "26 27 28 29" "$(mc 'MC_HINTBAR=1; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
 check "mc hintbar disabled layout" "27 -1 28 29" "$(mc 'MC_HINTBAR=0; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
 check "mc hintbar disabled skips hint" "X" "$(mc 'HINTBAR=0; HINTY=27; mvaddstr 27 0 X; redraw_hint; printf "%s" "${BC_C["0/27 0"]}"')"
+check "mc viewer fits shows total pct" "5/5 100%" "$(mc 'V_PATH=TREE/a.txt; V_TOTAL=5; V_N=1; V_OFF=0; V_BTOFF=(0); view_metrics; view_title 0; line=""; for ((x=0;x<COLS;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line" | tr -s " " | grep -o "5/5 100%"')"
 
 # J4. list_dir: parent first, directories before files, hidden filtering, exec marker
 check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(
