@@ -2315,10 +2315,149 @@ do_compare_files() {
   fi
 }
 
+quick_cd_dialog() {
+  local w=48 h=3 x=1 y=$(( LINES - 7 ))
+  (( y < 1 )) && y=1
+  local r c
+  for (( r = y - 1; r <= y + h; r++ )); do
+    for (( c = x - 1; c <= x + w; c++ )); do
+      (( r >= 0 && c >= 0 && r < LINES && c < COLS )) && mc_shadow_put "$r" "$c" 23 ' '
+    done
+  done
+  for (( r = y; r <= y + h; r++ )); do
+    for (( c = x + w + 1; c <= x + w + 2; c++ )); do
+      (( r >= 0 && c >= 0 && r < LINES && c < COLS )) && mc_shadow_put "$r" "$c" 36
+    done
+  done
+  wrefresh 0
+  newwin "$h" "$w" "$y" "$x"; local qw=$bc_win
+  local buf="" caret=0 redraw=1
+  qc_draw() {
+    wattrset "$qw" 0 23; werase "$qw"; box "$qw"
+    local tstr=" Quick cd "
+    local tx=$(( (w - ${#tstr}) / 2 )); (( tx < 1 )) && tx=1
+    wattrset "$qw" 0 24; mvwaddstr "$qw" 0 "$tx" "$tstr"
+    wattrset "$qw" 0 23; mvwaddstr "$qw" 1 2 "cd "
+    wattrset "$qw" 0 25; mvwhline "$qw" 1 5 ' ' "$(( w - 7 ))"
+    (( caret > ${#buf} )) && caret=${#buf}; (( caret < 0 )) && caret=0
+    wmove "$qw" 1 $(( 5 + caret ))
+    wrefresh "$qw"
+  }
+  qc_draw
+  while :; do
+    wgetch "$qw" || break
+    case $key in
+      $'\r')
+        local target="$buf"
+        target="${target//\"/}"
+        target="${target/#~/$HOME}"
+        target="${target## }"
+        [[ -z $target ]] && target="$HOME"
+        if [[ -d $target ]]; then
+          DIR[$CUR]="$target"; list_dir "$CUR"
+        else
+          message_dialog "cd" "Not a directory: $target"
+        fi
+        delwin "$qw"; return 0
+        ;;
+      $'\x1b'|$KEY_F10) delwin "$qw"; return 1 ;;
+      $'\x7f'|$'\x08')
+        if (( caret > 0 )); then
+          buf="${buf:0:caret-1}${buf:caret}"
+          caret=$(( caret - 1 ))
+        fi
+        redraw=1 ;;
+      $KEY_LEFT) (( caret > 0 )) && caret=$(( caret - 1 )); redraw=1 ;;
+      $KEY_RIGHT) (( caret < ${#buf} )) && caret=$(( caret + 1 )); redraw=1 ;;
+      *)
+        if [[ ${#key} == 1 && ${key:0:1} == [[:print:]] ]]; then
+          buf="${buf:0:caret}${key}${buf:caret}"
+          caret=$(( caret + 1 ))
+          redraw=1
+        fi
+        ;;
+    esac
+    (( redraw )) && qc_draw
+  done
+  delwin "$qw"
+  return 1
+}
+
+cmd_history_popup() {
+  local -a items=("$@")
+  local n=${#items[@]} sel=0 maxl=0 e
+  for e in "${items[@]}"; do (( ${#e} > maxl )) && maxl=${#e}; done
+  local w=$(( maxl + 6 )); (( w < 13 )) && w=13; (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+  local h=$(( n + 3 )); (( h < 4 )) && h=4
+  local maxh=$(( LINES - 4 )); (( h > maxh )) && h=$maxh
+  local visible=$(( h - 2 )); (( visible < 1 )) && visible=1
+  local top=$(( n < visible ? n - visible : 0 ))
+  local y=$(( LINES - 6 )); (( y < 1 )) && y=1
+  local x=$(( (COLS - w) / 2 + 5 )); (( x < 1 )) && x=1
+  local r c
+  for (( r = y + 1; r <= y + h - 2; r++ )); do
+    for (( c = x + w; c <= x + w + 1; c++ )); do
+      (( r >= 0 && c >= 0 && r < LINES && c < COLS )) && mc_shadow_put "$r" "$c" 36
+    done
+  done
+  cmdline_prompt
+  local cl=${#CMD_PROMPT}
+  for (( c = cl; c < cl + w && c < COLS; c++ )); do
+    mvwinch 0 "$CMY" "$c"
+    [[ $wch == ' ' ]] && mc_shadow_put "$CMY" "$c" 36
+  done
+  wrefresh 0
+  newwin "$h" "$w" "$y" "$x"; local hw=$bc_win
+  ch_draw() {
+    wattrset "$hw" 0 23; werase "$hw"; box "$hw"
+    local tstr=" History "
+    local tx=$(( (w - ${#tstr}) / 2 )); (( tx < 1 )) && tx=1
+    wattrset "$hw" 0 24; mvwaddstr "$hw" 0 "$tx" "$tstr"
+    local i row idx e2
+    for (( i = 0; i < visible; i++ )); do
+      row=$(( i + 1 )); idx=$(( top + i ))
+      (( idx < 0 || idx >= n )) && continue
+      e2=${items[idx]}
+      if (( idx == sel )); then
+        wattrset "$hw" 0 30
+        mvwaddnstr "$hw" "$row" 2 "$e2" "$(( w - 4 ))"
+        mvwhline "$hw" "$row" $(( 2 + ${#e2} )) ' ' "$(( w - 4 - ${#e2} ))"
+      else
+        wattrset "$hw" 0 23
+        mvwaddnstr "$hw" "$row" 2 "$e2" "$(( w - 4 ))"
+      fi
+    done
+    wrefresh "$hw"
+  }
+  ch_draw
+  while :; do
+    wgetch "$hw" || break
+    case $key in
+      $KEY_UP)    (( sel > 0 )) && { sel=$(( sel - 1 )); (( sel < top )) && top=$sel; } ;;
+      $KEY_DOWN)  (( sel < n - 1 )) && { sel=$(( sel + 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )); } ;;
+      $KEY_HOME)  sel=0; top=0 ;;
+      $KEY_END)   sel=$(( n - 1 )); if (( n > visible )); then top=$(( n - visible )); else top=0; fi ;;
+      $KEY_PPAGE) sel=$(( sel - visible )); (( sel < 0 )) && sel=0; (( sel < top )) && top=$sel ;;
+      $KEY_NPAGE) sel=$(( sel + visible )); (( sel > n - 1 )) && sel=$(( n - 1 )); (( sel > top + visible - 1 )) && top=$(( sel - visible + 1 )) ;;
+      $'\r')      HIST_RESULT=${items[sel]}; delwin "$hw"; return 0 ;;
+      $'\x1b'|$KEY_F10) delwin "$hw"; return 1 ;;
+    esac
+    if (( n < visible )); then
+      top=$(( n - visible ))
+    else
+      (( top < 0 )) && top=0
+      (( top > n - visible )) && top=$(( n - visible ))
+    fi
+    ch_draw
+  done
+  delwin "$hw"
+  return 1
+}
+
 do_command_history() {
   (( ${#CMDHIST[@]} )) || { message_dialog "Command history" "No commands yet."; return; }
-  list_dialog "Command history" "${CMDHIST[@]}" || return
-  CMD_LINE="$LIST_RESULT"
+  cmd_history_popup "${CMDHIST[@]}" || return
+  CMD_LINE="$HIST_RESULT"
   CMD_CARET=${#CMD_LINE}
   draw_cmdline
   doupdate
@@ -3288,6 +3427,15 @@ main() {
     switched=0
     getch || break
     k=$key
+    if [[ $k == $'\x1b' && -n $BC_PENDING_IN ]]; then
+      mk=${BC_PENDING_IN:0:1}
+      BC_PENDING_IN=${BC_PENDING_IN:1}
+      case $mk in
+        c) quick_cd_dialog; continue ;;
+        h) do_command_history; continue ;;
+        *) ungetch "$mk"; continue ;;
+      esac
+    fi
     case $k in
       $KEY_UP)     (( POS[$CUR] > 0 )) && POS[$CUR]=$(( POS[$CUR]-1 )); nav=1 ;;
       $KEY_DOWN)   (( POS[$CUR] < ${#_CN[@]}-1 )) && POS[$CUR]=$(( POS[$CUR]+1 )); nav=1 ;;

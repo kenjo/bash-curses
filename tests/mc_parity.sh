@@ -268,6 +268,68 @@ fi
 sendk Escape
 sleep 1
 
+# M-h opens the command history popup with MC's title, item, and shadow.
+sendk -l 'echo hi'
+sendk Enter
+sleep 1
+sendk Escape h
+sleep 1
+capE > "$REPO/tmp/mc_parity_hist.sgr"
+screen_load "$REPO/tmp/mc_parity_hist.sgr" 100 30
+hist_title=0
+hist_shadow=0
+for (( y = 0; y < 30; y++ )); do
+  for (( x = 0; x < 100; x++ )); do
+    IFS=$'\t' read -r ch fg bg _ <<< "$(cell "$y" "$x")"
+    if [[ $ch == H && $fg == 16:4 && $bg == 16:7 ]]; then hist_title=1; fi
+    if [[ $fg == 16:8 && $bg == 16:0 ]]; then hist_shadow=1; fi
+  done
+done
+if (( hist_title )); then
+  ok "History dialog has a blue-on-white title"
+else
+  bad "History dialog has a blue-on-white title"
+fi
+if (( hist_shadow )); then
+  ok "History dialog has a gray-on-black shadow"
+else
+  bad "History dialog has a gray-on-black shadow"
+fi
+if grep -q 'echo hi' <<<"$(cap)"; then
+  ok "History dialog lists the previous command"
+else
+  bad "History dialog lists the previous command"
+fi
+sendk Escape
+sleep 1
+
+# M-c opens Quick cd with MC's title and gray-on-black shadow.
+sendk Escape c
+sleep 1
+capE > "$REPO/tmp/mc_parity_quickcd.sgr"
+screen_load "$REPO/tmp/mc_parity_quickcd.sgr" 100 30
+qc_title=0
+qc_shadow=0
+for (( y = 0; y < 30; y++ )); do
+  for (( x = 0; x < 100; x++ )); do
+    IFS=$'\t' read -r ch fg bg _ <<< "$(cell "$y" "$x")"
+    if [[ $ch == Q && $fg == 16:4 && $bg == 16:7 ]]; then qc_title=1; fi
+    if [[ $fg == 16:8 && $bg == 16:0 ]]; then qc_shadow=1; fi
+  done
+done
+if (( qc_title )); then
+  ok "Quick cd dialog has a blue-on-white title"
+else
+  bad "Quick cd dialog has a blue-on-white title"
+fi
+if (( qc_shadow )); then
+  ok "Quick cd dialog has a gray-on-black shadow"
+else
+  bad "Quick cd dialog has a gray-on-black shadow"
+fi
+sendk Escape
+sleep 1
+
 # Entering a directory replaces the Tab hint with MC's VFS hint.
 sendk Up
 sendk Up
