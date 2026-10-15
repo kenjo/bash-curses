@@ -22,14 +22,14 @@ main(void)
     wrefresh(dst);
 
     for (;;) {
-	mvprintw(0, 0,
-		 "c copywin  1 copywin overlay  2 overwrite  l clrtobot  i mvwinsnstr  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
+	mvwprintw(bc_base, 0, 0,
+		  "c copywin  o copywin overlay  C overwrite  l clrtobot  i mvwinsnstr  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 'c':
@@ -47,7 +47,7 @@ main(void)
 	    break;
 	case 'l':
 	case 'L':
-	    clrtobot();
+	    wclrtobot(bc_base);
 	    msg = "clrtobot";
 	    break;
 	case 'i':

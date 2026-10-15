@@ -7,7 +7,7 @@ main(void)
 {
     WINDOW *win;
     const char *msg = "waiting";
-    char buf[64];
+    char buf[64], msgbuf[128];
     int val, count, key;
 
     bc_example_init(1);
@@ -19,36 +19,35 @@ main(void)
     wrefresh(win);
 
     for (;;) {
-	mvprintw(0, 0, "s mvscanw  w mvwscanw  g wgetstr  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
+	mvwprintw(bc_base, 0, 0, "s mvscanw  w mvwscanw  g wgetstr  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 's':
 	case 'S':
 	    val = 0;
-	    count = mvscanw(2, 0, "%d", &val);
-	    snprintf(buf, sizeof(buf), "mvscanw val=%d count=%d", val, count);
-	    msg = buf;
+	    count = mvwscanw(bc_base, 2, 0, "%d", &val);
+	    snprintf(msgbuf, sizeof(msgbuf), "mvscanw val=%d count=%d", val, count);
+	    msg = msgbuf;
 	    break;
 	case 'w':
 	case 'W':
 	    val = 0;
 	    count = mvwscanw(win, 3, 0, "%d", &val);
-	    snprintf(buf, sizeof(buf), "mvwscanw val=%d count=%d", val, count);
-	    msg = buf;
+	    snprintf(msgbuf, sizeof(msgbuf), "mvwscanw val=%d count=%d", val, count);
+	    msg = msgbuf;
 	    break;
 	case 'g':
 	case 'G':
 	    wmove(win, 4, 0);
 	    wgetnstr(win, buf, 5);
-	    snprintf(buf, sizeof(buf), "wgetstr bc_str=%s", buf);
-	    msg = buf;
+	    snprintf(msgbuf, sizeof(msgbuf), "wgetstr bc_str=%s", buf);
+	    msg = msgbuf;
 	    break;
 	case 'q':
 	case 'Q':

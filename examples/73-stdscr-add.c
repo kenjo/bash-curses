@@ -1,4 +1,4 @@
-/* C ground-truth reference port for examples/73-stdscr-add.sh */
+/* C ground-truth reference port for examples/73-stdscr-add.c */
 #include "bc_example.h"
 
 static void
@@ -33,24 +33,23 @@ main(void)
     mkchstr(s_mvwaddchnstr, "mvwaddchnstr");
 
     for (;;) {
-	mvprintw(0, 0,
-		 "a addch  A mvaddch  m mvwaddch  M waddch  n addchstr  N addchnstr  r mvaddchstr  s mvaddchnstr  t mvwaddchstr  u mvwaddchnstr  v addnstr  w addstr  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
+	mvwprintw(bc_base, 0, 0,
+		  "a addch  A mvaddch  m mvwaddch  M waddch  n addchstr  N addchnstr  r mvaddchstr  s mvaddchnstr  t mvwaddchstr  u mvwaddchnstr  v addnstr  w addstr  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 'a':
 	case 'A':
-	    addch('X');
+	    waddch(bc_base, 'X');
 	    msg = "addch X";
 	    break;
 	case '1':
-	    mvaddch(3, 0, 'Y');
+	    mvwaddch(bc_base, 3, 0, 'Y');
 	    msg = "mvaddch 3 0 Y";
 	    break;
 	case 'm':
@@ -64,21 +63,21 @@ main(void)
 	    break;
 	case 'n':
 	case 'N':
-	    addchstr(s_addchstr);
+	    waddchstr(bc_base, s_addchstr);
 	    msg = "addchstr";
 	    break;
 	case '3':
-	    addchnstr(s_addchnstr, 6);
+	    waddchnstr(bc_base, s_addchnstr, 6);
 	    msg = "addchnstr 6";
 	    break;
 	case 'r':
 	case 'R':
-	    mvaddchstr(4, 0, s_mvaddchstr);
+	    mvwaddchstr(bc_base, 4, 0, s_mvaddchstr);
 	    msg = "mvaddchstr 4 0";
 	    break;
 	case 's':
 	case 'S':
-	    mvaddchnstr(5, 0, s_mvaddchnstr, 6);
+	    mvwaddchnstr(bc_base, 5, 0, s_mvaddchnstr, 6);
 	    msg = "mvaddchnstr 5 0 6";
 	    break;
 	case 't':
@@ -93,12 +92,12 @@ main(void)
 	    break;
 	case 'v':
 	case 'V':
-	    addnstr("addnstr", 6);
+	    waddnstr(bc_base, "addnstr", 6);
 	    msg = "addnstr 6";
 	    break;
 	case 'w':
 	case 'W':
-	    addstr("addstr");
+	    waddstr(bc_base, "addstr");
 	    msg = "addstr";
 	    break;
 	case 'q':

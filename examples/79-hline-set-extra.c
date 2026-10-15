@@ -32,35 +32,34 @@ main(void)
     mkcch(&ct, L't');
 
     for (;;) {
-	mvprintw(0, 0,
-		 "h mvhline_set  v mvvline_set  m vline_set  n hline_set  w mvwhline_set  1 mvwvline_set  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
+	mvwprintw(bc_base, 0, 0,
+		  "h mvhline_set  v mvvline_set  m vline_set  n hline_set  w mvwhline_set  W mvwvline_set  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 'h':
 	case 'H':
-	    mvhline_set(2, 0, &cx, 10);
+	    mvwhline_set(bc_base, 2, 0, &cx, 10);
 	    msg = "mvhline_set 2 0 x 10";
 	    break;
 	case 'v':
 	case 'V':
-	    mvvline_set(3, 0, &cy, 5);
+	    mvwvline_set(bc_base, 3, 0, &cy, 5);
 	    msg = "mvvline_set 3 0 y 5";
 	    break;
 	case 'm':
 	case 'M':
-	    vline_set(&cz, 5);
+	    wvline_set(bc_base, &cz, 5);
 	    msg = "vline_set z 5";
 	    break;
 	case 'n':
 	case 'N':
-	    hline_set(&cw, 10);
+	    whline_set(bc_base, &cw, 10);
 	    msg = "hline_set w 10";
 	    break;
 	case 'w':

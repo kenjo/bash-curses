@@ -11,6 +11,28 @@ chtype_to_str(const chtype *arr, int n, char *out, size_t sz)
 	chtype c = arr[i] & A_CHARTEXT;
 	if (c == 0)
 	    break;
+	if (arr[i] & A_ALTCHARSET) {
+	    const char *u;
+	    switch (c) {
+	    case 'l': u = "\xe2\x94\x8c"; break;
+	    case 'k': u = "\xe2\x94\x90"; break;
+	    case 'm': u = "\xe2\x94\x94"; break;
+	    case 'j': u = "\xe2\x94\x98"; break;
+	    case 't': u = "\xe2\x94\x9c"; break;
+	    case 'u': u = "\xe2\x94\xa4"; break;
+	    case 'v': u = "\xe2\x94\xb4"; break;
+	    case 'w': u = "\xe2\x94\xac"; break;
+	    case 'q': u = "\xe2\x94\x80"; break;
+	    case 'x': u = "\xe2\x94\x82"; break;
+	    case 0:   u = ""; break;
+	    default:  u = NULL; break;
+	    }
+	    if (u) {
+		while (*u && o + 1 < sz)
+		    out[o++] = *u++;
+		continue;
+	    }
+	}
 	if (o + 1 < sz)
 	    out[o++] = (char)c;
     }
@@ -31,24 +53,24 @@ main(void)
     win = newwin(10, 40, 2, 2);
     box(win, 0, 0);
     mvwprintw(win, 2, 0, "abc");
-    mvprintw(2, 0, "xyz");
+    mvwprintw(bc_base, 2, 0, "xyz");
     wrefresh(win);
+    wrefresh(bc_base);
 
     for (;;) {
-	mvprintw(0, 0,
-		 "i inch  I winch  m mvwinch  n inchnstr  N mvwinchnstr  r mvwinchstr  s instr  t innstr  T mvwinnstr  u mvwinstr  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
+	mvwprintw(bc_base, 0, 0,
+		  "i inch  I winch  m mvwinch  n inchnstr  N mvwinchnstr  r mvwinchstr  s instr  t innstr  T mvwinnstr  u mvwinstr  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 'i':
 	case 'I':
-	    ch = inch();
+	    ch = winch(bc_base);
 	    snprintf(sbuf, sizeof(sbuf), "inch wch=%c", (int)(ch & A_CHARTEXT));
 	    msg = sbuf;
 	    break;
@@ -67,7 +89,7 @@ main(void)
 	case 'n':
 	case 'N': {
 	    char rb[64];
-	    inchnstr(carr, 3);
+	    winchnstr(bc_base, carr, 3);
 	    chtype_to_str(carr, 3, rb, sizeof(rb));
 	    snprintf(sbuf, sizeof(sbuf), "inchnstr bc_str=%s", rb);
 	    msg = sbuf;
@@ -93,7 +115,7 @@ main(void)
 	case 's':
 	case 'S': {
 	    char rb[64];
-	    winnstr(stdscr, rb, 3);
+	    winnstr(bc_base, rb, 3);
 	    snprintf(sbuf, sizeof(sbuf), "instr stdscr 3 bc_str=%s", rb);
 	    msg = sbuf;
 	    break;
@@ -101,7 +123,7 @@ main(void)
 	case 't':
 	case 'T': {
 	    char rb[64];
-	    innstr(rb, 3);
+	    winnstr(bc_base, rb, 3);
 	    snprintf(sbuf, sizeof(sbuf), "innstr stdscr 3 bc_str=%s", rb);
 	    msg = sbuf;
 	    break;
@@ -115,8 +137,9 @@ main(void)
 	}
 	case 'u':
 	case 'U': {
-	    char rb[64];
-	    mvwinstr(win, 2, 0, rb);
+	    char rb[128];
+	    mvwinchstr(win, 2, 0, carr);
+	    chtype_to_str(carr, 40, rb, sizeof(rb));
 	    snprintf(sbuf, sizeof(sbuf), "mvwinstr win 2 0 bc_str=%s", rb);
 	    msg = sbuf;
 	    break;

@@ -17,24 +17,23 @@ main(void)
     wrefresh(win);
 
     for (;;) {
-	mvprintw(0, 0,
-		 "d delch  D mvdelch  w mvwdelch  W wdelch  i insch  I mvinsch  m mvwinsch  M winsch  s insstr  S mvinsstr  n mvwinsstr  N mvinsnstr  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
+	mvwprintw(bc_base, 0, 0,
+		  "d delch  D mvdelch  w mvwdelch  W wdelch  i insch  I mvinsch  m mvwinsch  M winsch  s insstr  S mvinsstr  n mvwinsstr  N mvinsnstr  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 'd':
 	case 'D':
-	    delch();
+	    wdelch(bc_base);
 	    msg = "delch";
 	    break;
 	case '1':
-	    mvdelch(2, 0);
+	    mvwdelch(bc_base, 2, 0);
 	    msg = "mvdelch 2 0";
 	    break;
 	case 'w':
@@ -48,16 +47,17 @@ main(void)
 	    break;
 	case 'i':
 	case 'I':
-	    insch('X');
+	    winsch(bc_base, 'X');
 	    msg = "insch X";
 	    break;
 	case '3':
-	    mvinsch(3, 0, 'Y');
+	    mvwinsch(bc_base, 3, 0, 'Y');
 	    msg = "mvinsch 3 0 Y";
 	    break;
 	case 'm':
 	case 'M':
 	    mvwinsch(win, 3, 0, 'Z');
+	    wmove(win, 3, 1);
 	    msg = "mvwinsch win 3 0 Z";
 	    break;
 	case '4':
@@ -66,11 +66,11 @@ main(void)
 	    break;
 	case 's':
 	case 'S':
-	    insstr("ins");
+	    winsstr(bc_base, "ins");
 	    msg = "insstr ins";
 	    break;
 	case '5':
-	    mvinsstr(4, 0, "ins");
+	    mvwinsstr(bc_base, 4, 0, "ins");
 	    msg = "mvinsstr 4 0 ins";
 	    break;
 	case 'n':

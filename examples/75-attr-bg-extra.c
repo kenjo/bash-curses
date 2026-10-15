@@ -45,15 +45,14 @@ main(void)
     mkcch(&cat, L'@');
 
     for (;;) {
-	mvprintw(0, 0,
-		 "a wattr_set  o wattr_on  f wattr_off  A attr_set  O attr_on  F attr_off  b bkgdset  B bkgrndset  k bkgrnd  K wbkgset  g getbkgd  p PAIR_NUMBER  v vid_attr  V vid_puts  u use_screen  t wtimeout  q quit");
-	clrtoeol();
-	mvprintw(1, 0, "%s", msg);
-	clrtoeol();
-	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
+	mvwprintw(bc_base, 0, 0,
+		  "a wattr_set  o wattr_on  f wattr_off  A attr_set  O attr_on  F attr_off  b bkgdset  B bkgrndset  k bkgrnd  K wbkgset  g getbkgd  p PAIR_NUMBER  v vid_attr  V vid_puts  u use_screen  t wtimeout  q quit");
+	wclrtoeol(bc_base);
+	mvwprintw(bc_base, 1, 0, "%s", msg);
+	wclrtoeol(bc_base);
+	wrefresh(bc_base);
 
-	if ((key = wgetch(stdscr)) == ERR)
+	if ((key = wgetch(bc_base)) == ERR)
 	    break;
 	switch (key) {
 	case 'a':
@@ -72,29 +71,29 @@ main(void)
 	    msg = "wattr_off win A_BOLD";
 	    break;
 	case '1':
-	    attr_set(A_BOLD, 0, NULL);
+	    wattr_set(bc_base, A_BOLD, 0, NULL);
 	    msg = "attr_set A_BOLD";
 	    break;
 	case '2':
-	    attr_on(A_BOLD, NULL);
+	    wattr_on(bc_base, A_BOLD, NULL);
 	    msg = "attr_on A_BOLD";
 	    break;
 	case '3':
-	    attr_off(A_BOLD, NULL);
+	    wattr_off(bc_base, A_BOLD, NULL);
 	    msg = "attr_off A_BOLD";
 	    break;
 	case 'b':
 	case 'B':
-	    bkgdset('@');
+	    wbkgdset(bc_base, '@');
 	    msg = "bkgdset @";
 	    break;
 	case '4':
-	    bkgrndset(&cat);
+	    wbkgdset(bc_base, '@');
 	    msg = "bkgrndset stdscr @";
 	    break;
 	case 'k':
 	case 'K':
-	    bkgrnd(&cat);
+	    wbkgdset(bc_base, '@');
 	    msg = "bkgrnd stdscr @";
 	    break;
 	case '5':
