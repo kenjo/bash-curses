@@ -11,60 +11,63 @@ resizestdscr(int lines, int cols)
 int
 main(void)
 {
-    WINDOW *win;
     const char *msg = "waiting";
     char buf[128];
     int key;
 
     bc_example_init(1);
+    curs_set(0);
 
-    win = newwin(10, 30, 2, 2);
-    box(win, 0, 0);
-    wrefresh(win);
+    scrollok(stdscr, TRUE);
+    setscrreg(2, 8);
 
     for (;;) {
 	mvprintw(0, 0,
-		 "s setscrreg  u scrl  w wsetscrreg  c wscrl  r resizestdscr  q quit");
+		 "u scrl up  d scrl down  s setscrreg  r resizestdscr  c mvcur  q quit");
 	clrtoeol();
 	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
 	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;
 	switch (key) {
-	case 's':
-	case 'S':
-	    setscrreg(2, 8);
-	    msg = "setscrreg 2 8";
-	    break;
 	case 'u':
 	case 'U':
 	    scrl(-1);
 	    msg = "scrl -1";
 	    break;
-	case 'w':
-	case 'W':
-	    wsetscrreg(win, 1, 5);
-	    msg = "wsetscrreg 1 5";
+	case 'd':
+	case 'D':
+	    scrl(1);
+	    msg = "scrl 1";
 	    break;
-	case 'c':
-	case 'C':
-	    wscrl(win, -1);
-	    msg = "wscrl -1";
+	case 's':
+	case 'S':
+	    if (setscrreg(3, 9) == OK)
+		msg = "setscrreg 3 9";
+	    else
+		msg = "setscrreg failed";
 	    break;
 	case 'r':
 	case 'R':
-	    resizestdscr(LINES, COLS);
-	    snprintf(buf, sizeof(buf), "resizestdscr %dx%d", LINES, COLS);
-	    msg = buf;
+	    if (resizestdscr(LINES, COLS) == OK) {
+		snprintf(buf, sizeof(buf), "resizestdscr %dx%d", LINES, COLS);
+		msg = buf;
+	    } else {
+		msg = "resizestdscr failed";
+	    }
+	    break;
+	case 'c':
+	case 'C':
+	    move(1, 0);
+	    wrefresh(stdscr);
+	    msg = "mvcur 1 0";
 	    break;
 	case 'q':
 	case 'Q':
 	    goto done;
 	}
-	wrefresh(win);
     }
 
 done:

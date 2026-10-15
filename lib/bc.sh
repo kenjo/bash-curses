@@ -331,6 +331,8 @@ declare -A BC_SGRC=()  # "a/p" -> sgr code
 declare -a BC_WLIST=()
 declare -A BC_WBUF=() # buffer owner per window (w -> owner window id)
 declare -A BC_WPAR=() # parent window id, -1 for top-level windows
+declare -A BC_WPOY=() # parent-relative origin y (ncurses _pary)
+declare -A BC_WPOX=() # parent-relative origin x (ncurses _parx)
 declare -A BC_PADY=()  # pad: last prefresh pminrow
 declare -A BC_PADX=()  # pad: last prefresh pmincol
 declare -A BC_PADT=()  # pad: last prefresh sminrow
@@ -1736,24 +1738,36 @@ newwin() { # nlines ncols begin_y begin_x
   return 0
 }
 
-derwin() { # win nlines ncol begin_y begin_x (absolute, within parent)
+derwin() { # win nlines ncol begin_y begin_x (relative to parent)
   local w=$1 h=$2 wd=$3 y=$4 x=$5
-  if (( y < BC_WY[$w] || x < BC_WX[$w] )); then
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  if (( y < 0 || x < 0 || h < 0 || wd < 0 )); then
     return 1
   fi
-  if (( y + h > BC_WY[$w] + BC_WH[$w] || x + wd > BC_WX[$w] + BC_WW[$w] )); then
+  if (( h == 0 )); then h=$(( BC_WH[$w] - y )); fi
+  if (( wd == 0 )); then wd=$(( BC_WW[$w] - x )); fi
+  if (( h < 1 || wd < 1 )); then
+    return 1
+  fi
+  if (( y + h > BC_WH[$w] || x + wd > BC_WW[$w] )); then
     return 1
   fi
   local id=$BC_WN
   BC_WN=$(( BC_WN + 1 ))
-  _bc_init_window "$id" "$y" "$x" "$h" "$wd"
+  _bc_init_window "$id" "$(( BC_WY[$w] + y ))" "$(( BC_WX[$w] + x ))" "$h" "$wd"
   BC_WBUF[$id]=$w
   BC_WPAR[$id]=$w
+  BC_WPOY[$id]=$y
+  BC_WPOX[$id]=$x
   bc_win=$id
   return 0
 }
 
-subwin() { derwin "$@"; }
+subwin() { # win nlines ncol begin_y begin_x (absolute screen coords)
+  local w=$1
+  [[ -n ${BC_WY[$w]:-} ]] || return 1
+  derwin "$w" "$2" "$3" "$(( $4 - BC_WY[$w] ))" "$(( $5 - BC_WX[$w] ))"
+}
 
 _bc_move_window_cells() { # w oldy oldx newy newx
   local w=$1 oldy=$2 oldx=$3 newy=$4 newx=$5
@@ -1805,6 +1819,8 @@ mvderwin() { # win y x (relative to parent)
     BC_WY[$w]=$2
     BC_WX[$w]=$3
   fi
+  BC_WPOY[$w]=$2
+  BC_WPOX[$w]=$3
   _bc_mark_all "$w"
   return 0
 }
@@ -2180,7 +2196,7 @@ getpary() { # win -> BC_GPY
   local w=${1:-$BC_CURR}
   local p=${BC_WPAR[$w]:--1}
   if (( p >= 0 )); then
-    BC_GPY=${BC_WY[$p]}
+    BC_GPY=${BC_WPOY[$w]:-0}
   else
     BC_GPY=-1
   fi
@@ -2191,7 +2207,7 @@ getparx() { # win -> BC_GPX
   local w=${1:-$BC_CURR}
   local p=${BC_WPAR[$w]:--1}
   if (( p >= 0 )); then
-    BC_GPX=${BC_WX[$p]}
+    BC_GPX=${BC_WPOX[$w]:-0}
   else
     BC_GPX=-1
   fi
@@ -2265,6 +2281,10 @@ resizeterm() {
   LINES=$BC_LINES; COLS=$BC_COLS
   BC_WH[0]=$BC_LINES; BC_WW[0]=$BC_COLS
   printf '%s[2J%s[H' "$BC_ESC" "$BC_ESC"
+  # ncurses resizeterm forces a full repaint: drop the curscr model and mark
+  # stdscr dirty so the next refresh redraws everything on the cleared screen.
+  BC_S=(); BC_SA=(); BC_SP=()
+  _bc_mark_all "$BC_STDSCR"
   return 0
 }
 
@@ -2857,21 +2877,27 @@ mvwborder() { # win y x [ls rs ts bs tl tr bl br]
 
 whline() { # win ch n
   local w=${1:-$BC_CURR} ch=$2 n=$3 i
-  local y=${BC_WAY[$w]} x=${BC_WAX[$w]}
+  local oy=${BC_WAY[$w]} ox=${BC_WAX[$w]}
+  local y=$oy x=$ox
   local a=${BC_WCURA[$w]} p=${BC_WCURP[$w]}
   for (( i = 0; i < n; i++ )); do
     _bc_put "$w" "$y" $(( x + i )) "$ch" "$a" "$p"
   done
+  BC_WAY[$w]=$oy
+  BC_WAX[$w]=$ox
   return 0
 }
 
 wvline() { # win ch n
   local w=${1:-$BC_CURR} ch=$2 n=$3 i
-  local y=${BC_WAY[$w]} x=${BC_WAX[$w]}
+  local oy=${BC_WAY[$w]} ox=${BC_WAX[$w]}
+  local y=$oy x=$ox
   local a=${BC_WCURA[$w]} p=${BC_WCURP[$w]}
   for (( i = 0; i < n; i++ )); do
     _bc_put "$w" $(( y + i )) "$x" "$ch" "$a" "$p"
   done
+  BC_WAY[$w]=$oy
+  BC_WAX[$w]=$ox
   return 0
 }
 
@@ -3304,18 +3330,30 @@ wrefresh() { # win
     if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$p" ]]; then
       continue
     fi
-    _bc_sgr "$a" "$p"
-    if (( lasty != y || lastx != x - 1 )); then
-      out+="${BC_ESC}[$(( y + 1 ));$(( x + 1 ))H"
-    fi
-    out+="${BC_ESC}[0m${BC_ESC}[${BC_SGR}m"
-    out+=$ch
-    BC_S[$k]=$ch
-    BC_SA[$k]=$a
-    BC_SP[$k]=$p
-    lasty=$y
-    lastx=$x
+    if [[ -z ${BC_LO[$y]+set} || $x -lt ${BC_LO[$y]} ]]; then BC_LO[$y]=$x; fi
+    if [[ -z ${BC_HI[$y]+set} || $x -gt ${BC_HI[$y]} ]]; then BC_HI[$y]=$x; fi
   done
+  for y in "${!BC_LO[@]}"; do
+    local lo=${BC_LO[$y]} hi=${BC_HI[$y]}
+    for (( x = lo; x <= hi; x++ )); do
+      k="$y $x"
+      ch=${BC_C["$buf/$k"]:- }
+      a=${BC_A["$buf/$k"]:-0}
+      p=${BC_P["$buf/$k"]:-0}
+      _bc_sgr "$a" "$p"
+      if (( lasty != y || lastx != x - 1 )); then
+        out+="${BC_ESC}[$(( y + 1 ));$(( x + 1 ))H"
+      fi
+      out+="${BC_ESC}[0m${BC_ESC}[${BC_SGR}m"
+      out+=$ch
+      BC_S[$k]=$ch
+      BC_SA[$k]=$a
+      BC_SP[$k]=$p
+      lasty=$y
+      lastx=$x
+    done
+  done
+  unset 'BC_LO[*]' 'BC_HI[*]'
   if [[ -n $out ]]; then
     printf '%s' "$out"
   fi
@@ -3657,16 +3695,40 @@ update_panels() { return 0; }
 # ---------------------------------------------------- screen save / restore
 # Dump format: one line per row, cells separated by US (\x1f), each cell is
 # "attr pair char" (char last so it may itself be a space).
-scr_init() { : > "$SCR_FILE" 2>/dev/null; return 0; }
+# scr_init loads the saved image into the library's notion of what is already
+# on the physical screen (the curscr model, BC_S) WITHOUT emitting anything.
+# It must not truncate SCR_FILE: ncurses scr_init only reads it.
+scr_init() {
+  local y=-1 x rest cell a p ch line
+  [[ -f $SCR_FILE ]] || return 1
+  while IFS= read -r line; do
+    y=$(( y + 1 ))
+    x=0
+    local -a cells
+    IFS=$'\x1f' read -r -a cells <<< "$line"
+    for cell in "${cells[@]}"; do
+      a=${cell%% *}; rest=${cell#* }; p=${rest%% *}; ch=${rest#* }
+      [[ -z $ch ]] && ch=' '
+      BC_S["$y $x"]=$ch
+      BC_SA["$y $x"]=$a
+      BC_SP["$y $x"]=$p
+      x=$(( x + 1 ))
+    done
+  done < "$SCR_FILE"
+  return 0
+}
 scr_init_sp() { scr_init "$@"; }
 
+# scr_dump writes the window's virtual buffer (newscr), not the last-shown
+# screen model, matching ncurses putwin(newscr).
 scr_dump() {
-  local y x cell line
+  local y x k line cell buf=${BC_WBUF[$BC_STDSCR]}
   : > "$SCR_FILE" || return 1
   for (( y = 0; y < LINES; y++ )); do
     line=""
     for (( x = 0; x < COLS; x++ )); do
-      cell="${BC_SA["$y $x"]:-0} ${BC_SP["$y $x"]:-0} ${BC_S["$y $x"]:- }"
+      k="$buf/$y $x"
+      cell="${BC_A[$k]:-0} ${BC_P[$k]:-0} ${BC_C[$k]:- }"
       line="${line:+$line$'\x1f'}$cell"
     done
     printf '%s\n' "$line" >> "$SCR_FILE"
@@ -3674,10 +3736,32 @@ scr_dump() {
   return 0
 }
 
-scr_set() {
-  local y=-1 x rest cell a p ch
+# scr_restore replaces the virtual buffer (newscr) with the saved image and
+# leaves it dirty; the next refresh emits the difference against curscr.
+scr_restore() {
+  local y=-1 x rest cell a p ch line
   [[ -f $SCR_FILE ]] || return 1
-  werase "$BC_STDSCR"
+  while IFS= read -r line; do
+    y=$(( y + 1 ))
+    x=0
+    local -a cells
+    IFS=$'\x1f' read -r -a cells <<< "$line"
+    for cell in "${cells[@]}"; do
+      a=${cell%% *}; rest=${cell#* }; p=${rest%% *}; ch=${rest#* }
+      [[ -z $ch ]] && ch=' '
+      _bc_cell "$BC_STDSCR" "$y" "$x" "$ch" "$a" "$p"
+      x=$(( x + 1 ))
+    done
+  done < "$SCR_FILE"
+  return 0
+}
+
+# scr_set = scr_init (curscr = image) then newscr = curscr. Both the curscr
+# model and the virtual buffer become the image, with nothing emitted, so the
+# next refresh diffs against the image and can leave stale physical cells.
+scr_set() {
+  local y=-1 x rest cell a p ch line
+  [[ -f $SCR_FILE ]] || return 1
   while IFS= read -r line; do
     y=$(( y + 1 ))
     x=0
@@ -3693,26 +3777,6 @@ scr_set() {
       x=$(( x + 1 ))
     done
   done < "$SCR_FILE"
-  wrefresh "$BC_STDSCR"
-  return 0
-}
-
-scr_restore() {
-  local y=-1 x rest cell a p ch
-  [[ -f $SCR_FILE ]] || return 1
-  while IFS= read -r line; do
-    y=$(( y + 1 ))
-    x=0
-    local -a cells
-    IFS=$'\x1f' read -r -a cells <<< "$line"
-    for cell in "${cells[@]}"; do
-      a=${cell%% *}; rest=${cell#* }; p=${rest%% *}; ch=${rest#* }
-      [[ -z $ch ]] && ch=' '
-      _bc_cell "$BC_STDSCR" "$y" "$x" "$ch" "$a" "$p"
-      x=$(( x + 1 ))
-    done
-  done < "$SCR_FILE"
-  wrefresh "$BC_STDSCR"
   return 0
 }
 

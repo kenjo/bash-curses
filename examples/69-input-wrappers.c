@@ -12,59 +12,64 @@ int
 main(void)
 {
     WINDOW *win;
-    const char *msg = "waiting";
+    char msg[128] = "waiting";
     char buf[64];
-    int key = 0;
+    int key;
 
     bc_example_init(1);
     echo();
     curs_set(1);
 
-    win = newwin(10, 30, 2, 2);
+    win = newwin(10, 40, 2, 2);
     box(win, 0, 0);
     wrefresh(win);
 
     for (;;) {
 	mvprintw(0, 0,
-		 "g getkey  w wgetnstr  W wgetstr  m mvwgetnstr  M mvwgetstr  n mvgetnstr  N mvgetstr  q quit");
+		 "k getkey  g mvgetch  w mvwgetch  n mvwgetnstr  s mvwgetstr  N mvgetnstr  S mvgetstr  q quit");
 	clrtoeol();
-	mvprintw(1, 0, "%s key=%d", msg, key);
+	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
 	refresh();
 	if (win != NULL) { touchwin(win); wrefresh(win); }
 
-	if ((key = getkey()) == ERR)
+	if ((key = wgetch(stdscr)) == ERR)
 	    break;
 	switch (key) {
+	case 'k':
+	case 'K':
+	    key = getkey();
+	    snprintf(msg, sizeof(msg), "getkey key=%d", key);
+	    break;
 	case 'g':
 	case 'G':
-	    msg = "getkey";
+	    key = mvgetch(1, 0);
+	    snprintf(msg, sizeof(msg), "mvgetch key=%d", key);
 	    break;
 	case 'w':
-	    mvwprintw(win, 1, 0, "wgetnstr: ");
-	    wgetnstr(win, buf, 5);
-	    msg = buf;
-	    break;
 	case 'W':
-	    mvwprintw(win, 2, 0, "wgetstr: ");
-	    wgetstr(win, buf);
-	    msg = buf;
-	    break;
-	case 'm':
-	    mvwgetnstr(win, 3, 0, buf, 5);
-	    msg = buf;
-	    break;
-	case 'M':
-	    mvwgetstr(win, 4, 0, buf);
-	    msg = buf;
+	    noecho();
+	    key = mvwgetch(win, 1, 0);
+	    echo();
+	    snprintf(msg, sizeof(msg), "mvwgetch key=%d", key);
 	    break;
 	case 'n':
-	    mvgetnstr(15, 0, buf, 5);
-	    msg = buf;
-	    break;
 	case 'N':
+	    mvwgetnstr(win, 2, 0, buf, 5);
+	    snprintf(msg, sizeof(msg), "mvwgetnstr bc_str=%s", buf);
+	    break;
+	case 's':
+	case 'S':
+	    mvwgetstr(win, 3, 0, buf);
+	    snprintf(msg, sizeof(msg), "mvwgetstr bc_str=%s", buf);
+	    break;
+	case '1':
+	    mvgetnstr(15, 0, buf, 5);
+	    snprintf(msg, sizeof(msg), "mvgetnstr bc_str=%s", buf);
+	    break;
+	case '2':
 	    mvgetstr(16, 0, buf);
-	    msg = buf;
+	    snprintf(msg, sizeof(msg), "mvgetstr bc_str=%s", buf);
 	    break;
 	case 'q':
 	case 'Q':

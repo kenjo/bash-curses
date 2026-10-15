@@ -20,6 +20,8 @@ main() {
     mvprintw 1 0 "%s" "$msg"
     clrtoeol
     refresh
+    touchwin "$win"
+    wrefresh "$win"
 
     wgetch || break
     case $key in

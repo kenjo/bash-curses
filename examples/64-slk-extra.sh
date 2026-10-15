@@ -15,9 +15,9 @@ main() {
     init_pair 1 "$COLOR_YELLOW" "$COLOR_BLUE"
   fi
 
-  slk_set 1 "One"
-  slk_set 2 "Two"
-  slk_set 3 "Three"
+  slk_set 1 "One" 1
+  slk_set 2 "Two" 1
+  slk_set 3 "Three" 1
   slk_refresh
 
   local msg="waiting"

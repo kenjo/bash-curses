@@ -49,7 +49,6 @@ vw_scanw_int(WINDOW *win, const char *fmt, ...)
 int
 main(void)
 {
-    WINDOW *win;
     const char *msg = "waiting";
     char buf[128];
     int n = 0, key;
@@ -58,71 +57,67 @@ main(void)
     echo();
     curs_set(1);
 
-    win = newwin(10, 30, 2, 2);
-    box(win, 0, 0);
-    wrefresh(win);
-
     for (;;) {
 	mvprintw(0, 0,
-		 "p wprintw  v vwprintw  w vw_printw  s wscanw  m mvscanw  x mvwscanw  V vwscanw  S vw_scanw  q quit");
+		 "p wprintw  v vwprintw  V vw_printw  s wscanw  w vwscanw  W vw_scanw  q quit");
 	clrtoeol();
 	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
 	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;
 	switch (key) {
 	case 'p':
 	case 'P':
-	    wprintw(stdscr, "wprintw %d", 42);
+	    wprintw(stdscr, " wprintw %d", 1);
 	    msg = "wprintw";
 	    break;
 	case 'v':
-	    vwprintw_int(stdscr, "vwprintw %d", 42);
+	case 'V':
+	    vwprintw_int(stdscr, " vwprintw %d", 2);
 	    msg = "vwprintw";
 	    break;
-	case 'w':
-	case 'W':
-	    vw_printw_int(stdscr, "vw_printw %d", 42);
+	case '1':
+	    vw_printw_int(stdscr, " vw_printw %d", 3);
 	    msg = "vw_printw";
 	    break;
 	case 's':
-	    mvwprintw(win, 2, 0, "wscanw: ");
-	    wscanw(win, "%d", &n);
-	    snprintf(buf, sizeof(buf), "wscanw n=%d", n);
-	    msg = buf;
-	    break;
-	case 'm':
-	case 'M':
-	    mvprintw(15, 0, "mvscanw: ");
-	    mvscanw(15, 10, "%d", &n);
-	    snprintf(buf, sizeof(buf), "mvscanw n=%d", n);
-	    msg = buf;
-	    break;
-	case 'x':
-	case 'X':
-	    mvwprintw(win, 3, 0, "mvwscanw: ");
-	    mvwscanw(win, 3, 10, "%d", &n);
-	    snprintf(buf, sizeof(buf), "mvwscanw n=%d", n);
-	    msg = buf;
-	    break;
-	case 'V':
-	    vwscanw_int(win, "%d", &n);
-	    snprintf(buf, sizeof(buf), "vwscanw n=%d", n);
-	    msg = buf;
-	    break;
 	case 'S':
-	    vw_scanw_int(win, "%d", &n);
-	    snprintf(buf, sizeof(buf), "vw_scanw n=%d", n);
-	    msg = buf;
+	    mvprintw(3, 0, "wscanw: ");
+	    clrtoeol();
+	    if (wscanw(stdscr, "%d", &n) == 0) {
+		snprintf(buf, sizeof(buf), "wscanw n=%d", n);
+		msg = buf;
+	    } else {
+		msg = "wscanw failed";
+	    }
+	    break;
+	case 'w':
+	case 'W':
+	    mvprintw(4, 0, "vwscanw: ");
+	    clrtoeol();
+	    if (vwscanw_int(stdscr, "%d", &n) == 0) {
+		snprintf(buf, sizeof(buf), "vwscanw n=%d", n);
+		msg = buf;
+	    } else {
+		msg = "vwscanw failed";
+	    }
+	    break;
+	case '2':
+	    mvprintw(5, 0, "vw_scanw: ");
+	    clrtoeol();
+	    if (vw_scanw_int(stdscr, "%d", &n) == 0) {
+		snprintf(buf, sizeof(buf), "vw_scanw n=%d", n);
+		msg = buf;
+	    } else {
+		msg = "vw_scanw failed";
+	    }
 	    break;
 	case 'q':
 	case 'Q':
 	    goto done;
 	}
-	wrefresh(win);
     }
 
 done:
