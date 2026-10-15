@@ -29,6 +29,7 @@ main(void)
 	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;

@@ -24,6 +24,7 @@ main(void)
 	mvprintw(2, 0, "screen coord: (%d,%d)", y, x);
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;

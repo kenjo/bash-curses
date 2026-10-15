@@ -46,8 +46,8 @@ main(void)
     fill_background(dst1);
     fill_background(dst2);
 
-    overlay(src, dst1);
-    overwrite(src, dst2);
+    copywin(src, dst1, 0, 0, 0, 0, 6, 19, TRUE);
+    copywin(src, dst2, 0, 0, 0, 0, 6, 19, FALSE);
 
     mvprintw(0, 0, "overlay keeps destination blanks; overwrite replaces everything");
     mvprintw(9, 1, "overlay");
@@ -55,10 +55,14 @@ main(void)
     mvprintw(LINES - 1, 0, "q quit");
     clrtoeol();
 
-    wrefresh(src);
-    wrefresh(dst1);
-    wrefresh(dst2);
-    refresh();
+    wnoutrefresh(stdscr);
+    touchwin(src);
+    wnoutrefresh(src);
+    touchwin(dst1);
+    wnoutrefresh(dst1);
+    touchwin(dst2);
+    wnoutrefresh(dst2);
+    doupdate();
 
     for (;;) {
 	if ((key = wgetch(stdscr)) == ERR)

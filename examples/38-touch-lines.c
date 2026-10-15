@@ -32,6 +32,7 @@ main(void)
 		 yn(is_linetouched(win, 5)));
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;

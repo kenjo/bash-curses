@@ -31,6 +31,7 @@ main(void)
 	mvprintw(1, 0, "%s key=%d", msg, key);
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = getkey()) == ERR)
 	    break;

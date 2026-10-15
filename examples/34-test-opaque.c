@@ -43,6 +43,7 @@ main(void)
 	mvprintw(6, 0, "delay=%d scrreg=%d,%d", delay, top, bottom);
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;

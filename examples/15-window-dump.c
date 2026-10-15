@@ -43,7 +43,12 @@ main(void)
 	clrtoeol();
 	mvprintw(LINES - 1, 0, "g getwin  d dupwin  q quit");
 	clrtoeol();
-	refresh();
+	wnoutrefresh(stdscr);
+	if (win != NULL) {
+	    touchwin(win);
+	    wnoutrefresh(win);
+	}
+	doupdate();
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;

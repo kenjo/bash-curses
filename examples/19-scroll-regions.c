@@ -34,6 +34,7 @@ main(void)
 	mvprintw(0, 0, "wsetscrreg 1 13; wscrl: %s", status);
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(win)) == ERR)
 	    break;

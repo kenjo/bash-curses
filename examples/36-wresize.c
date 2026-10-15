@@ -23,6 +23,7 @@ main(void)
 	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;
@@ -55,6 +56,7 @@ main(void)
 		 my, mx, is_term_resized(LINES, COLS) ? "yes" : "no");
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
     }
 
 done:

@@ -29,6 +29,7 @@ main(void)
 	mvprintw(0, 0, "ALL_MOUSE_EVENTS enabled; q quit");
 	clrtoeol();
 	refresh();
+	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;
