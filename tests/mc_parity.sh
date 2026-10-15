@@ -248,6 +248,26 @@ fi
 sendk Escape
 sleep 1
 
+# F2 User menu draws MC's cyan margin and gray-on-black dialog shadow.
+sendk F2
+sleep 1
+capE > "$REPO/tmp/mc_parity_usermenu.sgr"
+screen_load "$REPO/tmp/mc_parity_usermenu.sgr" 100 30
+shadow=0
+for (( y = 0; y < 30; y++ )); do
+  for (( x = 0; x < 100; x++ )); do
+    IFS=$'\t' read -r _ fg bg _ <<< "$(cell "$y" "$x")"
+    if [[ $fg == 16:8 && $bg == 16:0 ]]; then shadow=1; break 2; fi
+  done
+done
+if (( shadow )); then
+  ok "User menu dialog has a gray-on-black shadow"
+else
+  bad "User menu dialog has a gray-on-black shadow"
+fi
+sendk Escape
+sleep 1
+
 # Entering a directory replaces the Tab hint with MC's VFS hint.
 sendk Up
 sendk Up
