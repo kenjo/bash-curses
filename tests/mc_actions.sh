@@ -143,6 +143,33 @@ else
   bad "Command history did not insert the chosen command: '$cmdline'"
 fi
 
+# Mkdir refreshes both panels and leaves the new directory selected.
+sendk F7
+sendk -l 'newdir'
+sendk Enter
+sleep 1
+left="$(cap | cut -c1-50)"
+right="$(cap | cut -c51-100)"
+status="$(cap | sed -n '26p' | cut -c1-50)"
+if [[ "$left" == *newdir* && "$right" == *newdir* && "$status" == */newdir* ]]; then
+  ok "Mkdir refreshes both panels and selects the new directory"
+else
+  bad "Mkdir did not refresh both panels or select the new directory"
+fi
+
+# Delete removes the current entry from both panels and moves to the next one.
+sendk F8
+sendk Enter
+sleep 1
+left="$(cap | cut -c1-50)"
+right="$(cap | cut -c51-100)"
+status="$(cap | sed -n '26p' | cut -c1-50)"
+if [[ "$left" != *newdir* && "$right" != *newdir* && "$status" == *alpha.txt* ]]; then
+  ok "Delete refreshes both panels and moves to the next entry"
+else
+  bad "Delete did not refresh both panels or move to the next entry"
+fi
+
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 echo
 if (( fail == 0 )); then echo "mc_actions: $pass passed"; else echo "mc_actions: $pass passed, $fail FAILED"; fi

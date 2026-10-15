@@ -253,6 +253,12 @@ list_dir() {
       f_tm+=("$tm"); f_rr+=("$name"); f_xx+=("$ex")
     done <<< "$sorted"
   fi
+  local i
+  for (( i = 1; i < ${#f_nn[@]}; i++ )); do
+    if [[ ${f_tt[$i]} == l && ! -e "$d/${f_rr[$i]}" ]]; then
+      f_nn[$i]="!${f_rr[$i]}"
+    fi
+  done
   NN=("${f_nn[@]}"); TT=("${f_tt[@]}"); SS=("${f_ss[@]}")
   TM=("${f_tm[@]}"); RR=("${f_rr[@]}"); XX=("${f_xx[@]}")
   case $p in
@@ -262,15 +268,38 @@ list_dir() {
   POS[$p]=0; OFF[$p]=0
 }
 
+# Refresh panel p without throwing away its selection/current entry. If
+# new_real is supplied, move the cursor to that entry afterwards.
+refresh_panel_keep() { # p [new_real]
+  local p=$1 new=${2:-}
+  local -n RR=REALS_$p SELARR=SELSET_$p
+  local cur=${RR[${POS[$p]}]:-}
+  local -a oldsel=("${!SELARR[@]}")
+  list_dir "$p"
+  local k i
+  for k in "${oldsel[@]}"; do
+    for i in "${!RR[@]}"; do
+      if [[ ${RR[$i]} == "$k" ]]; then SELARR[$k]=1; break; fi
+    done
+  done
+  local target=$new
+  [[ -z $target ]] && target=$cur
+  if [[ -n $target ]]; then
+    for i in "${!RR[@]}"; do
+      if [[ ${RR[$i]} == "$target" ]]; then POS[$p]=$i; break; fi
+    done
+  fi
+}
+
 type_color() { # p idx -> pair (assumes not the current/highlighted row)
   # Colour the whole entry by type, like mc: directory bright white, regular
   # file yellow, executable bright green (symlinks/specials bright white).
   local p=$1 i=$2
-  local -n TT=TYPES_$p XX=EXEC_$p
+  local -n TT=TYPES_$p XX=EXEC_$p NN=NAMES_$p
   local t=${TT[$i]}
   case $t in
     d) echo 2 ;;
-    l) echo 4 ;;
+    l) if [[ ${NN[$i]} == '!'* ]]; then echo 35; else echo 4; fi ;;
     c|b|p|s) echo 5 ;;
     *)  if (( XX[$i] )); then echo 3; else echo 11; fi ;;
   esac
@@ -1891,7 +1920,11 @@ do_mkdir() {
   text_field_dialog "Create a new Directory" "Enter directory name:" "" || return
   local name=$TF_TEXT
   [[ -z $name ]] && return
-  mkdir "${DIR[$CUR]}/$name" 2>/dev/null && list_dir "$CUR"
+  if mkdir "${DIR[$CUR]}/$name" 2>/dev/null; then
+    refresh_panel_keep "$CUR" "$name"
+    local other=$(( 1 - CUR ))
+    [[ ${DIR[$other]} == "${DIR[$CUR]}" ]] && refresh_panel_keep "$other"
+  fi
 }
 
 do_delete() {
@@ -1899,7 +1932,15 @@ do_delete() {
   [[ $real == ".." ]] && return
   local kind; [[ -d "${DIR[$CUR]}/$real" ]] && kind="directory" || kind="file"
   delete_dialog "$kind" "$real" || return
-  rm -rf -- "${DIR[$CUR]}/$real" 2>/dev/null && list_dir "$CUR"
+  if rm -rf -- "${DIR[$CUR]}/$real" 2>/dev/null; then
+    local -n RR=REALS_$CUR
+    local pos=${POS[$CUR]}
+    local next=${RR[$(( pos + 1 ))]:-}
+    [[ -z $next ]] && next=${RR[$(( pos - 1 ))]:-}
+    refresh_panel_keep "$CUR" "$next"
+    local other=$(( 1 - CUR ))
+    [[ ${DIR[$other]} == "${DIR[$CUR]}" ]] && refresh_panel_keep "$other"
+  fi
 }
 
 do_copy() {
@@ -3190,6 +3231,7 @@ main() {
   init_pair 31 11 "$COLOR_BLUE"              # selected panel entry, inactive (bright yellow on blue)
   init_pair 34 11 6                           # selected panel entry, active (bright yellow on cyan)
   init_pair 32 8 0                           # dropdown shadow (bright black on black)
+  init_pair 35 9 "$COLOR_BLUE"               # broken symlinks (bright red on blue)
 
   init_ui || { endwin; exit 1; }
 
