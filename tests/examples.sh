@@ -161,7 +161,8 @@ for ex in \
   77-wide-insert-extra.sh \
   78-scanw-getstr-extra.sh \
   79-hline-set-extra.sh \
-  80-copywin-clrtobot.sh
+  80-copywin-clrtobot.sh \
+  81-sudoku.sh
 do
   case $ex in
     13-screen-dump.sh)
@@ -346,6 +347,9 @@ do
       ;;
     80-copywin-clrtobot.sh)
       start_example "$ex" c 1 2 l i
+      ;;
+    81-sudoku.sh)
+      start_example "$ex" l 5 x c r
       ;;
     *)
       start_example "$ex"
