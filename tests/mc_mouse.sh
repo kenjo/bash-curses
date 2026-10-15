@@ -53,9 +53,9 @@ release() {
 }
 click() {
   local x=$1 y=$2 sx=$(( $1 + 1 )) sy=$(( $2 + 1 ))
-  tmux -S "$SOCK" send-keys -H -t "$T" \
-    1b 5b 3c 30 3b $(hexstr "$sx") 3b $(hexstr "$sy") 4d \
-    1b 5b 3c 30 3b $(hexstr "$sx") 3b $(hexstr "$sy") 6d
+  press "$x" "$y"
+  sleep 0.1
+  release "$x" "$y"
   sleep 1.0
 }
 double_click() {
