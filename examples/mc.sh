@@ -518,7 +518,7 @@ menu_dd_prep() { # bar_sel
   MENU_GX=$(( MENU_X[$1] - 2 )); (( MENU_GX < 0 )) && MENU_GX=0
   (( MENU_GX + MENU_BW > COLS )) && MENU_GX=$(( COLS - MENU_BW ))
   MENU_GY=1
-  MENU_VIS=$(( HINTY - 3 )); (( MENU_VIS < 1 )) && MENU_VIS=1
+  MENU_VIS=$(( ${CMY:-$(( ${HINTY:-0} + 1 ))} - 4 )); (( MENU_VIS < 1 )) && MENU_VIS=1
   local -a rows=()
   local r=0 ri=0 selrow=-1
   for e in "${MI[@]}"; do
@@ -650,6 +650,7 @@ menu_dd_close() {
 }
 
 redraw_hint() { # bottom hint line, context-dependent like real MC
+  [[ ${HINTBAR:-1} == 0 ]] && return
   local clear hint
   _repeat clear ' ' "$COLS"
   clear=${clear:1}
@@ -3083,9 +3084,8 @@ do_resize() {
   del_panel "${PANEL[1]}" 2>/dev/null; delwin "${WIN[1]}"
   resizeterm
   BC_DELRECTS=""
-  PH=$(( LINES - 4 )); (( PH < 2 )) && PH=2
+  layout_bottom
   PW=$(( COLS / 2 )); (( PW < 10 )) && PW=10
-  HINTY=$(( 1 + PH )); CMY=$(( 1 + PH + 1 )); BTNY=$(( 1 + PH + 2 ))
   newwin "$PH" "$PW" 1 0; WIN[0]=$bc_win; new_panel "${WIN[0]}"; PANEL[0]=$bc_panel
   newwin "$PH" "$PW" 1 "$PW"; WIN[1]=$bc_win; new_panel "${WIN[1]}"; PANEL[1]=$bc_panel
   for p in 0 1; do
@@ -3101,13 +3101,30 @@ do_resize() {
 }
 
 # ------------------------------------------------------------------ main
+layout_bottom() {
+  HINTBAR=${MC_HINTBAR:-1}
+  case $HINTBAR in
+    0|false|no)
+      HINTBAR=0
+      PH=$(( LINES - 3 )); (( PH < 2 )) && PH=2
+      HINTY=-1
+      CMY=$(( 1 + PH ))
+      BTNY=$(( 1 + PH + 1 ))
+      ;;
+    *)
+      HINTBAR=1
+      PH=$(( LINES - 4 )); (( PH < 2 )) && PH=2
+      HINTY=$(( 1 + PH ))
+      CMY=$(( 1 + PH + 1 ))
+      BTNY=$(( 1 + PH + 2 ))
+      ;;
+  esac
+}
+
 init_ui() {
   (( LINES < 12 || COLS < 60 )) && { echo "Terminal too small" >&2; return 1; }
-  PH=$(( LINES - 4 ))
+  layout_bottom
   PW=$(( COLS / 2 ))
-  HINTY=$(( 1 + PH ))
-  CMY=$(( 1 + PH + 1 ))
-  BTNY=$(( 1 + PH + 2 ))
   newwin "$PH" "$PW" 1 0; WIN[0]=$bc_win; new_panel "${WIN[0]}"; PANEL[0]=$bc_panel
   newwin "$PH" "$PW" 1 "$PW"; WIN[1]=$bc_win; new_panel "${WIN[1]}"; PANEL[1]=$bc_panel
   list_dir 0; list_dir 1

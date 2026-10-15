@@ -585,6 +585,11 @@ check "wscrl twice marks net new rows" "1" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 
 check "mc hum rounds G" "25G" "$(mc 'hum 25969664')"
 check "mc hum rounds M" "1024M" "$(mc 'hum 1048575')"
 
+# J3b. hintbar can be disabled like mc's Layout/message_visible=false
+check "mc hintbar enabled layout" "26 27 28 29" "$(mc 'MC_HINTBAR=1; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
+check "mc hintbar disabled layout" "27 -1 28 29" "$(mc 'MC_HINTBAR=0; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
+check "mc hintbar disabled skips hint" "X" "$(mc 'HINTBAR=0; HINTY=27; mvaddstr 27 0 X; redraw_hint; printf "%s" "${BC_C["0/27 0"]}"')"
+
 # J4. list_dir: parent first, directories before files, hidden filtering, exec marker
 check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(
   d="$REPO/tmp/list_dir_test.$$"

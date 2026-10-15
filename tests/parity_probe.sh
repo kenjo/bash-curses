@@ -56,7 +56,10 @@ sanitize() {
 }
 
 build_root() {
-  mkdir -p "$ROOT/home" "$ROOT/mcconf" "$ROOT/mccache" "$ROOT/mc" "$ROOT/clone" "$CACHE"
+  mkdir -p "$ROOT/home" "$ROOT/home/.config/mc" "$ROOT/mcconf" "$ROOT/mccache" "$ROOT/mc" "$ROOT/clone" "$CACHE"
+  printf '[Layout]\nmessage_visible=false\n' > "$ROOT/home/.config/mc/ini"
+  MC_CFG_HASH=$(sha256sum "$ROOT/home/.config/mc/ini" 2>/dev/null | cut -c1-12)
+  MC_CFG_HASH=${MC_CFG_HASH:-none}
 }
 
 make_tree_at() {
@@ -114,7 +117,7 @@ start_app() {
   if [[ $which == clone ]]; then
     mkdir -p "$ROOT/clone_test"
     rm -f "$ROOT/clone_test/seq"
-    extra_env=(BC_TEST_DIR="$ROOT/clone_test")
+    extra_env=(BC_TEST_DIR="$ROOT/clone_test" MC_HINTBAR=0)
   fi
   tmux -S "$sock" new-session -d -s "$sess" -x "$X" -y "$Y" \
     env HOME="$ROOT/home" MC_CONFIG_DIR="$ROOT/mcconf" MC_CACHE_DIR="$ROOT/mccache" \
@@ -285,13 +288,13 @@ fs_snapshot() {
 
 cache_valid() {
   local sl=$1 desc=$2
-  [[ -f "$CACHE/$sl.meta" && "$(cat "$CACHE/$sl.meta")" == "$desc" &&
+  [[ -f "$CACHE/$sl.meta" && "$(cat "$CACHE/$sl.meta")" == "$desc|$MC_CFG_HASH" &&
      -f "$CACHE/$sl.plain" && -f "$CACHE/$sl.sgr" && -f "$CACHE/$sl.fs" ]]
 }
 
 cache_store() {
   local n=$1 sl=$2 desc=$3 fs=$4
-  printf '%s\n' "$desc" > "$CACHE/$sl.meta"
+  printf '%s\n' "$desc|$MC_CFG_HASH" > "$CACHE/$sl.meta"
   cp "$ROOT/mc/$n.$sl.plain" "$CACHE/$sl.plain" 2>/dev/null || true
   cp "$ROOT/mc/$n.$sl.sgr" "$CACHE/$sl.sgr" 2>/dev/null || true
   printf '%s\n' "$fs" > "$CACHE/$sl.fs"
