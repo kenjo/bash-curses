@@ -1753,11 +1753,41 @@ derwin() { # win nlines ncol begin_y begin_x (absolute, within parent)
 
 subwin() { derwin "$@"; }
 
+_bc_move_window_cells() { # w oldy oldx newy newx
+  local w=$1 oldy=$2 oldx=$3 newy=$4 newx=$5
+  local buf=${BC_WBUF[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]}
+  local -A oldc=() olda=() oldp=()
+  local y x k bg ba bp
+  for (( y = 0; y < h; y++ )); do
+    for (( x = 0; x < ww; x++ )); do
+      k="$buf/$(( oldy + y )) $(( oldx + x ))"
+      oldc["$y $x"]=${BC_C[$k]:- }
+      olda["$y $x"]=${BC_A[$k]:-0}
+      oldp["$y $x"]=${BC_P[$k]:-0}
+    done
+  done
+  bg=${BC_WBG[$w]:- } ba=${BC_WBGA[$w]:-0} bp=${BC_WBGP[$w]:-0}
+  for (( y = 0; y < h; y++ )); do
+    for (( x = 0; x < ww; x++ )); do
+      _bc_cell "$w" "$(( oldy + y ))" "$(( oldx + x ))" "$bg" "$ba" "$bp"
+    done
+  done
+  for (( y = 0; y < h; y++ )); do
+    for (( x = 0; x < ww; x++ )); do
+      _bc_cell "$w" "$(( newy + y ))" "$(( newx + x ))" "${oldc["$y $x"]}" "${olda["$y $x"]}" "${oldp["$y $x"]}"
+    done
+  done
+}
+
 mvwin() { # win y x
   local w=$1
   [[ -n ${BC_WY[$w]:-} ]] || return 1
-  BC_WY[$w]=$2
-  BC_WX[$w]=$3
+  local oldy=${BC_WY[$w]} oldx=${BC_WX[$w]} newy=$2 newx=$3
+  if (( oldy != newy || oldx != newx )) && [[ ${BC_WBUF[$w]} == "$w" ]]; then
+    _bc_move_window_cells "$w" "$oldy" "$oldx" "$newy" "$newx"
+  fi
+  BC_WY[$w]=$newy
+  BC_WX[$w]=$newx
   _bc_mark_all "$w"
   return 0
 }
@@ -2385,7 +2415,7 @@ waddstr() { # win str
   return 0
 }
 
-addstr() { waddstr "$BC_CURR" "$@"; }
+addstr() { waddstr "$BC_STDSCR" "$@"; }
 
 waddnstr() { # win str n
   local w=${1:-$BC_CURR} s=$2 n=${3:-0}
@@ -2451,7 +2481,7 @@ waddch() { # win ch [a p]
   return 0
 }
 
-addch() { waddch "$BC_CURR" "$@"; }
+addch() { waddch "$BC_STDSCR" "$@"; }
 
 mvwaddch() { # win y x ch [a p]
   wmove "$1" "$2" "$3" && waddch "$1" "${4:- }" ${5:+"$5"} ${6:+"$6"}
