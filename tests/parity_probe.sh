@@ -278,7 +278,7 @@ cap_step() {
   local sock sess
   sock=$(sock_for "$which"); sess=$(sess_for "$which")
   tmux -S "$sock" capture-pane -t "$sess" -e -p 2>/dev/null |
-    sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/[MG] \/ /s/[0-9]/0/g' > "$ROOT/$which/$idx.$label.sgr" || true
+    sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/[MG] \/ /s/[0-9]/0/g' -e 's/\x1b\[39m\x1b\[49m$//' > "$ROOT/$which/$idx.$label.sgr" || true
   tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null |
     sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/[MG] \/ /s/[0-9]/0/g' > "$ROOT/$which/$idx.$label.plain" || true
 }

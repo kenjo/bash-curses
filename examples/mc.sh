@@ -2564,6 +2564,45 @@ fkey_help() {
   (( x < 1 )) && x=1; (( y < 1 )) && y=1
   (( w > COLS - 2 )) && w=$(( COLS - 2 ))
   (( h > 1 + PH )) && h=$(( 1 + PH ))
+  # MC clears a one-cell white margin around the Help dialog frame.
+  local pad r p lr px lc0 lc1
+  printf -v pad '%*s' "$(( w + 2 ))" ''
+  for (( r = y - 1; r <= y + h; r++ )); do
+    for p in 0 1; do
+      lr=$(( r - 1 ))
+      (( lr < 0 || lr >= PH )) && continue
+      px=$(( p * PW ))
+      lc0=$(( x - 1 - px )); lc1=$(( x + w - px ))
+      (( lc0 < 0 )) && lc0=0
+      (( lc1 >= PW )) && lc1=$(( PW - 1 ))
+      (( lc0 <= lc1 )) || continue
+      wattrset "${WIN[$p]}" 0 13
+      mvwaddstr "${WIN[$p]}" "$lr" "$lc0" "${pad:0:$(( lc1 - lc0 + 1 ))}"
+    done
+  done
+  # MC draws an L-shaped gray-on-black shadow to the right and below the frame.
+  local sr sc lr lc0 lc1
+  for p in 0 1; do
+    px=$(( p * PW ))
+    for (( sr = y; sr <= y + h + 1; sr++ )); do
+      lr=$(( sr - 1 ))
+      (( lr < 0 || lr >= PH )) && continue
+      for sc in $(( x + w + 1 )) $(( x + w + 2 )); do
+        lc0=$(( sc - px ))
+        (( lc0 < 0 || lc0 >= PW )) && continue
+        wmove "${WIN[$p]}" "$lr" "$lc0" && wchgat "${WIN[$p]}" 1 0 36
+      done
+    done
+    lr=$(( y + h + 1 - 1 ))
+    (( lr >= 0 && lr < PH )) || continue
+    lc0=$(( x + 1 - px )); lc1=$(( x + w + 2 - px ))
+    (( lc0 < 0 )) && lc0=0
+    (( lc1 >= PW )) && lc1=$(( PW - 1 ))
+    (( lc0 <= lc1 )) || continue
+    wmove "${WIN[$p]}" "$lr" "$lc0" && wchgat "${WIN[$p]}" $(( lc1 - lc0 + 1 )) 0 36
+  done
+  wrefresh "${WIN[0]}"
+  wrefresh "${WIN[1]}"
   # button bar switches to the Help context while the dialog is up
   draw_buttonbar Help Index Prev "" "" "" "" "" "" Quit
   wrefresh 0
@@ -3232,6 +3271,7 @@ main() {
   init_pair 34 11 6                           # selected panel entry, active (bright yellow on cyan)
   init_pair 32 8 0                           # dropdown shadow (bright black on black)
   init_pair 35 9 "$COLOR_BLUE"               # broken symlinks (bright red on blue)
+  init_pair 36 8 "$COLOR_BLACK"              # dialog shadow (gray on black)
 
   init_ui || { endwin; exit 1; }
 
