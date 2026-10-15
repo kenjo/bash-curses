@@ -1,4 +1,5 @@
 /* C ground-truth reference copied from references/howto-examples/04-initialization/main.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +7,8 @@
 int main()
 {	int ch;
 
-	initscr();			/* Start curses mode 		*/
+	setlocale(LC_ALL, "");
+    initscr();			/* Start curses mode 		*/
 	raw();				/* Line buffering disabled	*/
 	keypad(stdscr, TRUE);		/* We get F1, F2 etc..		*/
 	noecho();			/* Don't echo() while we do getch */

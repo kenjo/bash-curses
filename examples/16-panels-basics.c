@@ -9,7 +9,8 @@ int main()
 	PANEL  *my_panels[3];
 	int lines = 10, cols = 40, y = 2, x = 4, i;
 
-	initscr();
+	setlocale(LC_ALL, "");
+    initscr();
 	cbreak();
 	noecho();
 

@@ -18,7 +18,8 @@ int main()
 	int ch;
 
 	/* Initialize curses */
-	initscr();
+	setlocale(LC_ALL, "");
+    initscr();
 	start_color();
 	cbreak();
 	noecho();

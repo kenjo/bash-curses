@@ -1,11 +1,13 @@
 /* C ground-truth reference copied from references/howto-examples/14-misc/leave-ncurses.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 
 int main()
 {	
-	initscr();			/* Start curses mode 		  */
+	setlocale(LC_ALL, "");
+    initscr();			/* Start curses mode 		  */
 	printw("Hello World !!!\n");	/* Print Hello World		  */
 	refresh();			/* Print it on to the real screen */
 	def_prog_mode();		/* Save the tty modes		  */

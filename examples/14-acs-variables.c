@@ -1,11 +1,13 @@
 /* C ground-truth reference copied from references/howto-examples/14-misc/acs-variables.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 
 int main()
 {
-        initscr();
+        setlocale(LC_ALL, "");
+    initscr();
 
         printw("Upper left corner           "); addch(ACS_ULCORNER); printw("\n"); 
         printw("Lower left corner           "); addch(ACS_LLCORNER); printw("\n");

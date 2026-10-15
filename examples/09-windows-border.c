@@ -1,4 +1,5 @@
 /* C ground-truth reference copied from references/howto-examples/09-windows/border.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +24,8 @@ int main(int argc, char *argv[])
 {	WIN win;
 	int ch;
 
-	initscr();			/* Start curses mode 		*/
+	setlocale(LC_ALL, "");
+    initscr();			/* Start curses mode 		*/
 	start_color();			/* Start the color functionality */
 	cbreak();			/* Line buffering disabled, Pass on
 					 * everty thing to me 		*/

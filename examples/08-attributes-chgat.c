@@ -1,10 +1,12 @@
 /* C ground-truth reference copied from references/howto-examples/08-attributes/chgat.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 
 int main(int argc, char *argv[])
-{	initscr();			/* Start curses mode 		*/
+{	setlocale(LC_ALL, "");
+    initscr();			/* Start curses mode 		*/
 	start_color();			/* Start color functionality	*/
 	
 	init_pair(1, COLOR_CYAN, COLOR_BLACK);

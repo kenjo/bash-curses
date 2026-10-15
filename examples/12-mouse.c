@@ -1,4 +1,5 @@
 /* C ground-truth reference copied from references/howto-examples/12-mouse/main.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,8 @@ int main()
 	MEVENT event;
 
 	/* Initialize curses */
-	initscr();
+	setlocale(LC_ALL, "");
+    initscr();
 	clear();
 	noecho();
 	cbreak();	//Line buffering disabled. pass on everything

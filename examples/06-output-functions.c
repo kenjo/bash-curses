@@ -1,4 +1,5 @@
 /* C ground-truth reference copied from references/howto-examples/06-output-functions/main.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>			/* ncurses.h includes stdio.h */  
 #include <stdlib.h>
 #include <string.h> 
@@ -8,7 +9,8 @@ int main()
  char mesg[]="Just a string";		/* message to be appeared on the screen */
  int row,col;				/* to store the number of rows and *
 					 * the number of colums of the screen */
- initscr();				/* start the curses mode */
+ setlocale(LC_ALL, "");
+    initscr();				/* start the curses mode */
  getmaxyx(stdscr,row,col);		/* get the number of rows and columns */
  mvprintw(row/2,(col-strlen(mesg))/2,"%s",mesg);
                                 	/* print the message at the center of the screen */

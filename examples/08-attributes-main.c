@@ -1,5 +1,6 @@
 /* C ground-truth reference copied from references/howto-examples/08-attributes/main.c */
 /* pager functionality by Joseph Spainhour" <spainhou@bellsouth.net> */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +23,8 @@ int main(int argc, char *argv[])
     perror("Cannot open input file");
     exit(1);
   }
-  initscr();				/* Start curses mode */
+  setlocale(LC_ALL, "");
+    initscr();				/* Start curses mode */
   getmaxyx(stdscr, row, col);		/* find the boundaries of the screeen */
   while((ch = fgetc(fp)) != EOF)	/* read the file till we reach the end */
   {

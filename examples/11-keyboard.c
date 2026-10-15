@@ -1,4 +1,5 @@
 /* C ground-truth reference copied from references/howto-examples/11-keyboard/main.c */
+#include <locale.h>
 #include <stdio.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
@@ -26,7 +27,8 @@ int main()
 	int choice = 0;
 	int c;
 
-	initscr();
+	setlocale(LC_ALL, "");
+    initscr();
 	clear();
 	noecho();
 	cbreak();	/* Line buffering disabled. pass on everything */

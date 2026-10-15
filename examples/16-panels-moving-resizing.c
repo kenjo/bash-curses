@@ -30,7 +30,8 @@ int main()
 	int size = FALSE, move = FALSE;
 
 	/* Initialize curses */
-	initscr();
+	setlocale(LC_ALL, "");
+    initscr();
 	start_color();
 	cbreak();
 	noecho();

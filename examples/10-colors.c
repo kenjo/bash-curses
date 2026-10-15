@@ -1,11 +1,13 @@
 /* C ground-truth reference copied from references/howto-examples/10-colors/main.c */
+#include <locale.h>
 #include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 
 void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string);
 int main(int argc, char *argv[])
-{	initscr();			/* Start curses mode 		*/
+{	setlocale(LC_ALL, "");
+    initscr();			/* Start curses mode 		*/
 	if(has_colors() == FALSE)
 	{	endwin();
 		printf("Your terminal does not support color\n");
