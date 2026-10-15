@@ -220,6 +220,7 @@ check "getyx"              "5 7"         "$(scr 'wmove 0 5 7; getyx 0; printf "%
 check "keypad on"          "1"           "$(scr 'keypad 0 1; printf "%s" "${BC_WKEYPAD[0]}"')"
 check "keypad off"         "0"           "$(scr 'keypad 0 0; printf "%s" "${BC_WKEYPAD[0]}"')"
 check "printw fmt"         "Hello World" "$(scr 'printw "Hello %s" World; row 0 0 0 11')"
+check "waddnstr negative writes whole" "ABC" "$(scr 'waddnstr 0 ABC -1; row 0 0 0 3')"
 check "mvprintw fmt"       "Value 42"    "$(scr 'mvprintw 2 3 "Value %d" 42; row 0 2 3 8')"
 check "mvwprintw offset"   "X7"          "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; mvwprintw 5 1 2 "X%d" 7; row 5 3 5 2 ) )"
 check "mvhline"            "#####"       "$(scr 'mvhline 0 0 "#" 5; row 0 0 0 5')"
@@ -302,6 +303,7 @@ check "wgetnstr pushback"        "d"       "$(scr 'BC_PENDING_IN=$'"'"'abcd'"'"'
 check "wgetnstr echoes"          "abc"     "$(scr 'BC_PENDING_IN=$'"'"'abc\r'"'"'; wgetnstr 0 3 >/dev/null; row 0 0 0 3')"
 check "wgetnstr no echo beyond"  "abc "    "$(scr 'BC_PENDING_IN=$'"'"'abcd\r'"'"'; wgetnstr 0 3 >/dev/null; row 0 0 0 4')"
 check "mvwgetnstr moves reads"   "abc"     "$(scr 'BC_PENDING_IN=$'"'"'abc\r'"'"'; mvwgetnstr 0 2 3 3 >/dev/null; row 0 2 3 3')"
+check "wgetstr backspace offset window" "A " "$(win5 'BC_PENDING_IN=$'"'"'AB\b\r'"'"'; wgetstr 5 >/dev/null; row 5 2 3 2')"
 
 # --- H4. window/chtype/string API (headless) ---
 check "winch at cursor"          "B"       "$(scr 'mvaddstr 0 0 AB; wmove 0 0 1; winch 0; printf "%s" "$wch"')"
@@ -330,6 +332,7 @@ check "insdelln deletes"         "C"       "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 
 check "copywin copies"           "AB"      "$(scr 'newwin 2 2 0 0; src=$bc_win; newwin 2 2 5 5; dst=$bc_win; mvwaddstr $src 0 0 AB; copywin $src $dst 0 0 0 0 1 1 0; row $dst 5 5 2')"
 check "copywin overlay skips blank" "AC"   "$(scr 'newwin 2 2 0 0; src=$bc_win; newwin 2 2 5 5; dst=$bc_win; mvwaddch $src 0 0 A; mvwaddstr $dst 0 0 BC; copywin $src $dst 0 0 0 0 1 1 1; row $dst 5 5 2')"
 check "copywin overwrite blanks" "A "      "$(scr 'newwin 2 2 0 0; src=$bc_win; newwin 2 2 5 5; dst=$bc_win; mvwaddch $src 0 0 A; mvwaddstr $dst 0 0 BC; copywin $src $dst 0 0 0 0 1 1 0; row $dst 5 5 2')"
+check "copywin offset source"    "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; newwin 2 2 10 10; dst=$bc_win; mvwaddstr $src 0 0 AB; copywin $src $dst 0 0 0 0 1 1 0; row $dst 10 10 2')"
 check "overlay copies nonblank"  "AC"      "$(scr 'newwin 2 2 0 0; src=$bc_win; newwin 2 2 5 5; dst=$bc_win; mvwaddch $src 0 0 A; mvwaddstr $dst 0 0 BC; overlay $src $dst; row $dst 5 5 2')"
 check "overwrite copies all"     "A "      "$(scr 'newwin 2 2 0 0; src=$bc_win; newwin 2 2 5 5; dst=$bc_win; mvwaddch $src 0 0 A; mvwaddstr $dst 0 0 BC; overwrite $src $dst; row $dst 5 5 2')"
 check "mvwin moves origin"       "5 5"     "$(scr 'newwin 3 3 0 0; w=$bc_win; mvwin $w 5 5; getbegy $w; getbegx $w; printf "%s %s" "$BC_GBY" "$BC_GBX"')"
@@ -406,6 +409,7 @@ check "noqiflush rc"             "0"       "$(scr 'noqiflush; printf "%s" "$?"')
 check "dupwin copies"            "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; mvwaddstr $src 0 0 AB; dupwin $src; dst=$bc_win; row $dst 5 5 2')"
 check "dupwin independent"       "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; mvwaddstr $src 0 0 AB; dupwin $src; dst=$bc_win; mvwaddstr $src 0 0 C; row $dst 5 5 2')"
 check "dupwin cursor"            "1 1"     "$(scr 'newwin 2 2 5 5; src=$bc_win; wmove $src 1 1; dupwin $src; dst=$bc_win; printf "%s %s" "${BC_WAY[$dst]}" "${BC_WAX[$dst]}"')"
+check "delwin removes window cells" "0"    "$(scr 'newwin 2 2 5 5; w=$bc_win; buf=${BC_WBUF[$w]}; mvwaddstr $w 0 0 AB; delwin $w; n=0; for k in "${!BC_C[@]}"; do [[ $k == "$buf/"* ]] && n=$((n+1)); done; printf "%s" "$n"')"
 
 # --- H6. pad API (headless) ---
 check "newpad size"              "30 100"  "$(scr 'newpad 30 100; printf "%s %s" "${BC_WH[$bc_win]}" "${BC_WW[$bc_win]}"')"
@@ -507,6 +511,7 @@ check "mvwins_wchnstr moves inserts" "XYA" "$(scr 'mvwaddstr 0 0 0 A; mvwins_wch
 check "mvins_wchnstr moves inserts" "XYA"  "$(scr 'mvwaddstr 0 0 0 A; mvins_wchnstr 0 0 XYZ 2; row 0 0 0 3')"
 check "unget_wch"                "A"       "$(scr 'unget_wch A; wgetch 0 >/dev/null; printf "%s" "$key"')"
 check "ungetch function key"     "$KEY_F3" "$(scr 'ungetch "$KEY_F3"; wgetch 0 >/dev/null; printf "%s" "$key"')"
+check "ungetmouse returns KEY_MOUSE" "$KEY_MOUSE" "$(scr 'BC_ME_X=1 BC_ME_Y=2 BC_ME_BSTATE=4; ungetmouse; wgetch 0 >/dev/null; printf "%s" "$key"')"
 check "napms rc"                 "0"       "$(scr 'napms 1; printf "%s" "$?"')"
 check "mcprint rc"               "1"       "$(scr 'mcprint hello; printf "%s" "$?"')"
 check "setcchar getcchar"        "A 8 3"   "$(scr 'setcchar c A 8 3; getcchar "$bc_cchar"; printf "%s %s %s" "$wch" "$wcha" "$wchp"')"
@@ -581,6 +586,7 @@ check "doupdate emits SD" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr
 check "doupdate honors BC_NO_SCROLLREG" "no" "$(scr 'BC_NO_SCROLLREG=1; mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(doupdate); pat=$(printf "\033[1;3r"); [[ $out == *"$pat"* ]] && echo yes || echo no')"
 check "wrefresh after wscrl repaints region" "yes" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; out=$(wrefresh 0); pat=$(printf "\033[1;3r"); [[ $out != *"$pat"* ]] && echo yes || echo no')"
 check "wscrl twice marks net new rows" "1" "$(scr 'mvaddstr 0 0 A; mvaddstr 1 0 B; mvaddstr 2 0 C; scrollok 0 1; wsetscrreg 0 0 2; wscrl 0 1; wscrl 0 1; [[ -n ${BC_MK["0/1 0"]+set} ]] && echo 1 || echo 0')"
+check "wscrl offset window moves cells" "B" "$(scr 'newwin 3 1 5 0; w=$bc_win; mvwaddstr $w 0 0 A; mvwaddstr $w 1 0 B; mvwaddstr $w 2 0 C; scrollok $w 1; wscrl $w 1; printf "%s" "${BC_C["${BC_WBUF[$w]}/5 0"]}"')"
 
 # J3. status-line free space uses rounded G/M like mc (not floor division)
 check "mc hum rounds G" "25G" "$(mc 'hum 25969664')"

@@ -1242,7 +1242,7 @@ getmouse() { # -> BC_ME_ID BC_ME_X BC_ME_Y BC_ME_BSTATE; 0 ok, 1 queue empty
 
 ungetmouse() { # push back the event currently in BC_ME_*
   BC_MEVENTS=("0 $BC_ME_X $BC_ME_Y $BC_ME_BSTATE" "${BC_MEVENTS[@]}")
-  BC_PENDING_IN+=$KEY_MOUSE
+  BC_PENDING_KEY=$KEY_MOUSE
   return 0
 }
 
@@ -2164,7 +2164,7 @@ wscrl() { # win n
   if [[ -n ${BC_SR[$w]:-} ]]; then
     read -r top bottom <<< "${BC_SR[$w]}"
   fi
-  _bc_scroll_window_cells "$w" "$top" "$bottom" "$n"
+  _bc_scroll_window_cells "$w" "$(( BC_WY[$w] + top ))" "$(( BC_WY[$w] + bottom ))" "$n"
   _bc_combine_scroll_req "$w" "$top" "$bottom" "$n"
   return 0
 }
@@ -2178,6 +2178,12 @@ delwin() {
   # remember the region so the next composite can reveal what is underneath it
   [[ -n ${BC_WY[$w]:-} ]] && BC_DELRECTS+="|${BC_WY[$w]} ${BC_WX[$w]} ${BC_WH[$w]} ${BC_WW[$w]}"
   _bc_clear_marks "$w"
+  local buf=${BC_WBUF[$w]:-} k
+  if [[ -n $buf ]]; then
+    for k in "${!BC_C[@]}"; do
+      [[ $k == "$buf/"* ]] && unset "BC_C[$k]" "BC_A[$k]" "BC_P[$k]"
+    done
+  fi
   unset "BC_WD[$w]" "BC_WBUF[$w]"
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
@@ -2369,8 +2375,9 @@ waddstr() { # win str
 addstr() { waddstr "$BC_CURR" "$@"; }
 
 waddnstr() { # win str n
-  local w=${1:-$BC_CURR}
-  _bc_emit "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "${2:0:$3}" "${BC_WCURA[$w]}" "${BC_WCURP[$w]}"
+  local w=${1:-$BC_CURR} s=$2 n=${3:-0}
+  (( n >= 0 )) && s=${s:0:n}
+  _bc_emit "$w" "${BC_WAY[$w]}" "${BC_WAX[$w]}" "$s" "${BC_WCURA[$w]}" "${BC_WCURP[$w]}"
   return 0
 }
 
@@ -2713,7 +2720,7 @@ copywin() { # src dst sminy sminx dminy dminx dmaxy dmaxx overlay
   local y x sk ch a p
   for (( y = 0; y < rows; y++ )); do
     for (( x = 0; x < cols; x++ )); do
-      sk="$sbuf/$(( sminy + y )) $(( sminx + x ))"
+      sk="$sbuf/$(( BC_WY[$src] + sminy + y )) $(( BC_WX[$src] + sminx + x ))"
       ch=${BC_C[$sk]:- }
       if [[ $ov != 0 && $ov != false && $ch == ' ' ]]; then
         continue
@@ -4062,7 +4069,7 @@ wgetstr() { # win [n]
           cy=${BC_WAY[$w]}; cx=${BC_WAX[$w]}
           if (( cx > 0 )); then
             cx=$(( cx - 1 ))
-            _bc_clear_cell "$w" "$cy" "$cx"
+            _bc_clear_cell "$w" "$(( BC_WY[$w] + cy ))" "$(( BC_WX[$w] + cx ))"
           fi
           BC_WAX[$w]=$cx
         fi
