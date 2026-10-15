@@ -3,6 +3,10 @@ opencode.json
 
 # test/build artifacts
 tmp/
+examples/[0-9]*
+!examples/[0-9]*.sh
+!examples/[0-9]*.c
+examples/*.o
 
 # read-only reference corpus (vendored shallow clones; see references/README.md)
 references/
