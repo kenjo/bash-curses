@@ -1,0 +1,51 @@
+/* C ground-truth reference port for examples/44-vidattr.sh */
+#include "bc_example.h"
+
+static int
+put_wrapper(int c)
+{
+    return putc(c, stdout);
+}
+
+int
+main(void)
+{
+    const char *msg = "waiting";
+    int key;
+
+    bc_example_init(1);
+
+    for (;;) {
+	mvprintw(0, 0, "a vidattr bold  p vidputs  q quit");
+	clrtoeol();
+	mvprintw(1, 0, "%s", msg);
+	clrtoeol();
+	refresh();
+
+	if ((key = wgetch(stdscr)) == ERR)
+	    break;
+	switch (key) {
+	case 'a':
+	case 'A':
+	    vidattr(A_BOLD);
+	    mvprintw(2, 0, "bold text from vidattr");
+	    vidattr(A_NORMAL);
+	    msg = "vidattr A_BOLD then A_NORMAL";
+	    break;
+	case 'p':
+	case 'P':
+	    vidputs(A_BOLD, put_wrapper);
+	    mvprintw(3, 0, "after vidputs");
+	    vidputs(A_NORMAL, put_wrapper);
+	    msg = "vidputs plain with A_BOLD";
+	    break;
+	case 'q':
+	case 'Q':
+	    goto done;
+	}
+    }
+
+done:
+    endwin();
+    return 0;
+}
