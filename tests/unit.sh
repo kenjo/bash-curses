@@ -591,6 +591,8 @@ check "mc hintbar enabled layout" "26 27 28 29" "$(mc 'MC_HINTBAR=1; layout_bott
 check "mc hintbar disabled layout" "27 -1 28 29" "$(mc 'MC_HINTBAR=0; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
 check "mc hintbar disabled skips hint" "X" "$(mc 'HINTBAR=0; HINTY=27; mvaddstr 27 0 X; redraw_hint; printf "%s" "${BC_C["0/27 0"]}"')"
 check "mc viewer fits shows total pct" "5/5 100%" "$(mc 'V_PATH=TREE/a.txt; V_TOTAL=5; V_N=1; V_OFF=0; V_BTOFF=(0); view_metrics; view_title 0; line=""; for ((x=0;x<COLS;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line" | tr -s " " | grep -o "5/5 100%"')"
+check "mc dlg_field omits button" "abc       " "$(mc 'dw=0; dlg_field 0 0 10 "abc" 3 0; line=""; for ((x=0;x<10;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line"')"
+check "mc dlg_field button"       "abc    [^]" "$(mc 'dw=0; dlg_field 0 0 10 "abc" 3 0 1; line=""; for ((x=0;x<10;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line"')"
 
 # J4. list_dir: parent first, directories before files, hidden filtering, exec marker
 check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(

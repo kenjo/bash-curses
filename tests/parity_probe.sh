@@ -60,6 +60,7 @@ build_root() {
   printf '[Layout]\nmessage_visible=false\n' > "$ROOT/home/.config/mc/ini"
   MC_CFG_HASH=$(sha256sum "$ROOT/home/.config/mc/ini" 2>/dev/null | cut -c1-12)
   MC_CFG_HASH=${MC_CFG_HASH:-none}
+  CAP_VER=2
 }
 
 make_tree_at() {
@@ -277,9 +278,9 @@ cap_step() {
   local sock sess
   sock=$(sock_for "$which"); sess=$(sess_for "$which")
   tmux -S "$sock" capture-pane -t "$sess" -e -p 2>/dev/null |
-    sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/M \/ /s/[0-9]/0/g' > "$ROOT/$which/$idx.$label.sgr" || true
+    sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/[MG] \/ /s/[0-9]/0/g' > "$ROOT/$which/$idx.$label.sgr" || true
   tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null |
-    sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/M \/ /s/[0-9]/0/g' > "$ROOT/$which/$idx.$label.plain" || true
+    sed -E -e "s|$TREE_M|TREE|g" -e "s|$TREE_C|TREE|g" -e 's|/t0|/tX|g' -e 's|/t1|/tX|g' -e 's/[0-9]{2}:[0-9]{2}/00:00/g' -e '/[MG] \/ /s/[0-9]/0/g' > "$ROOT/$which/$idx.$label.plain" || true
 }
 
 fs_snapshot() {
@@ -289,13 +290,13 @@ fs_snapshot() {
 
 cache_valid() {
   local sl=$1 desc=$2
-  [[ -f "$CACHE/$sl.meta" && "$(cat "$CACHE/$sl.meta")" == "$desc|$MC_CFG_HASH" &&
+  [[ -f "$CACHE/$sl.meta" && "$(cat "$CACHE/$sl.meta")" == "$desc|$MC_CFG_HASH|$CAP_VER" &&
      -f "$CACHE/$sl.plain" && -f "$CACHE/$sl.sgr" && -f "$CACHE/$sl.fs" ]]
 }
 
 cache_store() {
   local n=$1 sl=$2 desc=$3 fs=$4
-  printf '%s\n' "$desc|$MC_CFG_HASH" > "$CACHE/$sl.meta"
+  printf '%s\n' "$desc|$MC_CFG_HASH|$CAP_VER" > "$CACHE/$sl.meta"
   cp "$ROOT/mc/$n.$sl.plain" "$CACHE/$sl.plain" 2>/dev/null || true
   cp "$ROOT/mc/$n.$sl.sgr" "$CACHE/$sl.sgr" 2>/dev/null || true
   printf '%s\n' "$fs" > "$CACHE/$sl.fs"

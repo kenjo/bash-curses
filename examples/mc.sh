@@ -990,19 +990,26 @@ dlg_divider() { # row [pair]
 }
 
 # Input field: cyan background (pair 25), bright-black text, and a completer
-# button "[^]" (bright-white on blue, pair 28) at the right end. The focused
-# field parks the hardware cursor at the caret position.
-dlg_field() { # row col width text caret focused
-  local row=$1 col=$2 width=$3 text=$4 caret=$5 focused=$6
+# Some fields (notably the Select pattern field) draw a completer button "[^]"
+# (bright-white on blue, pair 28) at the right end. The focused field parks the
+# hardware cursor at the caret position.
+dlg_field() { # row col width text caret focused [button]
+  local row=$1 col=$2 width=$3 text=$4 caret=$5 focused=$6 button=${7:-0}
   (( caret > ${#text} )) && caret=${#text}; (( caret < 0 )) && caret=0
   wattrset "$dw" 0 25
   mvwhline "$dw" "$row" "$col" ' ' "$width"
-  mvwaddnstr "$dw" "$row" "$col" "$text" "$(( width - 3 ))"
-  wattrset "$dw" 0 28
-  mvwaddstr "$dw" "$row" $(( col + width - 3 )) "[^]"
-  wattrset "$dw" 0 25
+  if (( button )); then
+    mvwaddnstr "$dw" "$row" "$col" "$text" "$(( width - 3 ))"
+    wattrset "$dw" 0 28
+    mvwaddstr "$dw" "$row" $(( col + width - 3 )) "[^]"
+    wattrset "$dw" 0 25
+    (( caret > width - 4 )) && caret=$(( width - 4 ))
+  else
+    mvwaddnstr "$dw" "$row" "$col" "$text" "$width"
+    (( caret > width - 1 )) && caret=$(( width - 1 ))
+  fi
+  (( caret < 0 )) && caret=0
   if (( focused )); then
-    (( caret > width - 4 )) && caret=$(( width - 4 )); (( caret < 0 )) && caret=0
     wmove "$dw" "$row" $(( col + caret ))
   fi
 }
@@ -2048,7 +2055,7 @@ select_group_dialog() {
   local cancelled=0
   mc_dialog "$w" "$h" "Select" 0
   sg_draw() {
-    dlg_field 1 2 49 "$pat" "$caret" $(( focus == 0 ))
+    dlg_field 1 2 49 "$pat" "$caret" $(( focus == 0 )) 1
     dlg_checkbox 2 2  "$files_only" "Files only"           0 23 24 $(( focus == 1 ))
     dlg_checkbox 2 27 "$case_sens"  "Case sensitive"       0 23 24 $(( focus == 2 ))
     dlg_checkbox 3 2  "$shell_pat"  "Using shell patterns" 0 23 24 $(( focus == 3 ))

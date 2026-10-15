@@ -1481,3 +1481,69 @@ per-cell SGR diff (mc < vs clone >)
 
 ## Additional run
 
+
+## Additional run
+
+
+### f5_copy_a
+
+- keys/menu: `Down Down Down Down Down F5`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/01.f5_copy_a.plain`, `tmp/p/mc/01.f5_copy_a.sgr`
+- clone capture: `tmp/p/clone/01.f5_copy_a.plain`, `tmp/p/clone/01.f5_copy_a.sgr`
+
+plain diff (mc < vs clone >)
+```text
+28c28
+< └───────────────────────────── 25G / 1104G (2%) ─┘└───────────────────────────── 25G / 1104G (2%) ─┘
+---
+> └───────────────────────────── 24G / 1104G (2%) ─┘└───────────────────────────── 24G / 1104G (2%) ─┘
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2733c2733
+< 27	32	5	16:7	16:4	
+---
+> 27	32	4	16:7	16:4	
+2783c2783
+< 27	82	5	16:7	16:4	
+---
+> 27	82	4	16:7	16:4	
+4 differing cells (of 3000)
+```
+
+### f6_move_a
+
+- keys/menu: `Down Down Down Down Down F6`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/02.f6_move_a.plain`, `tmp/p/mc/02.f6_move_a.sgr`
+- clone capture: `tmp/p/clone/02.f6_move_a.plain`, `tmp/p/clone/02.f6_move_a.sgr`
+
+plain diff (mc < vs clone >)
+```text
+28c28
+< └───────────────────────────── 25G / 1104G (2%) ─┘└───────────────────────────── 25G / 1104G (2%) ─┘
+---
+> └───────────────────────────── 24G / 1104G (2%) ─┘└───────────────────────────── 24G / 1104G (2%) ─┘
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2733c2733
+< 27	32	5	16:7	16:4	
+---
+> 27	32	4	16:7	16:4	
+2783c2783
+< 27	82	5	16:7	16:4	
+---
+> 27	82	4	16:7	16:4	
+4 differing cells (of 3000)
+```
+
+## Additional run
+
