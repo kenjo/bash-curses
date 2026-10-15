@@ -121,10 +121,12 @@ check_line_count 26 "beta" 1 "right click selects beta"
 
 # menu bar click opens the dropdown
 click 3 0
+sleep 0.5
 check "menu bar click opens dropdown" "File listing"
 
 # dropdown click chooses Sort order...
 click 12 8
+sleep 0.5
 check_line 3 ".s" "dropdown click changes sort header"
 
 # PullDn button opens the menu
