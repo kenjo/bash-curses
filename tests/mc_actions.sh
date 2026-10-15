@@ -119,8 +119,6 @@ sleep 1
 sendk -l 'echo hi'
 sendk Enter
 sleep 1
-sendk Enter
-sleep 1
 sendk F9
 sendk Right
 sendk Right

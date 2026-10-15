@@ -253,18 +253,13 @@ capture_plain() {
 
 wait_settled() {
   local which=$1 base=$2 prev cur stable=0 i
-  for ((i = 0; i < 40; i++)); do
-    cur=$(capture_plain "$which")
-    [[ $cur != "$base" ]] && break
-    sleep 0.05
-  done
   prev=$(capture_plain "$which")
-  for ((i = 0; i < 40; i++)); do
+  for ((i = 0; i < 120; i++)); do
     sleep 0.05
     cur=$(capture_plain "$which")
     if [[ $cur == "$prev" ]]; then
       stable=$((stable + 1))
-      (( stable >= 3 )) && return 0
+      if [[ $cur != "$base" ]] && (( stable >= 10 )); then return 0; fi
     else
       stable=0
       prev=$cur

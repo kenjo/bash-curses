@@ -3349,10 +3349,6 @@ _bc_composite_cell() { # ay ax
 # "y x") holds the last composited screen, so unchanged cells are never
 # re-emitted and the topmost window always wins at a cell.
 doupdate() {
-  if [[ -n ${BC_TEST_DIR:-} ]]; then
-    BC_TEST_SEQ=$(( BC_TEST_SEQ + 1 ))
-    printf '%s\n' "$BC_TEST_SEQ" > "$BC_TEST_DIR/seq"
-  fi
   local ay ax k p w r y x
   local scroll_out=""
   if [[ -n ${BC_SCROLLREQ:-} ]]; then
@@ -3450,6 +3446,10 @@ doupdate() {
     unset "BC_WD[$w]"
   done
   BC_DELRECTS=""
+  if [[ -n ${BC_TEST_DIR:-} ]]; then
+    BC_TEST_SEQ=$(( BC_TEST_SEQ + 1 ))
+    printf '%s\n' "$BC_TEST_SEQ" > "$BC_TEST_DIR/seq"
+  fi
   return 0
 }
 

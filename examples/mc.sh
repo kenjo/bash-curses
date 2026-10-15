@@ -3136,6 +3136,8 @@ execute_cmd() {
     if [[ -d $target ]]; then
       DIR[$CUR]=$target; list_dir "$CUR"
     else
+      draw_cmdline
+      doupdate
       message_dialog "cd" "Not a directory: $target"
     fi
     return
@@ -3143,13 +3145,9 @@ execute_cmd() {
   case $cmd in
     exit|quit) STOP=1; return ;;
   esac
-  local out
-  out=$( (cd "${DIR[$CUR]}" 2>/dev/null && eval "$cmd") 2>&1 )
-  if [[ -n $out ]]; then
-    local -a olines=()
-    while IFS= read -r ln; do olines+=("$ln"); done <<< "$out"
-    message_dialog "Output" "${olines[@]}"
-  fi
+  draw_cmdline
+  doupdate
+  (cd "${DIR[$CUR]}" 2>/dev/null && eval "$cmd") >/dev/null 2>&1
 }
 
 # visible entry-row count for panel p (window height minus border/header/footer)
