@@ -963,9 +963,9 @@ mc_dialog() { # w h title danger
   local w=$1 h=$2 title=$3 danger=${4:-0}
   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
   (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-  # center in the panel area (below the menu bar, above the button bar),
-  # matching mc rather than the whole screen
-  local y=$(( (PH - h) / 2 )) x=$(( (COLS - w) / 2 ))
+  # center in the panel listing area (below the menu bar, above the
+  # separator/status/free rows), matching mc rather than the whole screen
+  local y=$(( 1 + (PH - 3 - h) / 2 )) x=$(( (COLS - w) / 2 ))
   (( y < 1 )) && y=1; (( x < 1 )) && x=1
   local fp tp
   (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
