@@ -17,7 +17,7 @@ $(NONPANEL_BINS): %: %.c
 
 ifneq ($(PANEL_BINS),)
 $(PANEL_BINS): %: %.c
-	$(CC) $(CFLAGS) -o $@ $< $(LDLIBS) -lpanel
+	$(CC) $(CFLAGS) -o $@ $< $(LDLIBS) -lpanelw
 endif
 
 clean:
