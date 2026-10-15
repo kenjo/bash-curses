@@ -20,6 +20,7 @@ main() {
     wgetch || break
     [[ $key == q || $key == Q ]] && break
 
+    _bc_key_code "$key"
     name=$(keyname "$key")
     if has_key "$key"; then
       hk=yes
@@ -27,7 +28,7 @@ main() {
       hk=no
     fi
 
-    mvprintw 4 0 "key=%s" "$key"
+    mvprintw 4 0 "key=%s" "$bc_key_code"
     clrtoeol
     mvprintw 5 0 "keyname=%s" "$name"
     clrtoeol

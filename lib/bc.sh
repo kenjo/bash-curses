@@ -533,8 +533,19 @@ _bc_ti_prefix() { # $1 partial sequence -> 0 if a longer entry starts with it
   return 1
 }
 
+_bc_key_code() { # key -> bc_key_code
+  local k=$1
+  if [[ $k =~ ^[0-9]+$ ]]; then
+    bc_key_code=$k
+  else
+    printf -v bc_key_code '%d' "'$k"
+  fi
+}
+
 has_key() { # key
   local k=$1 name
+  _bc_key_code "$k"
+  k=$bc_key_code
   (( k == KEY_RESIZE )) && return 0
   for name in $(compgen -v KEY_); do
     if (( ${!name} == k )); then
@@ -561,6 +572,8 @@ _bc_keyname_char() { # c
 
 keyname() { # c
   local c=$1 name
+  _bc_key_code "$c"
+  c=$bc_key_code
   for name in $(compgen -v KEY_); do
     if (( ${!name} == c )); then
       printf '%s' "$name"
