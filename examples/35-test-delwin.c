@@ -7,7 +7,7 @@ main(void)
 {
     WINDOW *win = NULL;
     char msg[128] = "no window";
-    int key;
+    int key, win_id = 0;
 
     bc_example_init(1);
 
@@ -28,15 +28,15 @@ main(void)
 		box(win, 0, 0);
 		mvwprintw(win, 0, 2, " win ");
 		wrefresh(win);
-		snprintf(msg, sizeof(msg), "created window %p", (void *)win);
+		snprintf(msg, sizeof(msg), "created window %d", ++win_id);
 	    } else {
-		snprintf(msg, sizeof(msg), "window %p already exists", (void *)win);
+		snprintf(msg, sizeof(msg), "window %d already exists", win_id);
 	    }
 	    break;
 	case 'd':
 	case 'D':
 	    if (win != NULL) {
-		snprintf(msg, sizeof(msg), "deleted window %p", (void *)win);
+		snprintf(msg, sizeof(msg), "deleted window %d", win_id);
 		delwin(win);
 		win = NULL;
 	    } else {

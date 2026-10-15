@@ -16,7 +16,7 @@ main(void)
 	clrtoeol();
 	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
-	mvprintw(2, 0, "filter=%d LINES=%d COLS=%d", filter_on, LINES, COLS);
+	mvprintw(2, 0, "BC_FILTER=%d LINES=%d COLS=%d", filter_on, LINES, COLS);
 	clrtoeol();
 	refresh();
 

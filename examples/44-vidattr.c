@@ -1,5 +1,6 @@
 /* C ground-truth reference port for examples/44-vidattr.sh */
 #include "bc_example.h"
+#include <string.h>
 
 static int
 put_wrapper(int c)
@@ -11,7 +12,7 @@ int
 main(void)
 {
     const char *msg = "waiting";
-    int key;
+    int key, put_plain = 0, pcol = 0;
 
     bc_example_init(1);
 
@@ -20,6 +21,12 @@ main(void)
 	clrtoeol();
 	mvprintw(1, 0, "%s", msg);
 	clrtoeol();
+	if (put_plain) {
+	    const char *s = "plain";
+	    int i;
+	    for (i = 0; s[i]; i++)
+		mvaddch(1, pcol + i, (chtype)s[i] | A_BOLD);
+	}
 	refresh();
 
 	if ((key = wgetch(stdscr)) == ERR)
@@ -34,6 +41,8 @@ main(void)
 	    break;
 	case 'p':
 	case 'P':
+	    pcol = (int)strlen(msg);
+	    put_plain = 1;
 	    vidputs(A_BOLD, put_wrapper);
 	    mvprintw(3, 0, "after vidputs");
 	    vidputs(A_NORMAL, put_wrapper);

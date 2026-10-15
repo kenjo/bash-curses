@@ -22,6 +22,7 @@ main() {
     mvprintw 1 0 "%s" "$msg"
     clrtoeol
     refresh
+    touchwin "$win"; wrefresh "$win"
 
     wgetch || break
     case $key in
@@ -30,7 +31,7 @@ main() {
         local dup=$bc_win
         mvwprintw "$dup" 1 2 " dup "
         wrefresh "$dup"
-        msg="dupwin -> $dup"
+        msg="dupwin -> ok"
         ;;
       q|Q)
         break

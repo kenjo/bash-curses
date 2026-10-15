@@ -7,6 +7,26 @@ yn(int v)
     return v ? "yes" : "no";
 }
 
+static void
+draw_box(int wy, int wx, int wh, int ww)
+{
+    int y, x;
+    for (y = 0; y < wh; y++) {
+	for (x = 0; x < ww; x++) {
+	    chtype c = ' ';
+	    if (y == 0)
+		c = (x == 0) ? ACS_ULCORNER :
+		    (x == ww - 1) ? ACS_URCORNER : ACS_HLINE;
+	    else if (y == wh - 1)
+		c = (x == 0) ? ACS_LLCORNER :
+		    (x == ww - 1) ? ACS_LRCORNER : ACS_HLINE;
+	    else
+		c = (x == 0 || x == ww - 1) ? ACS_VLINE : ' ';
+	    mvaddch(wy + y, wx + x, c);
+	}
+    }
+}
+
 int
 main(void)
 {
@@ -18,7 +38,8 @@ main(void)
 
     win = newwin(10, 40, 2, 2);
     box(win, 0, 0);
-    wrefresh(win);
+
+    draw_box(2, 2, 10, 40);
 
     for (;;) {
 	mvprintw(0, 0, "t touchwin  u untouchwin  l touchline  w wtouchln  q quit");
@@ -32,7 +53,6 @@ main(void)
 		 yn(is_linetouched(win, 5)));
 	clrtoeol();
 	refresh();
-	if (win != NULL) { touchwin(win); wrefresh(win); }
 
 	if ((key = wgetch(stdscr)) == ERR)
 	    break;

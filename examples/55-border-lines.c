@@ -24,7 +24,7 @@ main(void)
 {
     WINDOW *win;
     const char *msg = "waiting";
-    cchar_t v, h, tl, tr, bl, br;
+    cchar_t v, h, he, tl, tr, bl, br;
     int key;
 
     bc_example_init(1);
@@ -34,6 +34,7 @@ main(void)
 
     mkcch(&v, L'|');
     mkcch(&h, L'-');
+    mkcch(&he, L'=');
     mkcch(&tl, L'+');
     mkcch(&tr, L'+');
     mkcch(&bl, L'+');
@@ -68,7 +69,7 @@ main(void)
 	    break;
 	case 'h':
 	case 'H':
-	    mvwhline_set(win, 3, 2, &v, 10);
+	    mvwhline_set(win, 3, 2, &he, 10);
 	    msg = "mvwhline_set at 3,2";
 	    break;
 	case 'v':

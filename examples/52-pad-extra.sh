@@ -26,16 +26,16 @@ main() {
 
     wgetch || break
     case $key in
-      Up)
+      "$KEY_UP")
         (( pminrow > 0 )) && pminrow=$(( pminrow - 1 ))
         ;;
-      Down)
+      "$KEY_DOWN")
         pminrow=$(( pminrow + 1 ))
         ;;
-      Left)
+      "$KEY_LEFT")
         (( pmincol > 0 )) && pmincol=$(( pmincol - 1 ))
         ;;
-      Right)
+      "$KEY_RIGHT")
         pmincol=$(( pmincol + 1 ))
         ;;
       s|S)

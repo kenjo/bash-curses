@@ -44,8 +44,9 @@ main(void)
 	}
 	case 'o':
 	case 'O': {
-	    int prev = keyok(400, 0);
-	    snprintf(buf, sizeof(buf), "keyok 400 disabled previous=%d", prev);
+	    int r = keyok(400, 0);
+	    snprintf(buf, sizeof(buf), "keyok 400 disabled previous=%d",
+		     (r == OK) ? 1 : 0);
 	    msg = buf;
 	    break;
 	}

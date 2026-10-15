@@ -32,7 +32,7 @@ main() {
         msg="box_set on window"
         ;;
       m|M)
-        mvwborder "$win" 1 1 '|' '-' '+' '+' '+' '+'
+        mvwborder "$win" 1 1 '|' '-' '+' '+' '+' '+' '+' '+'
         msg="mvwborder at 1,1"
         ;;
       h|H)

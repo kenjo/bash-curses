@@ -34,7 +34,7 @@ main(void)
 	    if (dup != NULL) {
 		mvwprintw(dup, 1, 2, " dup ");
 		wrefresh(dup);
-		snprintf(buf, sizeof(buf), "dupwin -> %p", (void *)dup);
+		snprintf(buf, sizeof(buf), "dupwin -> ok");
 	    } else {
 		snprintf(buf, sizeof(buf), "dupwin failed");
 	    }

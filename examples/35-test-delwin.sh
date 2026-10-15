@@ -9,7 +9,7 @@ main() {
   keypad 0 1
   curs_set 0
 
-  local win="" msg="no window"
+  local win=-1 msg="no window"
   while :; do
     mvprintw 0 0 "c create window  d delwin  q quit"
     clrtoeol

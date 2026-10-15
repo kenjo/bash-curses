@@ -23,6 +23,7 @@ main() {
     mvprintw 2 0 "screen coord: ($y,$x)"
     clrtoeol
     refresh
+    touchwin "$win"; wrefresh "$win"
 
     wgetch || break
     case $key in

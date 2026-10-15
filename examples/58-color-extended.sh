@@ -43,14 +43,14 @@ main() {
         fi
         ;;
       a|A)
-        if alloc_pair 3 4; then
+        if alloc_pair 3 4 >/dev/null; then
           msg="alloc_pair -> $bc_pair"
         else
           msg="alloc_pair failed"
         fi
         ;;
       f|F)
-        if find_pair 3 4; then
+        if find_pair 3 4 >/dev/null; then
           msg="find_pair -> $bc_pair"
         else
           msg="find_pair failed"

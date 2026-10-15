@@ -331,6 +331,12 @@ declare -A BC_SGRC=()  # "a/p" -> sgr code
 declare -a BC_WLIST=()
 declare -A BC_WBUF=() # buffer owner per window (w -> owner window id)
 declare -A BC_WPAR=() # parent window id, -1 for top-level windows
+declare -A BC_PADY=()  # pad: last prefresh pminrow
+declare -A BC_PADX=()  # pad: last prefresh pmincol
+declare -A BC_PADT=()  # pad: last prefresh sminrow
+declare -A BC_PADL=()  # pad: last prefresh smincol
+declare -A BC_PADB=()  # pad: last prefresh smaxrow
+declare -A BC_PADR=()  # pad: last prefresh smaxcol
 declare -A BC_WCLEAR=()
 declare -A BC_WIDC=()
 declare -A BC_WIDL=()
@@ -1320,7 +1326,7 @@ _bc_mouse_read_sgr() {
   return 0
 }
 
-# Read the X10 payload that follows "\EM": three raw bytes Cb Cx Cy.
+# Read the X10 payload that follows "\E[M": three raw bytes Cb Cx Cy.
 # Cx/Cy are always >= 0x21; Cb may be a NUL byte (Cb=0, left press). bash
 # read() strips NUL bytes silently, but "read -d ''" reports a NUL as a
 # successful read of an empty string, so Cb is read that way: rc=0 with
@@ -1554,16 +1560,12 @@ _bc_mouse_run() {
           _bc_mouse_push_event
           continue
         fi
-        BC_PENDING_IN+="$c$s$s2"
-        break
-        ;;
-      'M')
-        if _bc_mouse_read_x10; then
+        if [[ $s2 == 'M' ]] && _bc_mouse_read_x10; then
           _bc_mouse_decode_x10
           _bc_mouse_push_event
           continue
         fi
-        BC_PENDING_IN+="$c$s"
+        BC_PENDING_IN+="$c$s$s2"
         break
         ;;
       *)
@@ -2033,6 +2035,12 @@ _bc_prefresh_copy() { # pad pminrow pmincol sminrow smincol smaxrow smaxcol
       _bc_cell "$BC_STDSCR" "$sy" "$sx" "${BC_C[$k]:- }" "${BC_A[$k]:-0}" "${BC_P[$k]:-0}"
     done
   done
+  BC_PADY[$w]=$pminrow
+  BC_PADX[$w]=$pmincol
+  BC_PADT[$w]=$sminrow
+  BC_PADL[$w]=$smincol
+  BC_PADB[$w]=$smaxrow
+  BC_PADR[$w]=$smaxcol
   return 0
 }
 
@@ -2049,7 +2057,9 @@ pechochar() { # pad ch
   local w=${1:-$BC_CURR}
   [[ -n ${BC_WPAD[$w]:-} && ${BC_WPAD[$w]} != 0 ]] || return 1
   waddch "$w" "$2" || return 1
-  prefresh "$w" 0 0 0 0 $(( BC_LINES - 1 )) $(( BC_COLS - 1 ))
+  prefresh "$w" "${BC_PADY[$w]:-0}" "${BC_PADX[$w]:-0}" "${BC_PADT[$w]:-0}" \
+           "${BC_PADL[$w]:-0}" "${BC_PADB[$w]:-$(( BC_LINES - 1 ))}" \
+           "${BC_PADR[$w]:-$(( BC_COLS - 1 ))}"
 }
 
 scrollok() { # win bool
@@ -3860,7 +3870,7 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
             continue
           fi
         fi
-        if (( BC_MOUSE_MASK )) && [[ $seq == $'\x1bM' ]]; then
+        if (( BC_MOUSE_MASK )) && [[ $seq == $'\x1b[M' ]]; then
           if _bc_mouse_read_x10; then
             _bc_mouse_decode_x10
             _bc_mouse_run

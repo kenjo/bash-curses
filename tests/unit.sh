@@ -139,7 +139,7 @@ check "run wheel" "[0 4 5 65536]" "$(
 check "run x10 click" "[0 4 5 4]" "$(
   ( _bc_mouse_mask2 268435455
     _BC_X10_CB=32 _BC_X10_CX=37 _BC_X10_CY=38 _bc_mouse_decode_x10
-    _bc_mouse_run < <(printf '\x1bM\x23\x25\x26')
+    _bc_mouse_run < <(printf '\x1b[M\x23\x25\x26')
     printf '[%s]' "${BC_MEVENTS[*]}" ) )"
 check "run ends on key, pushback" "[0 4 5 4] P=[a]" "$(
   ( _bc_mouse_mask2 268435455

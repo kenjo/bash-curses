@@ -43,7 +43,7 @@ main() {
         ;;
       r|R)
         mvwin_wchnstr "$win" 2 0 3
-        msg="mvwin_wchnstr bc_str=$bc_str"
+        msg="mvwin_wchnstr str=$bc_str"
         ;;
       q|Q)
         break

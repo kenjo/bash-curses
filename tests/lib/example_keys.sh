@@ -42,7 +42,7 @@ example_actions() {
       printf '%s\n' Down Up NPage PPage
       ;;
     24-mouse-buttons)
-      printf '%s\n' 'raw:1b 5b 3c 30 3b 35 3b 36 4d 1b 5b 3c 30 3b 35 3b 36 6d'
+      printf '%s\n' 'raw:1b 5b 4d 20 25 26 1b 5b 4d 23 25 26'
       ;;
     25-background)
       printf '%s\n' b s g

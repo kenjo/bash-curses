@@ -37,7 +37,7 @@ main() {
         if getwin "$file"; then
           local loaded=$bc_win
           wrefresh "$loaded"
-          msg="getwin loaded -> $loaded"
+          msg="getwin loaded -> ok"
         else
           msg="getwin failed"
         fi

@@ -55,8 +55,7 @@ main(void)
 		fclose(fp);
 		if (loaded != NULL) {
 		    wrefresh(loaded);
-		    snprintf(buf, sizeof(buf), "getwin loaded -> %p",
-			     (void *)loaded);
+		    snprintf(buf, sizeof(buf), "getwin loaded -> ok");
 		} else {
 		    snprintf(buf, sizeof(buf), "getwin failed");
 		}
