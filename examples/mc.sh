@@ -2744,6 +2744,40 @@ compare_dirs_mark() { # method
   list_dir 0; list_dir 1
 }
 
+do_filtered_view() {
+  # mc "Filtered view" (M-!): a filter-command input dialog.
+  local w=48 h=6
+  mc_dialog "$w" "$h" "Filtered view" 0
+  wattrset "$dw" 0 23
+  mvwaddstr "$dw" 1 2 "Filter command and arguments:"
+  dlg_divider 3
+  dlg_button 4 14 "OK"     ok   0 23 24 0
+  dlg_button 4 23 "Cancel" norm 0 23 24 0
+  local buf=".." caret=2 res=""
+  while [[ -z $res ]]; do
+    dlg_field 2 2 44 "$buf" "$caret" 1 1
+    wrefresh "$dw"
+    wgetch "$dw" || break
+    case $key in
+      $'\r') res="ok" ;;
+      $'\x1b') res="cancel" ;;
+      $'\x7f'|$'\x08') (( caret > 0 )) && { buf="${buf:0:caret-1}${buf:caret}"; (( caret-- )); } ;;
+      $KEY_LEFT)  (( caret > 0 )) && (( caret-- )) ;;
+      $KEY_RIGHT) (( caret < ${#buf} )) && (( caret++ )) ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if   dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 4 14 "OK"     ok;   then res="ok"
+          elif dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 4 23 "Cancel" norm; then res="cancel"
+          fi
+        done
+        ;;
+      *) if [[ ${#key} == 1 && $key == [[:print:]] ]]; then buf="${buf:0:caret}$key${buf:caret}"; (( caret++ )); fi ;;
+    esac
+  done
+  delwin "$dw"
+  # Applying the filter to produce a filtered listing is a follow-up feature.
+}
+
 do_exchange() {
   local t=${DIR[0]}
   DIR[0]=${DIR[1]}; DIR[1]=$t
@@ -3521,6 +3555,7 @@ main() {
       case $mk in
         c) quick_cd_dialog; continue ;;
         h) do_command_history; continue ;;
+        '!') do_filtered_view; continue ;;
         *) ungetch "$mk"; continue ;;
       esac
     fi
