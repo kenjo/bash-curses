@@ -724,7 +724,7 @@ draw_bottom() {
   # hint: default colors (context-dependent)
   redraw_hint
   # command line: default colors, ~ abbreviated path
-  wattrset 0 0 0
+  wattrset 0 0 40
   mvwaddstr 0 "$CMY" 0 "$clear"
   local cwd=${DIR[$CUR]}
   local scwd=$cwd
@@ -901,7 +901,7 @@ draw_cmdline() {
   local clear
   _repeat clear ' ' "$COLS"
   clear=${clear:1}
-  wattrset 0 0 0
+  wattrset 0 0 40
   mvwaddstr 0 "$CMY" 0 "$clear"
   cmdline_prompt
   local prompt=$CMD_PROMPT
@@ -3412,6 +3412,7 @@ main() {
   init_pair 32 8 0                           # dropdown shadow (bright black on black)
   init_pair 35 9 "$COLOR_BLUE"               # broken symlinks (bright red on blue)
   init_pair 36 8 "$COLOR_BLACK"              # dialog shadow (gray on black)
+  init_pair 40 -1 -1                         # command line: terminal default colors (matches mc)
 
   init_ui || { endwin; exit 1; }
 
