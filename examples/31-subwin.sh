@@ -47,10 +47,10 @@ main() {
         fi
         ;;
       m|M)
-        mvderwin "$child" 2 2
+        mvderwin "$child" 3 3
         wrefresh "$parent"
         wrefresh "$child"
-        msg="mvderwin child to parent-relative (2,2)"
+        msg="mvderwin child to parent-relative (3,3)"
         ;;
       q|Q)
         break

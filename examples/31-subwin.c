@@ -56,10 +56,10 @@ main(void)
 	}
 	case 'm':
 	case 'M':
-	    mvderwin(child, 2, 2);
+	    mvderwin(child, 3, 3);
 	    wrefresh(parent);
 	    wrefresh(child);
-	    msg = "mvderwin child to parent-relative (2,2)";
+	    msg = "mvderwin child to parent-relative (3,3)";
 	    break;
 	case 'q':
 	case 'Q':

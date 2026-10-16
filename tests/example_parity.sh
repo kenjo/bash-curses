@@ -13,7 +13,6 @@ expected_skip=(
 )
 
 expected_fail=(
-  31-subwin
 )
 
 is_expected() {
