@@ -17,6 +17,7 @@ readonly A_INVIS=32
 readonly A_PROTECT=64
 readonly A_ALTCHARSET=128
 readonly A_COLOR=256
+readonly A_ITALIC=512   # ncurses standout() maps to smso, which is italic here
 
 # ------------------------------------------------------------ ACS box chars
 readonly ACS_UL='┌'
@@ -257,6 +258,7 @@ BC_CURR=0
 BC_LINES=24
 BC_COLS=80
 BC_COLORS=0
+BC_COLOR_STARTED=0     # set by start_color; ncurses ignores pairs until then
 BC_PAIRS=0
 BC_WN=1
 BC_STARTED=0
@@ -655,7 +657,8 @@ _bc_sgr() { # a p
     (( a & 32 )) && s="${s:+$s;}8"
     (( a & 64 )) && s="${s:+$s;}73"
     (( a & 4 )) && s="${s:+$s;}7"
-    if (( p > 0 )) || [[ -n ${BC_PAIRS_A[0]+set} ]]; then
+    (( a & 512 )) && s="${s:+$s;}3"
+    if (( BC_COLOR_STARTED )); then
       if [[ -n ${BC_PAIRS_A[$p]:-} ]]; then
         local fg=${BC_PAIRS_A[$p]} bg=${BC_PAIRS_B[$p]}
         if (( fg < 0 )); then
@@ -1618,6 +1621,7 @@ start_color() {
     initscr
   fi
   (( BC_COLORS > 0 )) || return 1
+  BC_COLOR_STARTED=1
   BC_PAIRS_A[0]=7
   BC_PAIRS_B[0]=0
   _bc_init_palette
@@ -4741,7 +4745,7 @@ attr_on() { wattr_on "$BC_STDSCR" "$@"; }
 attr_off() { wattr_off "$BC_STDSCR" "$@"; }
 
 standend() { wattrset "$BC_STDSCR" 0 0; }
-standout() { wattron "$BC_STDSCR" "$(( A_BOLD | A_REVERSE ))"; }
+standout() { wattron "$BC_STDSCR" "$A_ITALIC"; }
 
 # change attributes of a line of cells (ncurses chgat): from (y,x) for n
 # cells (n<0 -> to end of line), single line, no wrap, cursor unchanged.
