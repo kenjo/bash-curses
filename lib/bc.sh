@@ -3739,6 +3739,9 @@ replace_panel() { # p win
     BC_DELRECTS+="|${BC_WY[$old]} ${BC_WX[$old]} ${BC_WH[$old]} ${BC_WW[$old]}"
   fi
   BC_PWIN[$p]=$2
+  # The new window's whole rectangle must be recomposited, not just the cells
+  # it explicitly drew, so it covers whatever lower windows showed through.
+  _bc_win_rect_dirty "$2"
   return 0
 }
 

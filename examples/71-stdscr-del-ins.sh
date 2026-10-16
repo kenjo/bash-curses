@@ -71,7 +71,7 @@ main() {
         msg="mvwinsstr win 4 0 ins"
         ;;
       6)
-        mvinsnstr "$win" 5 0 3 "ins"
+        mvwinsnstr "$win" 5 0 3 "ins"
         msg="mvinsnstr win 5 0 3 ins"
         ;;
       q|Q)

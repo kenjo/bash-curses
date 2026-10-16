@@ -13,10 +13,7 @@ expected_skip=(
 )
 
 expected_fail=(
-  25-background
   31-subwin
-  71-stdscr-del-ins
-  76-panel-bottom
 )
 
 is_expected() {
