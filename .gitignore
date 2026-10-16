@@ -10,6 +10,7 @@ examples/*.o
 
 # read-only reference corpus (vendored shallow clones; see references/README.md)
 references/
+ncurses-6.6/
 
 # stray files
 typescript
