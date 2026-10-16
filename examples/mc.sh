@@ -1001,6 +1001,7 @@ mc_dialog() { # w h title danger
   fi
   wrefresh 0
   wattrset "$dw" 0 "$fp"
+  wbkgdset "$dw" ' ' 0 "$fp"
   werase "$dw"; box "$dw"
   local tstr=" $title "
   local tlen=${#tstr}
