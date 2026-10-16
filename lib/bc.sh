@@ -656,14 +656,18 @@ _bc_sgr() { # a p
     if (( p > 0 )); then
       if [[ -n ${BC_PAIRS_A[$p]:-} ]]; then
         local fg=${BC_PAIRS_A[$p]} bg=${BC_PAIRS_B[$p]}
-        if (( fg < 8 )); then
+        if (( fg < 0 )); then
+          s="${s:+$s;}39"
+        elif (( fg < 8 )); then
           s="${s:+$s;}$(( 30 + fg ))"
         elif (( fg < 16 )); then
           s="${s:+$s;}$(( 90 + (fg - 8) ))"   # bright fg 8-15 -> 90-97 (matches mc)
         else
           s="${s:+$s;}38;5;$fg"
         fi
-        if (( bg < 8 )); then
+        if (( bg < 0 )); then
+          s="${s:+$s;}49"
+        elif (( bg < 8 )); then
           s="${s:+$s;}$(( 40 + bg ))"
         elif (( bg < 16 )); then
           s="${s:+$s;}$(( 100 + (bg - 8) ))"  # bright bg 8-15 -> 100-107
