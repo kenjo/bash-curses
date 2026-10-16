@@ -2515,7 +2515,26 @@ do_vfs_list() {
 }
 
 do_background_jobs() {
-  message_dialog "Background jobs" "No background jobs."
+  # mc "Background jobs" (C-x j): empty job list + Stop/Resume/Kill/OK.
+  local w=58 h=13
+  mc_dialog "$w" "$h" "Background jobs" 0 8
+  # mc highlights the (empty) list-cursor row black-on-cyan, leaving a 3-col
+  # scrollbar gutter on the right.
+  wattrset "$dw" 0 29
+  mvwaddstr "$dw" 1 2 "$(printf '%*s' 52 '')"
+  dlg_divider 10
+  dlg_button 11 10 "Stop"   norm 0 23 24 0
+  dlg_button 11 19 "Resume" norm 0 23 24 0
+  dlg_button 11 30 "Kill"   norm 0 23 24 0
+  dlg_button 11 39 "OK"     ok   0 23 24 1
+  wrefresh "$dw"
+  while :; do
+    wgetch "$dw" || break
+    case $key in
+      $'\r'|$'\x1b'|q|Q) break ;;
+    esac
+  done
+  delwin "$dw"
 }
 
 do_screen_list() {
@@ -3509,6 +3528,7 @@ main() {
       getch || break
       case $key in
         d) do_compare_dirs ;;
+        j) do_background_jobs ;;
         *) : ;;
       esac
       continue
