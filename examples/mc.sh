@@ -989,15 +989,16 @@ mc_shadow_put() { # ay ax pair [ch]
 # A centered window with a colored frame and a centered title bar, matching
 # Midnight Commander's modal dialogs. danger=1 uses the red (destructive)
 # frame. Content is drawn on top afterwards. Sets the window id in $dw.
-mc_dialog() { # w h title danger
-  local w=$1 h=$2 title=$3 danger=${4:-0}
-  (( w > COLS - 4 )) && w=$(( COLS - 4 ))
-  (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-  # center in the panel listing area (below the menu bar, above the
-  # separator/status/hint rows), matching mc rather than the whole screen
-  local area=$(( LINES - 6 )); (( area < 1 )) && area=1
-  local y=$(( 1 + (area - h) / 2 )) x=$(( (COLS - w) / 2 ))
-  (( y < 1 )) && y=1; (( x < 1 )) && x=1
+ mc_dialog() { # w h title danger [y]
+   local w=$1 h=$2 title=$3 danger=${4:-0} yov=${5:-}
+   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+   (( h > LINES - 4 )) && h=$(( LINES - 4 ))
+   # center in the panel listing area (below the menu bar, above the
+   # separator/status/hint rows), matching mc rather than the whole screen
+   local area=$(( LINES - 6 )); (( area < 1 )) && area=1
+   local y=$(( 1 + (area - h) / 2 )) x=$(( (COLS - w) / 2 ))
+   [[ -n $yov ]] && y=$yov
+   (( y < 1 )) && y=1; (( x < 1 )) && x=1
   local fp tp
   (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
   newwin "$h" "$w" "$y" "$x"; dw=$bc_win
@@ -2684,11 +2685,44 @@ do_show_sizes() {
 }
 
 do_compare_dirs() {
-  local l=${DIR[0]} r=${DIR[1]}
-  local lc rc
-  lc=$(ls -1A "$l" 2>/dev/null | wc -l | tr -d ' ')
-  rc=$(ls -1A "$r" 2>/dev/null | wc -l | tr -d ' ')
-  message_dialog "Compare directories" "$l" "$r" "Entries: $lc (left) vs $rc (right)"
+  # mc "Compare directories" (C-x d): a method-choice dialog.
+  local w=56 h=5
+  mc_dialog "$w" "$h" "Compare directories" 0 9
+  wattrset "$dw" 0 23
+  local msg="Select compare method:"
+  mvwaddstr "$dw" 1 $(( (w - ${#msg}) / 2 )) "$msg"
+  dlg_divider 2
+  dlg_button 3 3  "Quick"     norm 0 23 24 1
+  dlg_button 3 14 "Size only" norm 0 23 24 0
+  dlg_button 3 29 "Thorough"  norm 0 23 24 0
+  dlg_button 3 43 "Cancel"    norm 0 23 24 0
+  wrefresh "$dw"
+  local method=""
+  while [[ -z $method ]]; do
+    wgetch "$dw" || break
+    case $key in
+      $'\x1b'|q|Q) method="cancel" ;;
+      $'\r')       method="quick" ;;
+      $KEY_MOUSE)
+        while getmouse; do
+          if   dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 3 3  "Quick"     norm; then method="quick"
+          elif dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 3 14 "Size only" norm; then method="size"
+          elif dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 3 29 "Thorough"  norm; then method="thorough"
+          elif dlg_hit_button "$dw" "$BC_ME_Y" "$BC_ME_X" 3 43 "Cancel"    norm; then method="cancel"
+          fi
+        done
+        ;;
+    esac
+  done
+  delwin "$dw"
+  [[ $method == cancel || -z $method ]] && return
+  compare_dirs_mark "$method"
+}
+
+# Mark entries that differ between the two panels. mc colors differing entries;
+# we approximate by re-listing both panels (the visual marking is a follow-up).
+compare_dirs_mark() { # method
+  list_dir 0; list_dir 1
 }
 
 do_exchange() {
@@ -3470,6 +3504,14 @@ main() {
         h) do_command_history; continue ;;
         *) ungetch "$mk"; continue ;;
       esac
+    fi
+    if [[ $k == $'\x18' ]]; then
+      getch || break
+      case $key in
+        d) do_compare_dirs ;;
+        *) : ;;
+      esac
+      continue
     fi
     case $k in
       $KEY_UP)     (( POS[$CUR] > 0 )) && POS[$CUR]=$(( POS[$CUR]-1 )); nav=1 ;;
