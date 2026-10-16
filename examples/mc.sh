@@ -291,6 +291,36 @@ refresh_panel_keep() { # p [new_real]
   fi
 }
 
+# Swap the two panels' contents (mc "Swap panels", C-u). The active panel
+# follows its content to the other side, so CUR is toggled as well. The
+# position-bound windows (WIN/PANEL) are left in place.
+_swap_panel_arr() { # base name of NAMES_/TYPES_/SIZES_/TIMES_/REALS_/EXEC_
+  local -n _sp0="${1}_0" _sp1="${1}_1"
+  local -a _sp=("${_sp0[@]}")
+  _sp0=("${_sp1[@]}"); _sp1=("${_sp[@]}")
+}
+_swap_panel_assoc() { # base name of SELSET_
+  local -n _sa0="${1}_0" _sa1="${1}_1"
+  local -A _sa=()
+  local k
+  for k in "${!_sa0[@]}"; do _sa[$k]=${_sa0[$k]}; done
+  _sa0=()
+  for k in "${!_sa1[@]}"; do _sa0[$k]=${_sa1[$k]}; done
+  _sa1=()
+  for k in "${!_sa[@]}"; do _sa1[$k]=${_sa[$k]}; done
+}
+_swap_panel_idx() { # assoc array indexed [0]/[1]
+  local -n _si="$1"
+  local _t=${_si[0]}; _si[0]=${_si[1]}; _si[1]=$_t
+}
+do_swap_panels() {
+  local f
+  for f in NAMES TYPES SIZES TIMES REALS EXEC; do _swap_panel_arr "$f"; done
+  _swap_panel_assoc SELSET
+  for f in DIR POS OFF SORT REV HIDE FILTERS FREE; do _swap_panel_idx "$f"; done
+  CUR=$(( 1 - CUR ))
+}
+
 type_color() { # p idx -> pair (assumes not the current/highlighted row)
   # Colour the whole entry by type, like mc: directory bright white, regular
   # file yellow, executable bright green (symlinks/specials bright white).
@@ -3224,7 +3254,7 @@ run_menu() {
         "User menu")            user_menu ;;
         "Directory tree")       do_tree ;;
         "Find file")            do_find_file ;;
-        "Swap panels")          CUR=$(( 1 - CUR )); draw_all; doupdate ;;
+        "Swap panels")          do_swap_panels; draw_all; doupdate ;;
         "Switch panels on/off") do_switch_panels ;;
         "Compare directories")  do_compare_dirs ;;
         "Compare files")        do_compare_files ;;
@@ -3482,6 +3512,7 @@ main() {
           done
           ;;
        $'\t')       CUR=$(( 1 - CUR )); switched=1 ;;
+       $'\x15')     do_swap_panels ;;
       $'\r')       if [[ -n $CMD_LINE ]]; then execute_cmd; else do_open; fi ;;
       "r")         list_dir "$CUR" ;;
       $KEY_F1)    fkey_help ;;
