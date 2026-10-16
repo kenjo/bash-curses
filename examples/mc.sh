@@ -989,18 +989,20 @@ mc_shadow_put() { # ay ax pair [ch]
 # A centered window with a colored frame and a centered title bar, matching
 # Midnight Commander's modal dialogs. danger=1 uses the red (destructive)
 # frame. Content is drawn on top afterwards. Sets the window id in $dw.
- mc_dialog() { # w h title danger [y]
-   local w=$1 h=$2 title=$3 danger=${4:-0} yov=${5:-}
-   (( w > COLS - 4 )) && w=$(( COLS - 4 ))
-   (( h > LINES - 4 )) && h=$(( LINES - 4 ))
-   # center in the panel listing area (below the menu bar, above the
-   # separator/status/hint rows), matching mc rather than the whole screen
-   local area=$(( LINES - 6 )); (( area < 1 )) && area=1
-   local y=$(( 1 + (area - h) / 2 )) x=$(( (COLS - w) / 2 ))
-   [[ -n $yov ]] && y=$yov
-   (( y < 1 )) && y=1; (( x < 1 )) && x=1
-  local fp tp
-  (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
+  mc_dialog() { # w h title danger [y] [fp] [tp]
+    local w=$1 h=$2 title=$3 danger=${4:-0} yov=${5:-}
+    (( w > COLS - 4 )) && w=$(( COLS - 4 ))
+    (( h > LINES - 4 )) && h=$(( LINES - 4 ))
+    # center in the panel listing area (below the menu bar, above the
+    # separator/status/hint rows), matching mc rather than the whole screen
+    local area=$(( LINES - 6 )); (( area < 1 )) && area=1
+    local y=$(( 1 + (area - h) / 2 )) x=$(( (COLS - w) / 2 ))
+    [[ -n $yov ]] && y=$yov
+    (( y < 1 )) && y=1; (( x < 1 )) && x=1
+   local fp tp
+   (( danger )) && { fp=26; tp=27; } || { fp=23; tp=24; }
+   [[ -n ${6:-} ]] && fp=$6
+   [[ -n ${7:-} ]] && tp=$7
   newwin "$h" "$w" "$y" "$x"; dw=$bc_win
   local sy sx
   if (( y > 0 )); then
@@ -2778,6 +2780,38 @@ do_filtered_view() {
   # Applying the filter to produce a filtered listing is a follow-up feature.
 }
 
+do_encoding() {
+  # mc "Choose codepage" (M-e): a cyan listbox (like the F2 user menu), not a
+  # white dialog. Frame/interior pair 16 (white on cyan), title pair 17 (bright
+  # yellow on cyan), the current codepage highlighted pair 19 (bright yellow on
+  # black), other rows pair 16. mc_dialog draws the cyan halo + offset shadow.
+  local w=34 h=16
+  mc_dialog "$w" "$h" "Choose codepage" 0 "" 16 17
+  local -a keys=('-' 0 1 2 3 4 5 6 7 8 9 a b c)
+  local -a names=("< No translation >" "7-bit ASCII" "ISO 8859-1" "ISO 8859-2" \
+    "ISO 8859-5" "Windows 1250" "Windows 1251" "CP 437" "CP 850" "CP 852" \
+    "CP 866" "KOI8-R" "KOI8-U" "UTF-8")
+  local i line
+  for i in "${!keys[@]}"; do
+    if (( i == 0 )); then
+      wattrset "$dw" 0 19
+      line="${keys[i]}  ${names[i]}"
+      while (( ${#line} < w - 4 )); do line+=" "; done
+      mvwaddstr "$dw" $(( i + 1 )) 2 "$line"
+    else
+      wattrset "$dw" 0 16
+      mvwaddstr "$dw" $(( i + 1 )) 2 "${keys[i]}"
+      mvwaddstr "$dw" $(( i + 1 )) 5 "${names[i]}"
+    fi
+  done
+  wrefresh "$dw"
+  while :; do
+    wgetch "$dw" || break
+    case $key in $'\x1b'|$'\r') break ;; esac
+  done
+  delwin "$dw"
+}
+
 do_exchange() {
   local t=${DIR[0]}
   DIR[0]=${DIR[1]}; DIR[1]=$t
@@ -3556,6 +3590,7 @@ main() {
         c) quick_cd_dialog; continue ;;
         h) do_command_history; continue ;;
         '!') do_filtered_view; continue ;;
+        e) do_encoding; continue ;;
         *) ungetch "$mk"; continue ;;
       esac
     fi
