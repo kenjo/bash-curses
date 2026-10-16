@@ -1546,9 +1546,9 @@ do_edit_path() { # path
   eval "$ed $(printf '%q' "$f")"
   reset_prog_mode
   BC_FORCEFULL=1
+  refresh_panel_keep "$CUR"
   draw_all
   doupdate
-  list_dir "$CUR"
 }
 
 do_edit() { # real name
@@ -2814,6 +2814,7 @@ user_menu() {
   (( h > 1 + PH )) && h=$(( 1 + PH ))
   dialog_margin_shadow "$x" "$y" "$w" "$h" 16
   newwin "$h" "$w" "$y" "$x"; hw=$bc_win
+  wbkgdset "$hw" ' ' 0 16
   while :; do
     wattrset "$hw" 0 16
     werase "$hw"; box "$hw"
