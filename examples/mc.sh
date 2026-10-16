@@ -2332,6 +2332,7 @@ quick_cd_dialog() {
   done
   wrefresh 0
   newwin "$h" "$w" "$y" "$x"; local qw=$bc_win
+  wbkgdset "$qw" ' ' 0 23
   local buf="" caret=0 redraw=1
   qc_draw() {
     wattrset "$qw" 0 23; werase "$qw"; box "$qw"
@@ -2409,6 +2410,7 @@ cmd_history_popup() {
   done
   wrefresh 0
   newwin "$h" "$w" "$y" "$x"; local hw=$bc_win
+  wbkgdset "$hw" ' ' 0 23
   ch_draw() {
     wattrset "$hw" 0 23; werase "$hw"; box "$hw"
     local tstr=" History "
