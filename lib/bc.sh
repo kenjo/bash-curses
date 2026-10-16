@@ -324,6 +324,7 @@ declare -A BC_WDELAY=() # window nodelay flag
 declare -A BC_WTIMEOUT=() # window timeout delay
 declare -A BC_PAIRS_A=() # pair -> fg
 declare -A BC_PAIRS_B=() # pair -> bg
+declare -A BC_PAIRS_FREE=() # pair -> 1 if freed (colors retained)
 declare -A BC_COLOR_R=() # color -> red
 declare -A BC_COLOR_G=() # color -> green
 declare -A BC_COLOR_B=() # color -> blue
@@ -439,7 +440,7 @@ _bc_term() {
   if [[ $t =~ ^[0-9]+$ ]] && (( t > 0 )); then BC_COLS=$t; else BC_COLS=80; fi
   t=$(tput colors 2>/dev/null) || t=""
   if [[ $t =~ ^[0-9]+$ ]]; then BC_COLORS=$t; else BC_COLORS=0; fi
-  BC_PAIRS=$(( BC_COLORS * 24 ))
+  BC_PAIRS=65536
   LINES=$BC_LINES
   COLS=$BC_COLS
   COLORS=$BC_COLORS
@@ -653,7 +654,7 @@ _bc_sgr() { # a p
     (( a & 32 )) && s="${s:+$s;}8"
     (( a & 64 )) && s="${s:+$s;}73"
     (( a & 4 )) && s="${s:+$s;}7"
-    if (( p > 0 )); then
+    if (( p > 0 )) || [[ -n ${BC_PAIRS_A[0]+set} ]]; then
       if [[ -n ${BC_PAIRS_A[$p]:-} ]]; then
         local fg=${BC_PAIRS_A[$p]} bg=${BC_PAIRS_B[$p]}
         if (( fg < 0 )); then
@@ -675,9 +676,7 @@ _bc_sgr() { # a p
           s="${s:+$s;}48;5;$bg"
         fi
       else
-        local fg=$(( p % 8 ))
-        local bg=$(( p / 8 ))
-        s="${s:+$s;}38;5;$fg;48;5;$bg"
+        s="${s:+$s;}30;40"
       fi
     fi
     [[ -z $s ]] && s="0"
@@ -706,7 +705,7 @@ _bc_render() { # w ch a p -> BC_RCH BC_RA BC_RP
   local w=$1
   local wa=${BC_WCURA[$w]} wp=${BC_WCURP[$w]}
   local ba=${BC_WBGA[$w]} bp=${BC_WBGP[$w]}
-  if [[ ${2:- } == ' ' && ${3:-0} -eq 0 && ${4:-0} -eq 0 ]]; then
+  if [[ ${2:- } == ' ' && ${3:-0} -eq ${wa} && ${4:-0} -eq ${wp} ]]; then
     BC_RCH=${BC_WBG[$w]}
     BC_RA=$(( wa | ba ))
     if (( wp )); then
@@ -788,12 +787,20 @@ _bc_emit() { # w y x text a p
   BC_WAY[$w]=$y
 }
 
+# set BC_RCH/BC_RA/BC_RP to the window's background rendition (ncurses _bkgd)
+_bc_bg() { # w -> BC_RCH BC_RA BC_RP
+  local w=$1
+  BC_RCH=${BC_WBG[$w]:- }
+  BC_RA=${BC_WBGA[$w]:-0}
+  BC_RP=${BC_WBGP[$w]:-0}
+}
+
 # clear a window line from relative (y,x) to the end of the line
 _bc_clrtoeol_cell() { # w y x
   local w=$1 y=$2 x=$3
   local ww=${BC_WW[$w]}
   (( y >= ${BC_WH[$w]} || x >= ww )) && return 0
-  _bc_render "$w" ' ' 0 0
+  _bc_bg "$w"
   local k
   for (( x = x; x < ww; x++ )); do
     k="$(( BC_WY[$w] + y )) $(( BC_WX[$w] + x ))"
@@ -805,7 +812,7 @@ _bc_clrtoeol_cell() { # w y x
 _bc_clear_cell() { # w ay ax
   local w=$1 ay=$2 ax=$3
   (( ay < 0 || ax < 0 || ay >= ${BC_WH[$w]} || ax >= ${BC_WW[$w]} )) && return 0
-  _bc_render "$w" ' ' 0 0
+  _bc_bg "$w"
   _bc_cell "$w" "$ay" "$ax" "$BC_RCH" "$BC_RA" "$BC_RP"
 }
 
@@ -814,7 +821,7 @@ _bc_erase_region() { # w
   local w=$1
   local y0=${BC_WY[$w]} x0=${BC_WX[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]}
   local y x
-  _bc_render "$w" ' ' 0 0
+  _bc_bg "$w"
   for (( y = 0; y < h; y++ )); do
     for (( x = 0; x < ww; x++ )); do
       _bc_cell "$w" "$(( y0 + y ))" "$(( x0 + x ))" "$BC_RCH" "$BC_RA" "$BC_RP"
@@ -1604,8 +1611,43 @@ start_color() {
   if (( ! BC_STARTED )); then
     initscr
   fi
-  (( BC_COLORS > 0 ))
-  return $?
+  (( BC_COLORS > 0 )) || return 1
+  BC_PAIRS_A[0]=7
+  BC_PAIRS_B[0]=0
+  _bc_init_palette
+  return 0
+}
+
+_bc_init_palette() {
+  local c r g b idx
+  # standard 16 colors (ncurses default palette, 0-1000 scale)
+  local -a _bc_pal=(
+    0 0 0     680 0 0     0 680 0     680 680 0
+    0 0 680   680 0 680   0 680 680   680 680 680
+    0 0 0     1000 0 0    0 1000 0    1000 1000 0
+    0 0 1000  1000 0 1000 0 1000 1000 1000 1000 1000
+  )
+  for ((c = 0; c < 16 && c < BC_COLORS; c++)); do
+    BC_COLOR_R[$c]=${_bc_pal[c*3]}
+    BC_COLOR_G[$c]=${_bc_pal[c*3+1]}
+    BC_COLOR_B[$c]=${_bc_pal[c*3+2]}
+  done
+  # 6x6x6 color cube (16-231)
+  local -a _bc_cube=(0 95 135 175 215 255)
+  for ((c = 16; c <= 231 && c < BC_COLORS; c++)); do
+    idx=$((c - 16))
+    r=$((idx / 36)); g=$(( (idx / 6) % 6 )); b=$((idx % 6))
+    BC_COLOR_R[$c]=$(( _bc_cube[r] * 1000 / 255 ))
+    BC_COLOR_G[$c]=$(( _bc_cube[g] * 1000 / 255 ))
+    BC_COLOR_B[$c]=$(( _bc_cube[b] * 1000 / 255 ))
+  done
+  # grayscale ramp (232-255)
+  for ((c = 232; c <= 255 && c < BC_COLORS; c++)); do
+    r=$((8 + (c - 232) * 10))
+    BC_COLOR_R[$c]=$(( r * 1000 / 255 ))
+    BC_COLOR_G[$c]=$(( r * 1000 / 255 ))
+    BC_COLOR_B[$c]=$(( r * 1000 / 255 ))
+  done
 }
 
 has_colors() { (( BC_COLORS > 0 )); }
@@ -1685,6 +1727,7 @@ find_pair() { # fg bg -> bc_pair
   local fg=$1 bg=$2 p
   bc_pair=-1
   for p in "${!BC_PAIRS_A[@]}"; do
+    [[ ${BC_PAIRS_FREE[$p]:-} == 1 ]] && continue
     if [[ ${BC_PAIRS_A[$p]} == "$fg" && ${BC_PAIRS_B[$p]} == "$bg" ]]; then
       bc_pair=$p
       printf '%s' "$p"
@@ -1698,9 +1741,10 @@ alloc_pair() { # fg bg -> bc_pair
   local fg=$1 bg=$2 p
   bc_pair=-1
   for (( p = 1; p <= BC_PAIRS; p++ )); do
-    if [[ -z ${BC_PAIRS_A[$p]+set} ]]; then
+    if [[ -z ${BC_PAIRS_A[$p]+set} ]] || [[ ${BC_PAIRS_FREE[$p]:-} == 1 ]]; then
       BC_PAIRS_A[$p]=$fg
       BC_PAIRS_B[$p]=$bg
+      BC_PAIRS_FREE[$p]=0
       bc_pair=$p
       printf '%s' "$p"
       return 0
@@ -1712,7 +1756,7 @@ alloc_pair() { # fg bg -> bc_pair
 free_pair() { # pair
   local p=$1
   [[ -n ${BC_PAIRS_A[$p]+set} ]] || return 1
-  unset "BC_PAIRS_A[$p]" "BC_PAIRS_B[$p]"
+  BC_PAIRS_FREE[$p]=1
   return 0
 }
 

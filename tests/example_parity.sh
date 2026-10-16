@@ -13,7 +13,6 @@ expected_skip=(
 )
 
 expected_fail=(
-  21-color-content
   25-background
   31-subwin
   71-stdscr-del-ins
