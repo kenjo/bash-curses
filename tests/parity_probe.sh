@@ -61,6 +61,9 @@ build_root() {
   MC_CFG_HASH=$(sha256sum "$ROOT/home/.config/mc/ini" 2>/dev/null | cut -c1-12)
   MC_CFG_HASH=${MC_CFG_HASH:-none}
   CAP_VER=2
+  # The controlled tree's ".." (parent) and symlink mtimes are the run date, so
+  # cached mc captures only stay valid within the same calendar day.
+  CACHE_DAY=$(date +%F)
 }
 
 make_tree_at() {
@@ -285,13 +288,13 @@ fs_snapshot() {
 
 cache_valid() {
   local sl=$1 desc=$2
-  [[ -f "$CACHE/$sl.meta" && "$(cat "$CACHE/$sl.meta")" == "$desc|$MC_CFG_HASH|$CAP_VER" &&
+  [[ -f "$CACHE/$sl.meta" && "$(cat "$CACHE/$sl.meta")" == "$desc|$MC_CFG_HASH|$CAP_VER|$CACHE_DAY" &&
      -f "$CACHE/$sl.plain" && -f "$CACHE/$sl.sgr" && -f "$CACHE/$sl.fs" ]]
 }
 
 cache_store() {
   local n=$1 sl=$2 desc=$3 fs=$4
-  printf '%s\n' "$desc|$MC_CFG_HASH|$CAP_VER" > "$CACHE/$sl.meta"
+  printf '%s\n' "$desc|$MC_CFG_HASH|$CAP_VER|$CACHE_DAY" > "$CACHE/$sl.meta"
   cp "$ROOT/mc/$n.$sl.plain" "$CACHE/$sl.plain" 2>/dev/null || true
   cp "$ROOT/mc/$n.$sl.sgr" "$CACHE/$sl.sgr" 2>/dev/null || true
   printf '%s\n' "$fs" > "$CACHE/$sl.fs"
