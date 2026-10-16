@@ -213,7 +213,7 @@ example_actions() {
       printf '%s\n' c 1 2 l i
       ;;
     81-sudoku)
-      printf '%s\n' l 5 x c r
+      printf '%s\n' l 5 x u m c r
       ;;
   esac
 }

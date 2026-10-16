@@ -349,7 +349,7 @@ do
       start_example "$ex" c 1 2 l i
       ;;
     81-sudoku.sh)
-      start_example "$ex" l 5 x c r
+      start_example "$ex" l 5 x u m c r
       ;;
     *)
       start_example "$ex"

@@ -624,6 +624,16 @@ check "list_dir applies filter" "/..| file.txt" "$(
   rm -rf "$d"
 )"
 
+# 81-sudoku hint solver: regression test for the MRV backtracker used by the
+# 'H' hint key (the hard plain_board puzzle must solve to its unique solution).
+check "81-sudoku solver solves plain_board" \
+  "417369825632158947958724316825437169791586432346912758289643571573291684164875293" "$(
+  ( source "$REPO/examples/81-sudoku.sh"
+    for ((i = 0; i < 81; i++)); do _solve_b[i]=${plain_board:i:1}; done
+    solve_board
+    printf '%s' "${_solve_b[*]}" | tr -d ' ' )
+)"
+
 echo
 if (( fail == 0 )); then echo "unit: $pass passed"; else echo "unit: $pass passed, $fail FAILED"; fi
 (( fail == 0 ))

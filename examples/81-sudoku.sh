@@ -240,9 +240,16 @@ _valid_at() {
 }
 
 solve_board() {
-  local pos=-1 i row col d
+  local pos=-1 best=10 i row col d cnt
   for ((i = 0; i < 81; i++)); do
-    if [[ ${_solve_b[i]} == '.' ]]; then pos=$i; break; fi
+    if [[ ${_solve_b[i]} == '.' ]]; then
+      row=$((i / 9)); col=$((i % 9)); cnt=0
+      for ((d = 1; d <= 9; d++)); do
+        _valid_at "$row" "$col" "$d" && ((cnt++))
+      done
+      ((cnt == 0)) && return 1
+      if ((cnt < best)); then best=$cnt; pos=$i; ((cnt == 1)) && break; fi
+    fi
   done
   ((pos < 0)) && return 0
   row=$((pos / 9)); col=$((pos % 9))
@@ -440,4 +447,6 @@ main() {
   endwin
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
