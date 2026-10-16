@@ -2540,7 +2540,24 @@ do_background_jobs() {
 }
 
 do_screen_list() {
-  message_dialog "Screen list" "Only the current screen is available."
+  # mc "Screens" (M-`): a cyan info box (frame pair 16, title pair 17) listing
+  # the virtual screens. Only the panel screen exists, shown as a highlighted
+  # (bright-yellow on black, pair 19) "Panels: [user@host]:dir" line.
+  local w=68 h=3
+  mc_dialog "$w" "$h" "Screens" 0 "" 16 17
+  local host line pad
+  host=$(printf '%s@%s' "$(id -un)" "$(hostname)")
+  line="Panels: [$host]:$PWD"
+  wattrset "$dw" 0 19
+  mvwaddstr "$dw" 1 2 "$line"
+  pad=$(( w - 4 - ${#line} ))
+  (( pad > 0 )) && mvwaddstr "$dw" 1 $(( 2 + ${#line} )) "$(printf '%*s' "$pad" '')"
+  wrefresh "$dw"
+  while :; do
+    wgetch "$dw" || break
+    case $key in $'\x1b'|$'\r') break ;; esac
+  done
+  delwin "$dw"
 }
 
 do_undelete() {
@@ -3591,6 +3608,7 @@ main() {
         h) do_command_history; continue ;;
         '!') do_filtered_view; continue ;;
         e) do_encoding; continue ;;
+        '`') do_screen_list; continue ;;
         *) ungetch "$mk"; continue ;;
       esac
     fi
