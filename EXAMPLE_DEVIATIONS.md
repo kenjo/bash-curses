@@ -30,10 +30,15 @@ adjustment.
 
 ## Flaky examples
 
-These pass on rerun; the comparison harness races on timing or restore order:
+Resolved (no longer flaky):
 
-- `13-screen-dump`: screen restore occasionally reports `restore failed`.
-- `23-halfdelay`: `halfdelay()` input timing races the key feed.
+- `13-screen-dump`: the intermittent `restore failed` / path mismatch was the
+  bash-vs-C dump-path rendering (absolute vs relative). The comparison harness
+  now normalizes dump paths in both plain and SGR captures, so the per-cell grid
+  aligns and the example is deterministic.
+- `23-halfdelay`: `halfdelay()` advances a wall-clock `timeouts` counter, so any
+  mid-run capture raced between bash and C. The harness now feeds `q` before the
+  capture, so both reach the same post-`endwin` screen.
 
 ## SGR-only differences
 

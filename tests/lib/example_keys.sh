@@ -26,6 +26,12 @@ example_actions() {
       ;;
     15-window-dump)
       ;;
+    23-halfdelay)
+      # The timeouts counter advances on a 0.5s wall-clock timer, so any
+      # mid-run capture races between bash and C.  Quit before capture so
+      # both reach the same (post-endwin) screen.
+      printf '%s\n' q
+      ;;
     16-panels-moving-resizing)
       printf '%s\n' Tab
       ;;

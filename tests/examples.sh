@@ -177,6 +177,9 @@ do
     19-scroll-regions.sh)
       start_example "$ex" Down Up NPage PPage
       ;;
+    23-halfdelay.sh)
+      start_example "$ex" q
+      ;;
     24-mouse-buttons.sh)
       start_example "$ex" "raw:1b 5b 3c 30 3b 35 3b 36 4d 1b 5b 3c 30 3b 35 3b 36 6d"
       ;;
