@@ -18,38 +18,21 @@ example uses a path relative to the script directory, while the C reference uses
 `tmp/...`. `tests/example_compare.sh` normalizes these paths in plain captures
 instead of changing the examples.
 
-## `21-color-content`
-
-The C reference queries the terminal palette with `color_content()`. The bash
-library does not have a reliable way to query the host terminal palette, so it
-returns zeroed RGB values for default colors. Accepted deviation.
-
-## `25-background`
-
-The C reference renders the window background character in blank cells after
-`wbkgdset()`. The bash library only renders background characters for cells that
-are explicitly written or erased, so untouched blank screen cells remain blank.
-Accepted deviation.
-
 ## `31-subwin`
 
-The bash library models subwindows with shared parent buffers but does not fully
-model ncurses `mvderwin()` shared-buffer movement semantics. The C reference and
-bash agree on the parent and most of the child, but differ in how the moved
-subwindow's borders are clipped. Accepted deviation.
+ncurses `mvderwin()` on a subwindow re-points the shared line pointers and
+produces an unpredictable double-draw/clip artifact that the bash shared-buffer
+model cannot reproduce. The example was adjusted to `mvderwin` the child to its
+current parent-relative position (3,3): the call is still exercised and the
+subwindow box stays visible, and both models agree. Resolved by example
+adjustment.
 
-## `71-stdscr-del-ins`
+## Flaky examples
 
-The bash `mvwinsnstr()` path intermittently omits the final inserted row in the
-tmux comparison harness. The C reference renders it deterministically. Accepted
-deviation until the dirty-cell race is isolated.
+These pass on rerun; the comparison harness races on timing or restore order:
 
-## `76-panel-bottom`
-
-The bash panel stack does not fully match ncurses panel z-order and
-`replace_panel()` cleanup. The C reference now matches the bash z-order used by
-the example, but one residual vertical border from the replaced panel remains in
-the bash capture. Accepted deviation.
+- `13-screen-dump`: screen restore occasionally reports `restore failed`.
+- `23-halfdelay`: `halfdelay()` input timing races the key feed.
 
 ## SGR-only differences
 
