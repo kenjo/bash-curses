@@ -25,6 +25,10 @@ init_wins() { # n
 
 main() {
   initscr || exit 1
+  # The C ground truth refreshes a full-screen bc_base window before
+  # start_color(), so its background erase uses the terminal default.  Paint
+  # stdscr's background the same way (before colors start) to match.
+  refresh
   start_color
   cbreak
   noecho

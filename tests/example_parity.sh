@@ -20,7 +20,6 @@ expected_fail=(
 # so these are tolerated only when the failure is SGR-only (plain must match).
 expected_sgr_fail=(
   64-slk-extra
-  76-panel-bottom
 )
 
 is_expected() {

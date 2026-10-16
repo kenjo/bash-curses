@@ -44,8 +44,8 @@ Resolved (no longer flaky):
 
 These examples match in plain character captures but differ in SGR/color or
 attribute captures. `tests/example_parity.sh` now runs the comparison in strict
-mode, so these two are whitelisted as `expected_sgr_fail` (plain must still
-match); any other SGR divergence fails the gate.
+mode, so these are whitelisted as `expected_sgr_fail` (plain must still match);
+any other SGR divergence fails the gate.
 
 - `64-slk-extra`: `slk_init 3` reserves two lines, so stdscr occupies rows 0-27
   and the SLK window sits at rows 28-29. The bash library paints the pair-0
@@ -55,15 +55,12 @@ match); any other SGR divergence fails the gate.
   rows and reports them as default (`d d`), while ncurses' background-erase run
   is preserved as `16:7 16:0`. This is a capture artifact, not a rendering
   difference.
-- `76-panel-bottom`: the C ground truth creates a full-screen `bc_base` window
-  and `wrefresh`es it inside `bc_example_init()` *before* `start_color()`, so
-  its background erase uses the then-default colors and stays default (`d d`)
-  even after colors start. The bash example draws on stdscr after `start_color`,
-  so the first-refresh background paint uses pair 0 (`16:7 16:0`). The divergence
-  is in the C example's init order, not the library.
 
 Resolved (now plain and SGR match): `09-windows-border`, `10-colors`,
 `13-screen-dump`, `15-window-dump`, `16-panels-moving-resizing`,
 `16-panels-window-browsing`, `45-color-pair`, `58-color-extended`,
-`60-attr-get`, `71-stdscr-del-ins`, `72-stdscr-in`, `81-sudoku`.
+`60-attr-get`, `71-stdscr-del-ins`, `72-stdscr-in`, `76-panel-bottom`,
+`81-sudoku`. `76-panel-bottom` was fixed by painting stdscr's background before
+`start_color` (mirroring the C ground truth's `bc_base`-before-`start_color`
+init order).
 
