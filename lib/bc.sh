@@ -263,6 +263,7 @@ BC_STARTED=0
 BC_OLDSTTY=""
 BC_WINCH=0            # set by a SIGWINCH trap; consumed by wgetch as KEY_RESIZE
 BC_FORCEFULL=0       # when set, the next doupdate recomposites the whole screen
+BC_INITPAINT=0       # when set, the next stdscr refresh paints the background
 BC_TEST_SEQ=0        # incremented by doupdate when BC_TEST_DIR is set
 BC_NO_SCROLLREG=${BC_NO_SCROLLREG:-0}
 BC_SCROLLREQ=""      # pending safe terminal scroll: "win top bottom n"
@@ -855,6 +856,11 @@ initscr() {
   if [[ -z ${BC_WY[0]:-} ]]; then
     _bc_init_window 0 0 0 "$BC_LINES" "$BC_COLS"
     BC_WKEYPAD[0]=1
+    # ncurses paints the whole screen with the window background on the first
+    # refresh, so blank cells carry the background rendition (pair 0 once
+    # start_color has run). The paint is done on the first stdscr refresh (see
+    # wrefresh) so it can skip window-covered cells that were never written.
+    BC_INITPAINT=1
   fi
   BC_CURR=0
   return 0
@@ -3352,6 +3358,7 @@ wrefresh() { # win
   local w=${1:-$BC_CURR}
   local buf=${BC_WBUF[$w]}
   local -a keys=()
+  local -A covered=()
   local k y x ch a p out="" lasty=-1 lastx=-1
   if [[ -n ${BC_SCROLLREQ:-} ]]; then
     local srw stop sb sn
@@ -3360,6 +3367,30 @@ wrefresh() { # win
       _bc_expand_scroll_dirty "$w" "$stop" "$sb"
       BC_SCROLLREQ=""
     fi
+  fi
+  if [[ $w == "$BC_STDSCR" ]] && (( BC_INITPAINT )); then
+    BC_INITPAINT=0
+    local -A real=()
+    local IFS=','
+    for k in ${BC_WD[$w]}; do [[ -n $k ]] && real["$k"]=1; done
+    local w2 yy xx wy wx wh ww
+    for w2 in "${!BC_WY[@]}"; do
+      [[ $w2 == "$BC_STDSCR" ]] && continue
+      wy=${BC_WY[$w2]}; wx=${BC_WX[$w2]}; wh=${BC_WH[$w2]}; ww=${BC_WW[$w2]}
+      for (( yy = wy; yy < wy + wh; yy++ )); do
+        for (( xx = wx; xx < wx + ww; xx++ )); do
+          [[ -n ${real["$yy $xx"]:-} ]] && continue
+          covered["$yy $xx"]=1
+        done
+      done
+    done
+    for (( yy = 0; yy < BC_LINES; yy++ )); do
+      for (( xx = 0; xx < BC_COLS; xx++ )); do
+        k="$yy $xx"
+        [[ -n ${covered[$k]:-} || -n ${real[$k]:-} ]] && continue
+        BC_WD[$w]+=",$k"
+      done
+    done
   fi
   if [[ -n ${BC_WD[$w]:-} ]]; then
     local IFS=','
@@ -3372,6 +3403,7 @@ wrefresh() { # win
   for k in "${keys[@]}"; do
     y=${k%% *}
     x=${k##* }
+    [[ -n ${covered["$y $x"]:-} ]] && continue
     ch=${BC_C["$buf/$k"]:- }
     a=${BC_A["$buf/$k"]:-0}
     p=${BC_P["$buf/$k"]:-0}
@@ -3385,6 +3417,7 @@ wrefresh() { # win
     local lo=${BC_LO[$y]} hi=${BC_HI[$y]}
     for (( x = lo; x <= hi; x++ )); do
       k="$y $x"
+      [[ -n ${covered[$k]:-} ]] && continue
       ch=${BC_C["$buf/$k"]:- }
       a=${BC_A["$buf/$k"]:-0}
       p=${BC_P["$buf/$k"]:-0}
