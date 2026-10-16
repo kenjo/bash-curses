@@ -124,11 +124,17 @@ normalize_plain() {
 normalize_plain "$outdir/bash.plain" "$outdir/bash.plain.norm"
 normalize_plain "$outdir/c.plain" "$outdir/c.plain.norm"
 
+# The bash examples print an absolute $REPO-based dump path while the C
+# ground truth prints a relative one; collapse both so the per-cell SGR grid
+# aligns (the path is example content, not a rendering difference).
+normalize_plain "$outdir/bash.sgr" "$outdir/bash.sgr.norm"
+normalize_plain "$outdir/c.sgr" "$outdir/c.sgr.norm"
+
 plain_rc=0
 diff -u "$outdir/bash.plain.norm" "$outdir/c.plain.norm" > "$outdir/diff.plain" || plain_rc=$?
 
 sgr_rc=0
-screen_diff "$outdir/bash.sgr" "$outdir/c.sgr" "$W" "$H" > "$outdir/diff.sgr" || sgr_rc=$?
+screen_diff "$outdir/bash.sgr.norm" "$outdir/c.sgr.norm" "$W" "$H" > "$outdir/diff.sgr" || sgr_rc=$?
 
 if (( plain_rc != 0 )); then
   printf 'FAIL %s plain screen differs\n' "$base"
