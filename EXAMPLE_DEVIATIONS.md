@@ -43,8 +43,9 @@ Resolved (no longer flaky):
 ## SGR-only differences
 
 These examples match in plain character captures but differ in SGR/color or
-attribute captures. The default parity gate treats plain captures as
-authoritative.
+attribute captures. `tests/example_parity.sh` now runs the comparison in strict
+mode, so these two are whitelisted as `expected_sgr_fail` (plain must still
+match); any other SGR divergence fails the gate.
 
 - `64-slk-extra`: `slk_init 3` reserves two lines, so stdscr occupies rows 0-27
   and the SLK window sits at rows 28-29. The bash library paints the pair-0

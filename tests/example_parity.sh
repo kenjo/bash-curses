@@ -15,6 +15,14 @@ expected_skip=(
 expected_fail=(
 )
 
+# Examples whose plain capture matches but whose SGR capture is a documented,
+# accepted artifact (see EXAMPLE_DEVIATIONS.md).  The gate runs in strict mode,
+# so these are tolerated only when the failure is SGR-only (plain must match).
+expected_sgr_fail=(
+  64-slk-extra
+  76-panel-bottom
+)
+
 is_expected() {
   local needle=$1
   shift
@@ -29,12 +37,16 @@ failures=0
 for f in "$REPO"/examples/[0-9]*.sh; do
   base=${f##*/}
   base=${base%.sh}
-  out=$(timeout 60 "$REPO/tests/example_compare.sh" "$base" 2>&1)
+  out=$(timeout 60 "$REPO/tests/example_compare.sh" --strict "$base" 2>&1)
   rc=$?
   printf '%s\n' "$out"
   if (( rc != 0 )); then
+    res="$REPO/tmp/example_compare/$base/result"
     if is_expected "$base" "${expected_fail[@]}"; then
       printf 'expected-fail %s\n' "$base"
+    elif grep -q 'SGR screen differs' "$res" 2>/dev/null &&
+         is_expected "$base" "${expected_sgr_fail[@]}"; then
+      printf 'expected-sgr-fail %s\n' "$base"
     else
       printf 'unexpected-fail %s\n' "$base"
       failures=$((failures + 1))
