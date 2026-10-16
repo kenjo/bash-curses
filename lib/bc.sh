@@ -259,6 +259,7 @@ BC_LINES=24
 BC_COLS=80
 BC_COLORS=0
 BC_COLOR_STARTED=0     # set by start_color; ncurses ignores pairs until then
+BC_DEFAULT_COLORS=0    # set by use_default_colors/assume_default_colors
 BC_PAIRS=0
 BC_WN=1
 BC_STARTED=0
@@ -680,7 +681,13 @@ _bc_sgr() { # a p
           s="${s:+$s;}48;5;$bg"
         fi
       else
-        s="${s:+$s;}30;40"
+        if (( BC_DEFAULT_COLORS )); then
+          local df=${BC_DEFAULT_FG:-0} db=${BC_DEFAULT_BG:-0}
+          if (( df < 0 )); then s="${s:+$s;}39"; elif (( df < 8 )); then s="${s:+$s;}$(( 30 + df ))"; elif (( df < 16 )); then s="${s:+$s;}$(( 90 + (df - 8) ))"; else s="${s:+$s;}38;5;$df"; fi
+          if (( db < 0 )); then s="${s:+$s;}49"; elif (( db < 8 )); then s="${s:+$s;}$(( 40 + db ))"; elif (( db < 16 )); then s="${s:+$s;}$(( 100 + (db - 8) ))"; else s="${s:+$s;}48;5;$db"; fi
+        else
+          s="${s:+$s;}30;40"
+        fi
       fi
     fi
     [[ -z $s ]] && s="0"
@@ -1664,7 +1671,14 @@ has_colors() { (( BC_COLORS > 0 )); }
 
 has_named_color() { has_colors "$@"; }
 
-use_default_colors() { return 0; }
+use_default_colors() {
+  BC_DEFAULT_COLORS=1
+  BC_DEFAULT_FG=-1
+  BC_DEFAULT_BG=-1
+  BC_PAIRS_A[0]=-1
+  BC_PAIRS_B[0]=-1
+  return 0
+}
 
 init_color() { # color r g b
   local c=$1
@@ -1717,8 +1731,11 @@ init_extended_color() { init_color "$@"; }
 init_extended_pair() { init_pair "$@"; }
 
 assume_default_colors() { # fg bg
+  BC_DEFAULT_COLORS=1
   BC_DEFAULT_FG=${1:--1}
   BC_DEFAULT_BG=${2:--1}
+  BC_PAIRS_A[0]=$BC_DEFAULT_FG
+  BC_PAIRS_B[0]=$BC_DEFAULT_BG
   return 0
 }
 
