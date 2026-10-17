@@ -3354,6 +3354,7 @@ run_menu() {
   case $name in
     Left|Right)
       case $label in
+        "File listing")    : ;;   # already in listing mode; mc shows no dialog
         "Quick view")    do_view ;;
         "Info")          do_info ;;
         "Tree")          do_tree ;;
