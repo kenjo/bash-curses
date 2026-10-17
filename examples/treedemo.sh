@@ -7,6 +7,9 @@
 source "${BASH_SOURCE[0]%/*}/../lib/bc.sh"
 
 readonly SENTENCE="All work and no play makes Jack a dull boy"
+# ~4 words/sec: advance 20 chars/s (≈5 chars/word), time-based so the rate is
+# independent of how long a redraw pass takes.
+readonly CPS=20 FRAME_MS=100
 
 # long enough that any window row is a plain substring slice
 REP="$SENTENCE"
@@ -53,13 +56,12 @@ draw_window() { # win
   werase "$win"
   wattrset "$win" 0 "$pair"
   box "$win"
-  local iw=$(( w - 2 )) r line
+  local iw=$(( w - 2 )) r o=$off line
   for (( r = 1; r < h - 1; r++ )); do
-    line=${REP:off:iw}
+    line=${REP:o:iw}
     mvwaddstr "$win" "$r" 1 "$line"
-    off=$(( off + iw ))
+    o=$(( o + iw ))
   done
-  TREE_OFF[$win]=$(( off % ${#SENTENCE} ))
 }
 
 main() {
@@ -72,13 +74,22 @@ main() {
   make_window 1 1 "$h" "$w" 0
 
   nodelay "$BC_STDSCR" 1
+  local now el adv carry=0 len=${#SENTENCE}
+  local last=${EPOCHREALTIME//[!0-9]/}
   while :; do
     local win
     for win in "${TREE_WINS[@]}"; do
       draw_window "$win"
     done
     doupdate
-    napms 120
+    napms "$FRAME_MS"
+    now=${EPOCHREALTIME//[!0-9]/}
+    el=$(( now - last )); last=$now
+    adv=$(( (el * CPS + carry) / 1000000 ))
+    carry=$(( (el * CPS + carry) % 1000000 ))
+    (( adv > 0 )) && for win in "${TREE_WINS[@]}"; do
+      TREE_OFF[$win]=$(( (TREE_OFF[$win] + adv) % len ))
+    done
     if wgetch "$BC_STDSCR"; then
       [[ $key == q || $key == Q ]] && break
     fi
