@@ -567,7 +567,7 @@ mcnav() { ( source "$REPO/examples/mc.sh"; COLS=100 LINES=30
             WIN[0]=10; CUR=0; NAMES_0=( $(seq 0 49) ); eval "$1"; ); }
 
 # J1. closed menu bar is cyan (pair 22, black-on-cyan) across the full row width
-check "mc menu bar full-width cyan" "100" "$(mc 'menu_open=0; draw_menu; n=0; for (( x = 0; x < COLS; x++ )); do p=${BC_P["0/0 $x"]:-0}; [[ $p == 22 ]] && n=$((n+1)); done; printf "%s" "$n"')"
+check "mc menu bar full-width cyan" "100" "$(mc 'menu_open=0; draw_menu; _bc_flush_win 0; n=0; for (( x = 0; x < COLS; x++ )); do p=${BC_P["0/0 $x"]:-0}; [[ $p == 22 ]] && n=$((n+1)); done; printf "%s" "$n"')"
 # J2. PageUp/PageDown must clamp POS into [0, count-1] (page_rows = 26-5 = 21)
 check "mc pgup at top"   "0"  "$(mcnav 'POS[0]=0;  POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
 check "mc pgup mid"      "0"  "$(mcnav 'POS[0]=5;  POS[0]=$((POS[0]-$(page_rows 0))); clamp_pos 0; printf "%s" "${POS[0]}"')"
@@ -601,7 +601,7 @@ check "mc hum rounds M" "1024M" "$(mc 'hum 1048575')"
 check "mc hintbar enabled layout" "26 27 28 29" "$(mc 'MC_HINTBAR=1; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
 check "mc hintbar disabled layout" "27 -1 28 29" "$(mc 'MC_HINTBAR=0; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
 check "mc hintbar disabled skips hint" "X" "$(mc 'HINTBAR=0; HINTY=27; mvaddstr 27 0 X; redraw_hint; printf "%s" "${BC_C["0/27 0"]}"')"
-check "mc viewer fits shows total pct" "5/5 100%" "$(mc 'V_PATH=TREE/a.txt; V_TOTAL=5; V_N=1; V_OFF=0; V_BTOFF=(0); view_metrics; view_title 0; line=""; for ((x=0;x<COLS;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line" | tr -s " " | grep -o "5/5 100%"')"
+check "mc viewer fits shows total pct" "5/5 100%" "$(mc 'V_PATH=TREE/a.txt; V_TOTAL=5; V_N=1; V_OFF=0; V_BTOFF=(0); view_metrics; view_title 0; _bc_flush_win 0; line=""; for ((x=0;x<COLS;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line" | tr -s " " | grep -o "5/5 100%"')"
 # J4. view_load_text (mapfile-based) line/offset/total semantics
 check "mc view_load_text lines" "3 0 2 5 9" "$(mc 'view_load_text T <<< $'"'"'a\nbb\nccc'"'"'; printf "%s %s %s %s %s" "$V_N" "${V_BTOFF[0]}" "${V_BTOFF[1]}" "${V_BTOFF[2]}" "$V_TOTAL"')"
 check "mc view_load_text empty" "1 0 0" "$(mc 'view_load_text T < /dev/null; printf "%s %s %s" "$V_N" "${V_BTOFF[0]}" "$V_TOTAL"')"

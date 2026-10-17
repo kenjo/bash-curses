@@ -313,6 +313,19 @@ declare -A BC_SA=()  # last sent attr
 declare -A BC_SP=()  # last sent pair
 declare -A BC_MK=()  # dirty marks, key "$win/$y $x"
 declare -A BC_WD=()  # dirty key lists per window
+# Row-level fast path: a window row drawn full-width with a single pen is stored
+# as one char string (BC_CROW) plus that pen (BC_PUNI, key "buf ay"); its mere
+# presence means the row cache is authoritative and the per-cell BC_C/A/P for
+# that row are stale. Any per-cell op flushes the row first (_bc_flush_row).
+# The composited screen keeps the same row form (BC_SCROW/BC_SPROW) so a whole
+# row can be diffed and emitted in O(1). Dirty rows tracked per window in
+# BC_WDR (comma list) with BC_MKR marks.
+declare -A BC_CROW=()  # row char string, key "$buf $ay"
+declare -A BC_PUNI=()  # row uniform pen "a p", key "$buf $ay"
+declare -A BC_SCROW=() # last sent screen row chars, key "$ay"
+declare -A BC_SPROW=() # last sent screen row pen "a p", key "$ay"
+declare -A BC_WDR=()   # dirty row lists per window
+declare -A BC_MKR=()   # dirty row marks, key "$win/$ay"
 declare -A BC_WY=()  # window origin y
 declare -A BC_WX=()  # window origin x
 declare -A BC_WH=()  # window height
@@ -335,6 +348,7 @@ declare -A BC_COLOR_B=() # color -> blue
 declare -A BC_SGRC=()  # "a/p" -> sgr code
 declare -a BC_WLIST=()
 declare -A BC_WBUF=() # buffer owner per window (w -> owner window id)
+declare -A BC_BUF2W=() # reverse: buffer id -> owning window
 declare -A BC_WPAR=() # parent window id, -1 for top-level windows
 declare -A BC_WPOY=() # parent-relative origin y (ncurses _pary)
 declare -A BC_WPOX=() # parent-relative origin x (ncurses _parx)
@@ -422,6 +436,7 @@ _bc_init_window() { # w y x h
   BC_WKEYPAD[$w]=0
   BC_WYOFF[$w]=0
   BC_WBUF[$w]=$w
+  BC_BUF2W[$w]=$w
   BC_WPAR[$w]=-1
   BC_WCLEAR[$w]=0
   BC_WIDC[$w]=0
@@ -696,8 +711,35 @@ _bc_sgr() { # a p
   BC_SGR=$s
 }
 
+# materialize a cached uniform row back into the per-cell arrays and drop the
+# cache, so a per-cell op can safely edit it. No-op when the row isn't cached.
+_bc_flush_row() { # w ay
+  local w=$1 ay=$2
+  local buf=${BC_WBUF[$w]}
+  local rk="$buf $ay"
+  [[ -n ${BC_PUNI[$rk]+x} ]] || return 0
+  local row=${BC_CROW[$rk]} pen=${BC_PUNI[$rk]}
+  local a=${pen% *} p=${pen#* }
+  local wx=${BC_WX[$w]} ww=${BC_WW[$w]} i ch k
+  for (( i = 0; i < ww; i++ )); do
+    ch=${row:i:1}
+    k="$buf/$ay $(( wx + i ))"
+    BC_C[$k]=$ch; BC_A[$k]=$a; BC_P[$k]=$p
+  done
+  unset "BC_PUNI[$rk]" "BC_CROW[$rk]"
+}
+
+# materialize every cached row of a window into per-cell arrays, so a reader or
+# bulk op that works per-cell sees authoritative data.
+_bc_flush_win() { # w
+  local w=$1
+  local ay0 wy=${BC_WY[$w]} wh=${BC_WH[$w]}
+  for (( ay0 = wy; ay0 < wy + wh; ay0++ )); do _bc_flush_row "$w" "$ay0"; done
+}
+
 # record one absolute cell as changed for a window
 _bc_cell() { # w ay ax ch a p
+  _bc_flush_row "$1" "$2"
   local buf=${BC_WBUF[$1]}
   local k="$buf/$2 $3" mk="$1/$2 $3"
   BC_C[$k]=$4
@@ -780,10 +822,30 @@ _bc_emit() { # w y x text a p
       if (( wp )); then rp_sp=$wp; else rp_sp=$bp; fi
     fi
     local buf=${BC_WBUF[$w]} k mk yy=$y ayoff=${BC_WY[$w]} axoff=${BC_WX[$w]} ay ax
+    ay=$(( ayoff + yy ))
+    local rk="$buf $ay"
+    # Full-row write: store the whole row as one char string + one pen.
+    if (( x == 0 && x + len == ww )); then
+      local cs=$text
+      if (( special )) && [[ $bg != ' ' ]]; then cs=${text// /$bg}; fi
+      BC_CROW[$rk]=$cs; BC_PUNI[$rk]="$ra_ns $rp_ns"
+      [[ -z ${BC_MKR[$w/$ay]:-} ]] && { BC_MKR[$w/$ay]=1; BC_WDR[$w]+=",$ay"; }
+      BC_WAX[$w]=$(( x + len )); BC_WAY[$w]=$y
+      return 0
+    fi
+    # Partial span onto an existing uniform row with the same pen: splice it in.
+    if [[ -n ${BC_PUNI[$rk]+x} && ${BC_PUNI[$rk]} == "$ra_ns $rp_ns" ]]; then
+      local row=${BC_CROW[$rk]}
+      BC_CROW[$rk]="${row:0:x}${text}${row:x+len}"
+      [[ -z ${BC_MKR[$w/$ay]:-} ]] && { BC_MKR[$w/$ay]=1; BC_WDR[$w]+=",$ay"; }
+      BC_WAX[$w]=$(( x + len )); BC_WAY[$w]=$y
+      return 0
+    fi
+    # Otherwise drop any cache and write this span per-cell.
+    _bc_flush_row "$w" "$ay"
     while (( i < len )); do
       ch=${text:i:1}
-      ay=$(( ayoff + yy )); ax=$(( axoff + x ))
-      k="$buf/$ay $ax"
+      ax=$(( axoff + x )); k="$buf/$ay $ax"
       if (( special )) && [[ $ch == ' ' ]]; then
         BC_C[$k]=$bg; BC_A[$k]=$ra_sp; BC_P[$k]=$rp_sp
       else
@@ -1124,6 +1186,30 @@ _bc_shift_screen_model() { # top bottom n
   local top=$1 bottom=$2 n=$3
   local h=$(( bottom - top + 1 ))
   local y src x k sk
+  # shift the whole-row screen cache in lockstep with the per-cell model
+  local ay2 src2
+  if (( n > 0 )); then
+    if (( n >= h )); then
+      for (( ay2 = top; ay2 <= bottom; ay2++ )); do unset "BC_SCROW[$ay2]" "BC_SPROW[$ay2]"; done
+    else
+      for (( ay2 = top; ay2 <= bottom - n; ay2++ )); do
+        src2=$(( ay2 + n ))
+        if [[ -n ${BC_SCROW[$src2]+set} ]]; then BC_SCROW[$ay2]=${BC_SCROW[$src2]}; BC_SPROW[$ay2]=${BC_SPROW[$src2]}; else unset "BC_SCROW[$ay2]" "BC_SPROW[$ay2]"; fi
+      done
+      for (( ay2 = bottom - n + 1; ay2 <= bottom; ay2++ )); do unset "BC_SCROW[$ay2]" "BC_SPROW[$ay2]"; done
+    fi
+  elif (( n < 0 )); then
+    local nn=$(( -n ))
+    if (( nn >= h )); then
+      for (( ay2 = top; ay2 <= bottom; ay2++ )); do unset "BC_SCROW[$ay2]" "BC_SPROW[$ay2]"; done
+    else
+      for (( ay2 = bottom; ay2 >= top + nn; ay2-- )); do
+        src2=$(( ay2 - nn ))
+        if [[ -n ${BC_SCROW[$src2]+set} ]]; then BC_SCROW[$ay2]=${BC_SCROW[$src2]}; BC_SPROW[$ay2]=${BC_SPROW[$src2]}; else unset "BC_SCROW[$ay2]" "BC_SPROW[$ay2]"; fi
+      done
+      for (( ay2 = top; ay2 < top + nn; ay2++ )); do unset "BC_SCROW[$ay2]" "BC_SPROW[$ay2]"; done
+    fi
+  fi
   if (( n > 0 )); then
     if (( n >= h )); then
       for (( y = top; y <= bottom; y++ )); do
@@ -1949,6 +2035,7 @@ syncdown() { wsyncdown "$BC_CURR"; }
 dupwin() { # win -> bc_win
   local w=$1
   [[ -n ${BC_WY[$w]:-} ]] || return 1
+  _bc_flush_win "$w"
   local id=$BC_WN
   BC_WN=$(( BC_WN + 1 ))
   _bc_init_window "$id" "${BC_WY[$w]}" "${BC_WX[$w]}" "${BC_WH[$w]}" "${BC_WW[$w]}"
@@ -1990,6 +2077,7 @@ dupwin() { # win -> bc_win
 putwin() { # win file
   local w=$1 f=$2
   [[ -n ${BC_WY[$w]:-} ]] || return 1
+  _bc_flush_win "$w"
   local buf=${BC_WBUF[$w]} y x k
   {
     printf 'BCWIN\t1\n'
@@ -2107,6 +2195,7 @@ is_pad() { # win
 _bc_prefresh_copy() { # pad pminrow pmincol sminrow smincol smaxrow smaxcol
   local w=$1 pminrow=$2 pmincol=$3 sminrow=$4 smincol=$5 smaxrow=$6 smaxcol=$7
   [[ -n ${BC_WY[$w]:-} ]] || return 1
+  _bc_flush_win "$w"
   local buf=${BC_WBUF[$w]}
   local h=$(( smaxrow - sminrow + 1 ))
   local wd=$(( smaxcol - smincol + 1 ))
@@ -2335,6 +2424,7 @@ wscrl() { # win n
   [[ -n ${BC_WY[$w]:-} ]] || return 1
   (( ${BC_SCROLL[$w]:-0} )) || return 1
   (( n == 0 )) && return 0
+  _bc_flush_win "$w"
   local top=0 bottom=$(( BC_WH[$w] - 1 ))
   if [[ -n ${BC_SR[$w]:-} ]]; then
     read -r top bottom <<< "${BC_SR[$w]}"
@@ -2637,7 +2727,14 @@ winsn() { # win y x n str
 mvwinch() { # win y x -> sets wch, wcha, wchp
   local w=$1
   local buf=${BC_WBUF[$w]}
-  local k="$buf/$(( BC_WY[$w] + $2 )) $(( BC_WX[$w] + $3 ))"
+  local ay=$(( BC_WY[$w] + $2 )) rk="$buf $(( BC_WY[$w] + $2 ))"
+  if [[ -n ${BC_PUNI[$rk]+x} ]]; then
+    local pen=${BC_PUNI[$rk]}
+    wch=${BC_CROW[$rk]:$3:1}
+    wcha=${pen% *}; wchp=${pen#* }
+    return 0
+  fi
+  local k="$buf/$ay $(( BC_WX[$w] + $3 ))"
   wch=${BC_C[$k]:- }
   wcha=${BC_A[$k]:-0}
   wchp=${BC_P[$k]:-0}
@@ -2663,6 +2760,7 @@ inchnstr() { # win n -> bc_chstr bc_chattr bc_chpair bc_str
   local w=${1:-$BC_CURR} n=${2:-0}
   local y=${BC_WAY[$w]} x=${BC_WAX[$w]} ww=${BC_WW[$w]}
   local buf=${BC_WBUF[$w]} ay=$(( BC_WY[$w] + y ))
+  _bc_flush_row "$w" "$ay"
   bc_chstr=(); bc_chattr=(); bc_chpair=(); bc_str=""
   local i=0 k
   while (( x < ww && (n <= 0 || i < n) )); do
@@ -2683,6 +2781,7 @@ instr() { # win n -> bc_str
   local w=${1:-$BC_CURR} n=${2:-0}
   local y=${BC_WAY[$w]} x=${BC_WAX[$w]} ww=${BC_WW[$w]}
   local buf=${BC_WBUF[$w]} ay=$(( BC_WY[$w] + y ))
+  _bc_flush_row "$w" "$ay"
   bc_str=""
   local i=0 k
   while (( x < ww && (n <= 0 || i < n) )); do
@@ -2883,6 +2982,7 @@ insdelln() { winsdelln "$BC_CURR" "$@"; }
 copywin() { # src dst sminy sminx dminy dminx dmaxy dmaxx overlay
   local src=$1 dst=$2 sminy=$3 sminx=$4 dminy=$5 dminx=$6 dmaxy=$7 dmaxx=$8 ov=${9:-0}
   [[ -n ${BC_WY[$src]:-} && -n ${BC_WY[$dst]:-} ]] || return 1
+  _bc_flush_win "$src"
   local sh=${BC_WH[$src]} sw=${BC_WW[$src]} dh=${BC_WH[$dst]} dw=${BC_WW[$dst]}
   local rows=$(( dmaxy - dminy + 1 )) cols=$(( dmaxx - dminx + 1 ))
   if (( sminy < 0 )); then dminy=$(( dminy - sminy )); sminy=0; fi
@@ -3604,22 +3704,20 @@ doupdate() {
     fi
   fi
   declare -A RC=()
+  declare -A ROWDIRTY=()
   local -a wins=("$BC_STDSCR")
   for p in "${BC_PSTACK[@]}"; do wins+=("${BC_PWIN[$p]}"); done
   # bounding box of the dirty region, taken from the rects of the windows that
-  # reported dirty cells (an over-approximation that is cheap to track).
-  local bminy=999999 bmaxy=-1 bminx=999999 bmaxx=-1
-  # dirty cells of every window (stdscr base + all panels in the stack)
+  # reported dirty cells or dirty rows (an over-approximation that is cheap).
+  local bminy=999999 bmaxy=-1 bminx=999999 bmaxx=-1 hasdirty=0
   for w in "${wins[@]}"; do
-    [[ -n ${BC_WD[$w]:-} ]] || continue
+    [[ -n ${BC_WD[$w]:-} || -n ${BC_WDR[$w]:-} ]] || continue
+    hasdirty=1
     local wy=${BC_WY[$w]} wx=${BC_WX[$w]} wh=${BC_WH[$w]} ww=${BC_WW[$w]}
     (( wy < bminy )) && bminy=$wy
     (( wy + wh - 1 > bmaxy )) && bmaxy=$(( wy + wh - 1 ))
     (( wx < bminx )) && bminx=$wx
     (( wx + ww - 1 > bmaxx )) && bmaxx=$(( wx + ww - 1 ))
-    local IFS=','
-    for k in ${BC_WD[$w]}; do [[ -n $k ]] && RC[$k]=1; done
-    unset IFS
   done
   # reveal what lies under any window deleted since the last composite. The
   # region must be unconditionally re-emitted (BC_S is cleared there), because
@@ -3637,24 +3735,25 @@ doupdate() {
       (( rx0 < bminx )) && bminx=$rx0
       (( rx0 + rww - 1 > bmaxx )) && bmaxx=$(( rx0 + rww - 1 ))
       for (( ay = ry0; ay < ry0 + rh; ay++ )); do
+        unset "BC_SCROW[$ay]" "BC_SPROW[$ay]"
         for (( ax = rx0; ax < rx0 + rww; ax++ )); do
           RC["$ay $ax"]=1
           unset "BC_S[$ay $ax]" "BC_SA[$ay $ax]" "BC_SP[$ay $ax]"
         done
       done
     done
+    hasdirty=1
   fi
   # the very first composite (or a forced full rebuild after a resize) repaints
-  # the whole screen: clear the last-composited model and recompute every cell
-  if (( ${#RC[@]} == 0 && ${#BC_S[@]} == 0 )) || (( BC_FORCEFULL )); then
+  # the whole screen: clear the last-composited model and recompute every cell.
+  local FULL=0
+  if (( ! hasdirty && ${#BC_S[@]} == 0 && ${#BC_SCROW[@]} == 0 )) || (( BC_FORCEFULL )); then
     BC_FORCEFULL=0
-    BC_S=(); BC_SA=(); BC_SP=()
+    FULL=1
+    BC_S=(); BC_SA=(); BC_SP=(); BC_SCROW=(); BC_SPROW=()
     bminy=0; bmaxy=$(( BC_LINES - 1 )); bminx=0; bmaxx=$(( BC_COLS - 1 ))
-    for (( ay = 0; ay < BC_LINES; ay++ )); do
-      for (( ax = 0; ax < BC_COLS; ax++ )); do RC["$ay $ax"]=1; done
-    done
   fi
-  if (( ${#RC[@]} == 0 )); then
+  if (( ! hasdirty && ! FULL && ${#RC[@]} == 0 )); then
     [[ -n $scroll_out ]] && printf '%s' "$scroll_out"
     return 0
   fi
@@ -3664,7 +3763,7 @@ doupdate() {
   # region and no higher window overlaps it, that panel wins every dirty cell,
   # so read its cells directly instead of walking the stack per cell. If no
   # panel touches the region at all, stdscr owns it and is read directly.
-  local topbuf="" topbg=0 owner=0
+  local topbuf="" topbg=0 owner=0 ownerw=0
   local i p w j pj pw pwy pwx pwh pww wy wx wh ww
   for (( i=${#BC_PSTACK[@]}-1; i>=0; i-- )); do
     p=${BC_PSTACK[i]}
@@ -3680,7 +3779,7 @@ doupdate() {
       if (( pwy <= bmaxy && pwy + pwh > bminy && pwx <= bmaxx && pwx + pww > bminx )); then safe=0; break; fi
     done
     (( safe )) || continue
-    topbuf=${BC_WBUF[$w]}; topbg=${BC_WBG[$w]}; owner=1; break
+    topbuf=${BC_WBUF[$w]}; topbg=${BC_WBG[$w]}; owner=1; ownerw=$w; break
   done
   if (( ! owner )); then
     local touches=0
@@ -3692,10 +3791,91 @@ doupdate() {
     done
     if (( ! touches )); then topbuf=${BC_WBUF[$BC_STDSCR]}; topbg=${BC_WBG[$BC_STDSCR]}; fi
   fi
+
+  if (( FULL )); then
+    # full rebuild: drop every row cache so per-cell is authoritative, then
+    # repaint the whole screen per-cell.
+    local rkf bwf ayf
+    for rkf in "${!BC_PUNI[@]}"; do
+      bwf=${rkf% *}; ayf=${rkf##* }
+      _bc_flush_row "${BC_BUF2W[$bwf]}" "$ayf"
+    done
+    for (( ay = bminy; ay <= bmaxy; ay++ )); do
+      for (( ax = bminx; ax <= bmaxx; ax++ )); do RC["$ay $ax"]=1; done
+    done
+  else
+    # Split the dirty set: rows the owner window holds as a uniform row cache
+    # are emitted whole (ROWDIRTY); everything else is recomposited per-cell.
+    local owbuf=""; (( owner )) && owbuf=$topbuf
+    # pass 1: classify cached rows. Owner rows with a live uniform cache are
+    # emitted whole (ROWDIRTY); any other cached row is flushed to per-cell.
+    for w in "${wins[@]}"; do
+      local isowner=0; [[ -n $owbuf && ${BC_WBUF[$w]} == "$owbuf" ]] && isowner=1
+      if [[ -n ${BC_WDR[$w]:-} ]]; then
+        local IFS=',' ay0
+        for ay0 in ${BC_WDR[$w]}; do
+          [[ -n $ay0 ]] || continue
+          if (( isowner )) && [[ -n ${BC_PUNI["$owbuf $ay0"]+x} ]]; then
+            ROWDIRTY[$ay0]=1
+          else
+            _bc_flush_row "$w" "$ay0"
+            local wxw=${BC_WX[$w]} www=${BC_WW[$w]} ax0
+            for (( ax0 = wxw; ax0 < wxw + www; ax0++ )); do RC["$ay0 $ax0"]=1; done
+          fi
+        done
+        unset IFS
+      fi
+    done
+    # pass 2: per-cell dirty cells, skipping rows already emitted whole.
+    for w in "${wins[@]}"; do
+      if [[ -n ${BC_WD[$w]:-} ]]; then
+        local IFS=',' k0
+        for k0 in ${BC_WD[$w]}; do
+          [[ -n $k0 ]] || continue
+          [[ -n ${ROWDIRTY[${k0%% *}]+x} ]] && continue
+          RC[$k0]=1
+        done
+        unset IFS
+      fi
+    done
+    # the per-cell composite path samples every window's cells, so any row cache
+    # that could be read under a dirty cell must be materialized first.
+    if (( ! owner )); then
+      local rkg bwg ayg
+      for rkg in "${!BC_PUNI[@]}"; do
+        bwg=${rkg% *}; ayg=${rkg##* }
+        _bc_flush_row "${BC_BUF2W[$bwg]}" "$ayg"
+      done
+    fi
+  fi
+  if (( ${#RC[@]} == 0 && ${#ROWDIRTY[@]} == 0 )); then
+    [[ -n $scroll_out ]] && printf '%s' "$scroll_out"
+    return 0
+  fi
+
+  # emit whole rows owned by the top window straight from the row cache
+  if (( ${#ROWDIRTY[@]} > 0 )); then
+    local wxo=${BC_WX[$ownerw]} rk cs pen pa pp2
+    for (( ay = bminy; ay <= bmaxy; ay++ )); do
+      [[ -n ${ROWDIRTY[$ay]+x} ]] || continue
+      rk="$topbuf $ay"; cs=${BC_CROW[$rk]}; pen=${BC_PUNI[$rk]}
+      [[ ${BC_SCROW[$ay]:-} == "$cs" && ${BC_SPROW[$ay]:-} == "$pen" ]] && continue
+      pa=${pen% *}; pp2=${pen#* }
+      _bc_sgr "$pa" "$pp2"
+      if [[ $last_sgr != "$BC_SGR" ]]; then out+="${BC_ESC}[${BC_SGR}m"; last_sgr=$BC_SGR; fi
+      out+="${BC_ESC}[$(( ay + 1 ));$(( wxo + 1 ))H"
+      out+="$cs"
+      BC_SCROW[$ay]=$cs; BC_SPROW[$ay]=$pen
+      lasty=-1
+      emitted=$(( emitted + 1 ))
+    done
+  fi
+
   # Order the dirty cells row-major. For large regions a bbox scan beats
   # forking an external sort; for small ones sorting the few keys is cheaper.
   local -a keys
-  if (( ${#RC[@]} > 1500 )); then
+  if (( ${#RC[@]} > 0 )); then
+   if (( ${#RC[@]} > 1500 )); then
     keys=()
     for (( ay = bminy; ay <= bmaxy; ay++ )); do
       for (( ax = bminx; ax <= bmaxx; ax++ )); do
@@ -3726,18 +3906,25 @@ doupdate() {
     BC_S[$k]=$ch; BC_SA[$k]=$a; BC_SP[$k]=$pp
     lasty=$ay; lastx=$ax
     emitted=$(( emitted + 1 ))
-  done
-
+   done
+  fi
 
   [[ -n $out ]] && printf '%s' "$out"
   printf '%s[%d;%dH' "$BC_ESC" "$(( BC_WAY[$BC_STDSCR] + 1 ))" "$(( BC_WAX[$BC_STDSCR] + 1 ))"
-  # clear the dirty marks for exactly the cells we flushed
+  # clear the dirty marks for exactly the cells/rows we flushed
   for w in "${wins[@]}"; do
-    [[ -n ${BC_WD[$w]:-} ]] || continue
-    local IFS=','
-    for k in ${BC_WD[$w]}; do [[ -n $k ]] && unset "BC_MK[$w/$k]"; done
-    unset IFS
-    unset "BC_WD[$w]"
+    if [[ -n ${BC_WD[$w]:-} ]]; then
+      local IFS=','
+      for k in ${BC_WD[$w]}; do [[ -n $k ]] && unset "BC_MK[$w/$k]"; done
+      unset IFS
+      unset "BC_WD[$w]"
+    fi
+    if [[ -n ${BC_WDR[$w]:-} ]]; then
+      local IFS=','
+      for k in ${BC_WDR[$w]}; do [[ -n $k ]] && unset "BC_MKR[$w/$k]"; done
+      unset IFS
+      unset "BC_WDR[$w]"
+    fi
   done
   BC_DELRECTS=""
   if [[ -n ${BC_TEST_DIR:-} ]]; then
@@ -3926,6 +4113,7 @@ scr_init_sp() { scr_init "$@"; }
 # screen model, matching ncurses putwin(newscr).
 scr_dump() {
   local y x k line cell buf=${BC_WBUF[$BC_STDSCR]}
+  _bc_flush_win "$BC_STDSCR"
   : > "$SCR_FILE" || return 1
   for (( y = 0; y < LINES; y++ )); do
     line=""
@@ -4865,6 +5053,7 @@ _bc_chgat_impl() { # w y x n attr pair
   local w=$1 y=$2 x=$3 n=$4 attr=$5 pair=$6
   local h=${BC_WH[$w]} ww=${BC_WW[$w]}
   (( y < 0 || y >= h )) && return 0
+  _bc_flush_row "$w" "$(( BC_WY[$w] + y ))"
   (( x < 0 )) && x=0
   local end
   if (( n == -1 )); then
