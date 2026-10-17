@@ -3647,10 +3647,28 @@ doupdate() {
   fi
 
   local out="$scroll_out" lasty=-1 lastx=-1 last_sgr="" ch a pp emitted=0
+  # Fast path: if the topmost visible panel is a full-screen window it covers
+  # every cell, so compositing each cell by walking the whole stack is wasted
+  # work. Read the top window's cells directly instead.
+  local topbuf="" topbg=0
+  if (( ${#BC_PSTACK[@]} )); then
+    local tp=${BC_PSTACK[-1]}
+    if [[ ${BC_PHID[$tp]:-0} != 1 ]]; then
+      local tw=${BC_PWIN[$tp]}
+      if (( BC_WY[$tw] <= 0 && BC_WX[$tw] <= 0 &&
+            BC_WY[$tw] + BC_WH[$tw] >= BC_LINES && BC_WX[$tw] + BC_WW[$tw] >= BC_COLS )); then
+        topbuf=${BC_WBUF[$tw]}; topbg=${BC_WBG[$tw]}
+      fi
+    fi
+  fi
   while read -r ay ax; do
-    _bc_composite_cell "$ay" "$ax"
-    ch=$_BC_CC; a=$_BC_CA; pp=$_BC_CP
     k="$ay $ax"
+    if [[ -n $topbuf ]]; then
+      _BC_CC=${BC_C["$topbuf/$k"]:-$topbg}; _BC_CA=${BC_A["$topbuf/$k"]:-0}; _BC_CP=${BC_P["$topbuf/$k"]:-0}
+    else
+      _bc_composite_cell "$ay" "$ax"
+    fi
+    ch=$_BC_CC; a=$_BC_CA; pp=$_BC_CP
     if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$pp" ]]; then
       lasty=-1
       continue
