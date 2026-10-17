@@ -30,9 +30,9 @@ rand_color_pair() { # -> bc_pair (1..BC_PAIRS)
   bc_pair=$p
 }
 
-make_window() { # y x h w depth
+make_window() { # y x h w depth   (h,w = visible box; panel is +1 row/col for shadow)
   local y=$1 x=$2 h=$3 w=$4 d=$5
-  newwin "$h" "$w" "$y" "$x" || return 1
+  newwin "$(( h + 1 ))" "$(( w + 1 ))" "$y" "$x" || return 1
   local win=$bc_win
   rand_color_pair
   TREE_WINS+=("$win")
@@ -57,12 +57,28 @@ make_window() { # y x h w depth
 draw_window() { # win
   local win=$1
   local pair=${TREE_PAIR[$win]} off=${TREE_OFF[$win]}
-  getmaxyx "$win"; local h=$BC_GMY w=$BC_GMX
+  getmaxyx "$win"; local H=$BC_GMY W=$BC_GMX
+  local bh=$(( H - 1 )) bw=$(( W - 1 ))   # visible box (panel is +1 for the shadow)
   werase "$win"
   wattrset "$win" 0 "$pair"
-  box "$win"
-  local iw=$(( w - 2 )) r pos=$off line seg nl pad
-  for (( r = 1; r < h - 1; r++ )); do
+  # box in the top-left bh x bw region
+  local dash; printf -v dash '%*s' $(( bw - 2 )) ''; dash=${dash// /─}
+  mvwaddch "$win" 0 0 '┌'; mvwaddch "$win" 0 $(( bw - 1 )) '┐'
+  mvwaddch "$win" $(( bh - 1 )) 0 '└'; mvwaddch "$win" $(( bh - 1 )) $(( bw - 1 )) '┘'
+  mvwaddstr "$win" 0 1 "$dash"; mvwaddstr "$win" $(( bh - 1 )) 1 "$dash"
+  local r c sp
+  for (( r = 1; r < bh - 1; r++ )); do
+    mvwaddch "$win" "$r" 0 '│'; mvwaddch "$win" "$r" $(( bw - 1 )) '│'
+  done
+  # mc-style drop shadow, drawn INSIDE this panel (right col + bottom row) so it
+  # composites at this window's z-level and is not hidden by windows below it.
+  wattrset "$win" 0 "$SHADOW_PAIR"
+  for (( r = 1; r <= bh; r++ )); do mvwaddch "$win" "$r" "$bw" '█' 0 "$SHADOW_PAIR"; done
+  for (( c = 1; c <= bw; c++ )); do mvwaddch "$win" "$bh" "$c" '█' 0 "$SHADOW_PAIR"; done
+  # scrolling text
+  wattrset "$win" 0 "$pair"
+  local iw=$(( bw - 2 )) pos=$off line seg nl pad
+  for (( r = 1; r < bh - 1; r++ )); do
     seg=${REP:pos:iw}
     if [[ $seg == *$'\n'* ]]; then
       line=${seg%%$'\n'*}; pos=$(( pos + ${#line} + 1 ))
@@ -70,19 +86,8 @@ draw_window() { # win
       line=$seg; pos=$(( pos + iw ))
     fi
     pad=$(( iw - ${#line} ))
-    (( pad > 0 )) && { local sp; printf -v sp '%*s' "$pad" ''; line+="$sp"; }
+    (( pad > 0 )) && { printf -v sp '%*s' "$pad" ''; line+="$sp"; }
     mvwaddstr "$win" "$r" 1 "$line"
-  done
-}
-
-draw_shadow() { # win : mc-style drop shadow (offset down-right) on stdscr
-  local w=$1
-  local y=${BC_WY[$w]} x=${BC_WX[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]} sy sx
-  for (( sy = y + 1; sy <= y + h; sy++ )); do
-    (( x + ww < BC_COLS )) && mvwaddch 0 "$sy" $(( x + ww )) '█' 0 "$SHADOW_PAIR"
-  done
-  for (( sx = x + 1; sx <= x + ww; sx++ )); do
-    (( y + h < BC_LINES )) && mvwaddch 0 $(( y + h )) "$sx" '█' 0 "$SHADOW_PAIR"
   done
 }
 
@@ -92,8 +97,8 @@ main() {
   curs_set 0
   if has_colors; then
     start_color
-    # dark-navy screen background (256-color cube index 17), black shadow
-    if (( BC_COLORS >= 16 )); then init_pair 1 0 17; else init_pair 1 0 0; fi
+    # warm cream "paper" screen background (256-color cube index 230), dark shadow
+    if (( BC_COLORS >= 256 )); then init_pair 1 16 230; elif (( BC_COLORS >= 16 )); then init_pair 1 0 7; else init_pair 1 0 0; fi
     if (( BC_COLORS >= 256 )); then init_pair 2 238 238; else init_pair 2 0 0; fi
     BG_PAIR=1 SHADOW_PAIR=2
     wbkgdset 0 ' ' 0 "$BG_PAIR"
@@ -104,19 +109,18 @@ main() {
   new_panel "$BC_STDSCR" >/dev/null
 
   # scatter irregular top-level windows over the whole terminal (overlap ok);
-  # each still spawns overlapping children inside make_window.
+  # each still spawns overlapping children inside make_window. Roughly half are
+  # wide enough (interior >= sentence length) to print the whole line unwrapped.
   local n=$(( (BC_LINES * BC_COLS) / 1500 )); (( n < 6 )) && n=6; (( n > 14 )) && n=14
   local i w h x y
   for (( i = 0; i < n; i++ )); do
-    w=$(( 14 + RANDOM % (MAXW - 13) ))
+    if (( RANDOM % 2 )); then w=$MAXW; else w=$(( 14 + RANDOM % (MAXW - 13) )); fi
+    (( w + 1 >= BC_COLS )) && w=$(( BC_COLS - 2 ))
     h=$(( 8 + RANDOM % 12 ))
-    x=$(( RANDOM % (BC_COLS - w + 1) ))
-    y=$(( RANDOM % (BC_LINES - h + 1) ))
+    x=$(( RANDOM % (BC_COLS - w) ))
+    y=$(( RANDOM % (BC_LINES - h) ))
     make_window "$y" "$x" "$h" "$w" 0
   done
-
-  local win
-  for win in "${TREE_WINS[@]}"; do draw_shadow "$win"; done
 
   nodelay "$BC_STDSCR" 1
   local now el adv carry=0
