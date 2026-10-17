@@ -1,4 +1,5 @@
-# Tree of random-sized, overlapping windows that continuously print a string.
+# "The Shining": a screen full of random-sized, overlapping windows that each
+# continuously type "All work and no play makes Jack a dull boy." on cream paper.
 #
 # A recursive tree: the root window covers most of the screen; each window
 # spawns a few child windows at random positions/sizes inside its parent, so
