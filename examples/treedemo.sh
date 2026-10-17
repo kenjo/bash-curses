@@ -6,13 +6,17 @@
 
 source "${BASH_SOURCE[0]%/*}/../lib/bc.sh"
 
-readonly SENTENCE="All work and no play makes Jack a dull boy"
+readonly SENTENCE="All work and no play makes Jack a dull boy."
 # ~4 words/sec: advance 20 chars/s (≈5 chars/word), time-based so the rate is
 # independent of how long a redraw pass takes.
 readonly CPS=20 FRAME_MS=100
 
-# long enough that any window row is a plain substring slice
-REP="$SENTENCE"
+# stream = sentence + newline, repeated; the newline forces a line break so the
+# sentence prints one (width-wrapped) line at a time.
+readonly SLEN=$(( ${#SENTENCE} + 1 ))
+# window width never exceeds the whole sentence (+3 incl. border slack)
+readonly MAXW=$(( ${#SENTENCE} + 3 ))
+REP="$SENTENCE"$'\n'
 while (( ${#REP} < 4096 )); do REP+="$REP"; done
 
 declare -a TREE_WINS=()
@@ -32,7 +36,7 @@ make_window() { # y x h w depth
   local win=$bc_win
   rand_color_pair
   TREE_WINS+=("$win")
-  TREE_OFF[$win]=$(( RANDOM % ${#SENTENCE} ))
+  TREE_OFF[$win]=$(( RANDOM % SLEN ))
   TREE_PAIR[$win]=$bc_pair
   new_panel "$win" >/dev/null
 
@@ -42,6 +46,7 @@ make_window() { # y x h w depth
     for (( i = 0; i < n; i++ )); do
       ch=$(( 6 + RANDOM % (h - 8) ))
       cw=$(( 12 + RANDOM % (w - 14) ))
+      (( cw > MAXW )) && cw=$MAXW
       cy=$(( y + 1 + RANDOM % (h - ch - 1) ))
       cx=$(( x + 1 + RANDOM % (w - cw - 1) ))
       make_window "$cy" "$cx" "$ch" "$cw" $(( d + 1 ))
@@ -56,11 +61,17 @@ draw_window() { # win
   werase "$win"
   wattrset "$win" 0 "$pair"
   box "$win"
-  local iw=$(( w - 2 )) r o=$off line
+  local iw=$(( w - 2 )) r pos=$off line seg nl pad
   for (( r = 1; r < h - 1; r++ )); do
-    line=${REP:o:iw}
+    seg=${REP:pos:iw}
+    if [[ $seg == *$'\n'* ]]; then
+      line=${seg%%$'\n'*}; pos=$(( pos + ${#line} + 1 ))
+    else
+      line=$seg; pos=$(( pos + iw ))
+    fi
+    pad=$(( iw - ${#line} ))
+    (( pad > 0 )) && { local sp; printf -v sp '%*s' "$pad" ''; line+="$sp"; }
     mvwaddstr "$win" "$r" 1 "$line"
-    o=$(( o + iw ))
   done
 }
 
@@ -71,10 +82,11 @@ main() {
   if has_colors; then start_color; fi
 
   local h=$(( BC_LINES - 2 )) w=$(( BC_COLS - 2 ))
+  (( w > MAXW )) && w=$MAXW
   make_window 1 1 "$h" "$w" 0
 
   nodelay "$BC_STDSCR" 1
-  local now el adv carry=0 len=${#SENTENCE}
+  local now el adv carry=0
   local last=${EPOCHREALTIME//[!0-9]/}
   while :; do
     local win
@@ -88,7 +100,7 @@ main() {
     adv=$(( (el * CPS + carry) / 1000000 ))
     carry=$(( (el * CPS + carry) % 1000000 ))
     (( adv > 0 )) && for win in "${TREE_WINS[@]}"; do
-      TREE_OFF[$win]=$(( (TREE_OFF[$win] + adv) % len ))
+      TREE_OFF[$win]=$(( (TREE_OFF[$win] + adv) % SLEN ))
     done
     if wgetch "$BC_STDSCR"; then
       [[ $key == q || $key == Q ]] && break
