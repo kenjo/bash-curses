@@ -1342,6 +1342,19 @@ view_content_line() { # win row : draw one full-width content row
   local win=$1 r=$2
   local idx=$(( V_OFF + r - 1 )) line len
   line=""; (( idx < V_N )) && line="${V_LINES[$idx]}"
+  # Expand tabs to 8-column stops: a raw tab makes the terminal jump, so the
+  # skipped columns keep whatever was already on screen (stale text after a
+  # scroll) and the row's char count no longer matches its display width.
+  if [[ $line == *$'\t'* ]]; then
+    local exp="" part sp pad col=0
+    while [[ $line == *$'\t'* ]]; do
+      part=${line%%$'\t'*}; line=${line#*$'\t'}
+      exp+="$part"; col=$(( col + ${#part} ))
+      pad=$(( 8 - col % 8 )); (( pad == 8 )) && pad=0
+      printf -v sp '%*s' "$pad" ''; exp+="$sp"; col=$(( col + pad ))
+    done
+    exp+="$line"; line=$exp
+  fi
   line="${line:0:$COLS}"
   # Pad to full width and emit the whole row in one _bc_emit (fast path) instead
   # of mvwaddnstr + a per-cell mvwhline fill; the per-cell fill was the bulk of

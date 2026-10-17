@@ -18,6 +18,13 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 seq 1 59 > "$WORK/sample.txt"
 printf '█▀▀█ █▀▀█ █▀▀█ █▀▀▄\n' >> "$WORK/sample.txt"
 
+# tab file: line 30 has tabs that must expand to 8-col stops, not jump the
+# cursor and leave stale text behind after a scroll (regression)
+for i in $(seq 1 59); do printf 'L%d\n' "$i" > "$WORK/tab.txt"; done
+{ for i in $(seq 1 29); do printf 'L%d\n' "$i"; done
+  printf 'X\tY\tZ\n'
+  for i in $(seq 31 59); do printf 'L%d\n' "$i"; done; } > "$WORK/tab.txt"
+
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
 tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 \
@@ -133,6 +140,19 @@ if [[ "$cmdline" != *'$ q'* && "$cmdline" != *'$q'* ]]; then
 else
   bad "q closing viewer leaked into the command line: '$cmdline'"
 fi
+
+# tab regression: open tab.txt, page down, the tab line must render with tabs
+# expanded to 8-col stops and must not show stale text from the scroll
+sendk Down
+sendk F3
+sendk NPage
+tabrow="$(cap | sed -n '2,29p' | grep -F 'X       Y       Z')"
+if [[ -n "$tabrow" ]]; then
+  ok "viewer expands tabs to 8-col stops after scroll"
+else
+  bad "viewer tab line not expanded/stale after scroll: '$(cap | sed -n '2,4p' | tr '\n' '|')'"
+fi
+sendk q
 
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 echo

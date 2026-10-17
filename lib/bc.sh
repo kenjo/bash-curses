@@ -3865,6 +3865,13 @@ doupdate() {
       if [[ $last_sgr != "$BC_SGR" ]]; then out+="${BC_ESC}[${BC_SGR}m"; last_sgr=$BC_SGR; fi
       out+="${BC_ESC}[$(( ay + 1 ));$(( wxo + 1 ))H"
       out+="$cs"
+      # keep the per-cell screen model in sync, otherwise a later per-cell
+      # composite or scroll diffs against stale BC_S and paints mixed rows.
+      local ww_o=${BC_WW[$ownerw]} i_o ch_o k_o
+      for (( i_o = 0; i_o < ww_o; i_o++ )); do
+        ch_o=${cs:i_o:1}; k_o="$ay $(( wxo + i_o ))"
+        BC_S[$k_o]=$ch_o; BC_SA[$k_o]=$pa; BC_SP[$k_o]=$pp2
+      done
       BC_SCROW[$ay]=$cs; BC_SPROW[$ay]=$pen
       lasty=-1
       emitted=$(( emitted + 1 ))
@@ -3904,6 +3911,7 @@ doupdate() {
     fi
     out+=$ch
     BC_S[$k]=$ch; BC_SA[$k]=$a; BC_SP[$k]=$pp
+    unset "BC_SCROW[$ay]" "BC_SPROW[$ay]"
     lasty=$ay; lastx=$ax
     emitted=$(( emitted + 1 ))
    done
