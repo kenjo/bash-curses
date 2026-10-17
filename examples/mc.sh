@@ -2512,8 +2512,65 @@ do_hotlist() {
   list_dir "$CUR"
 }
 
+_vfs_groupbox() { # dw r c w h title  (drawn on $dw)
+  local r=$1 c=$2 w=$3 h=$4 title=$5 i
+  wattrset "$dw" 0 23
+  mvwaddch "$dw" "$r" "$c" "$ACS_ULCORNER"
+  mvwaddch "$dw" "$r" $(( c + w - 1 )) "$ACS_URCORNER"
+  mvwaddch "$dw" $(( r + h - 1 )) "$c" "$ACS_LLCORNER"
+  mvwaddch "$dw" $(( r + h - 1 )) $(( c + w - 1 )) "$ACS_LRCORNER"
+  for (( i = c + 1; i < c + w - 1; i++ )); do
+    mvwaddch "$dw" "$r" "$i" "$ACS_HLINE"
+    mvwaddch "$dw" $(( r + h - 1 )) "$i" "$ACS_HLINE"
+  done
+  for (( i = r + 1; i < r + h - 1; i++ )); do
+    mvwaddch "$dw" "$i" "$c" "$ACS_VLINE"
+    mvwaddch "$dw" "$i" $(( c + w - 1 )) "$ACS_VLINE"
+  done
+  wattrset "$dw" 0 24
+  mvwaddstr "$dw" "$r" $(( c + 1 )) " $title "
+}
+
 do_vfs_list() {
-  message_dialog "Active VFS list" "No active VFS mounts."
+  # mc "Active VFS directories" (C-x a): a large frameless-shadow dialog with
+  # two groupboxes ("Top level group" list + "Directory path" field) and four
+  # buttons. The single VFS entry is the home directory, shown highlighted
+  # blue-on-cyan (pair 30); the path field is plain black-on-white (pair 23).
+  local w=92 h=26 x=4 y=2
+  newwin "$h" "$w" "$y" "$x"; dw=$bc_win
+  wbkgdset "$dw" ' ' 0 23
+  wattrset "$dw" 0 23
+  werase "$dw"; box "$dw"
+  local t=" Active VFS directories "
+  wattrset "$dw" 0 24
+  mvwaddstr "$dw" 0 $(( (w - ${#t}) / 2 )) "$t"
+
+  _vfs_groupbox 1 2 88 19 "Top level group"
+  _vfs_groupbox 20 2 88 3 "Directory path"
+
+  local home=$HOME pad
+  wattrset "$dw" 0 30
+  mvwaddstr "$dw" 2 4 "$home"
+  pad=$(( 84 - ${#home} ))
+  (( pad > 0 )) && mvwaddstr "$dw" 2 $(( 4 + ${#home} )) "$(printf '%*s' "$pad" '')"
+
+  wattrset "$dw" 0 23
+  mvwaddstr "$dw" 21 4 "$home"
+
+  dlg_divider 23
+  dlg_button 24 2  "Change to"     ok   7
+  dlg_button 24 18 "Free VFSs now" norm 2
+  dlg_button 24 36 "Refresh"       norm 2
+  dlg_button 24 80 "Cancel"        norm 2
+
+  wrefresh "$dw"
+  while :; do
+    wgetch "$dw" || break
+    case $key in
+      $'\r'|$'\x1b'|q|Q) break ;;
+    esac
+  done
+  delwin "$dw"
 }
 
 do_background_jobs() {
@@ -3618,6 +3675,7 @@ main() {
       case $key in
         d) do_compare_dirs ;;
         j) do_background_jobs ;;
+        a) do_vfs_list ;;
         *) : ;;
       esac
       continue

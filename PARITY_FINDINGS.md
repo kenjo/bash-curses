@@ -3678,3 +3678,19 @@ per-cell SGR diff (mc < vs clone >)
 < 0	56	 	d	d	
 < 0	57	 	d	d	
 ```
+
+## vfs_list (C-x a) — dialog interior exact, background chrome diverges
+Implemented the full "Active VFS directories" dialog (92x26 at x=4,y=2): outer
+frame pair 23 / title pair 24, two groupboxes ("Top level group" list +
+"Directory path" field), the single home-dir VFS entry highlighted blue-on-cyan
+(pair 30), and four buttons ([< Change to >] [ Free VFSs now ] [ Refresh ]
+[ Cancel ]) with blue mnemonics. Per-cell diff over the dialog region
+(rows 2-27, cols 4-95) is 0 — pixel-perfect.
+
+The probe step still FAILs only on background panel chrome: with this panel-level
+dialog open, real mc draws the active-panel top border full-width (row 1, cols
+0-99) with a blank path and suppresses the right-panel top border, which shifts
+the right panel's columns so its far-right peek (cols 96-99) shows different
+content. The clone keeps the normal two-panel layout. Matching this requires
+replicating mc's panel-stack full-width-active-panel behavior, which is out of
+scope for the dialog itself.
