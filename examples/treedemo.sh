@@ -81,9 +81,21 @@ main() {
   curs_set 0
   if has_colors; then start_color; fi
 
-  local h=$(( BC_LINES - 2 )) w=$(( BC_COLS - 2 ))
-  (( w > MAXW )) && w=$MAXW
-  make_window 1 1 "$h" "$w" 0
+  # tile the whole terminal with capped-width windows so they spread out;
+  # children (inside make_window) still overlap within each cell.
+  local cellw=$MAXW cellh=14
+  local nc=$(( BC_COLS / cellw )); (( nc < 1 )) && nc=1
+  local nr=$(( (BC_LINES - 1) / cellh )); (( nr < 1 )) && nr=1
+  local ox=$(( (BC_COLS - nc * cellw) / 2 )) oy=1
+  local gx gy w h
+  for (( gy = 0; gy < nr; gy++ )); do
+    for (( gx = 0; gx < nc; gx++ )); do
+      w=$cellw; h=$cellh
+      (( ox + (gx + 1) * cellw > BC_COLS )) && w=$(( BC_COLS - ox - gx * cellw - 1 ))
+      (( oy + (gy + 1) * cellh > BC_LINES - 1 )) && h=$(( BC_LINES - 1 - oy - gy * cellh ))
+      (( w > 6 && h > 6 )) && make_window $(( oy + gy * cellh )) $(( ox + gx * cellw )) "$h" "$w" 0
+    done
+  done
 
   nodelay "$BC_STDSCR" 1
   local now el adv carry=0
