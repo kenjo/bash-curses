@@ -1343,10 +1343,13 @@ view_content_line() { # win row : draw one full-width content row
   local idx=$(( V_OFF + r - 1 )) line len
   line=""; (( idx < V_N )) && line="${V_LINES[$idx]}"
   line="${line:0:$COLS}"
+  # Pad to full width and emit the whole row in one _bc_emit (fast path) instead
+  # of mvwaddnstr + a per-cell mvwhline fill; the per-cell fill was the bulk of
+  # the initial viewer draw cost on large windows.
+  len=${#line}
+  (( len < COLS )) && { local sp; printf -v sp '%*s' "$(( COLS - len ))" ''; line+="$sp"; }
   wattrset "$win" 0 7
   mvwaddnstr "$win" "$r" 0 "$line" "$COLS"
-  len=${#line}
-  (( len < COLS )) && mvwhline "$win" "$r" "$len" ' ' "$(( COLS - len ))"
 }
 
 view_draw() { # paint the full-screen viewer window and refresh it

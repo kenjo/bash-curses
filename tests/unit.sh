@@ -602,6 +602,11 @@ check "mc hintbar enabled layout" "26 27 28 29" "$(mc 'MC_HINTBAR=1; layout_bott
 check "mc hintbar disabled layout" "27 -1 28 29" "$(mc 'MC_HINTBAR=0; layout_bottom; printf "%s %s %s %s" "$PH" "$HINTY" "$CMY" "$BTNY"')"
 check "mc hintbar disabled skips hint" "X" "$(mc 'HINTBAR=0; HINTY=27; mvaddstr 27 0 X; redraw_hint; printf "%s" "${BC_C["0/27 0"]}"')"
 check "mc viewer fits shows total pct" "5/5 100%" "$(mc 'V_PATH=TREE/a.txt; V_TOTAL=5; V_N=1; V_OFF=0; V_BTOFF=(0); view_metrics; view_title 0; line=""; for ((x=0;x<COLS;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line" | tr -s " " | grep -o "5/5 100%"')"
+# J4. view_load_text (mapfile-based) line/offset/total semantics
+check "mc view_load_text lines" "3 0 2 5 9" "$(mc 'view_load_text T <<< $'"'"'a\nbb\nccc'"'"'; printf "%s %s %s %s %s" "$V_N" "${V_BTOFF[0]}" "${V_BTOFF[1]}" "${V_BTOFF[2]}" "$V_TOTAL"')"
+check "mc view_load_text empty" "1 0 0" "$(mc 'view_load_text T < /dev/null; printf "%s %s %s" "$V_N" "${V_BTOFF[0]}" "$V_TOTAL"')"
+check "mc view_load_text total override" "99" "$(mc 'view_load_text T 99 <<< $'"'"'a\nb'"'"'; printf "%s" "$V_TOTAL"')"
+check "mc view_load_text no trailing nl" "2 4" "$(mc 'view_load_text T <<< $'"'"'a\nb'"'"'; printf "%s %s" "$V_N" "$V_TOTAL"')"
 check "mc dlg_field omits button" "abc       " "$(mc 'dw=0; dlg_field 0 0 10 "abc" 3 0; line=""; for ((x=0;x<10;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line"')"
 check "mc dlg_field button"       "abc    [^]" "$(mc 'dw=0; dlg_field 0 0 10 "abc" 3 0 1; line=""; for ((x=0;x<10;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line"')"
 check "mc broken symlink marker" "!broken" "$(mc 'rm -rf "$REPO/tmp/unit_broken_link"; mkdir -p "$REPO/tmp/unit_broken_link"; ln -s missing "$REPO/tmp/unit_broken_link/broken"; DIR[0]="$REPO/tmp/unit_broken_link"; list_dir 0; printf "%s" "${NAMES_0[1]}"')"
