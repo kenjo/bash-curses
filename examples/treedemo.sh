@@ -100,25 +100,39 @@ main() {
     # warm cream "paper" screen background (256-color cube index 230), dark shadow
     if (( BC_COLORS >= 256 )); then init_pair 1 16 230; elif (( BC_COLORS >= 16 )); then init_pair 1 0 7; else init_pair 1 0 0; fi
     if (( BC_COLORS >= 256 )); then init_pair 2 238 238; else init_pair 2 0 0; fi
-    BG_PAIR=1 SHADOW_PAIR=2
+    if (( BC_COLORS >= 256 )); then init_pair 3 16 230; elif (( BC_COLORS >= 16 )); then init_pair 3 0 7; else init_pair 3 0 0; fi
+    BG_PAIR=1 SHADOW_PAIR=2 BORDER_PAIR=3
     wbkgdset 0 ' ' 0 "$BG_PAIR"
     werase 0
   else
-    BG_PAIR=0 SHADOW_PAIR=0
+    BG_PAIR=0 SHADOW_PAIR=0 BORDER_PAIR=0
   fi
   new_panel "$BC_STDSCR" >/dev/null
+  # frame the whole terminal with a border on stdscr (bottom panel)
+  wattrset "$BC_STDSCR" 0 "$BORDER_PAIR"
+  box "$BC_STDSCR"
 
-  # scatter irregular top-level windows over the whole terminal (overlap ok);
-  # each still spawns overlapping children inside make_window. Roughly half are
-  # wide enough (interior >= sentence length) to print the whole line unwrapped.
-  local n=$(( (BC_LINES * BC_COLS) / 1500 )); (( n < 6 )) && n=6; (( n > 14 )) && n=14
-  local i w h x y
+  # spread top-level windows over a jittered grid covering the whole terminal so
+  # they fill the screen evenly (jitter + oversized windows keep them overlapping
+  # rather than clustering). Inset by 1 so the stdscr border stays visible.
+  local n=$(( (BC_LINES * BC_COLS) / 700 )); (( n < 12 )) && n=12; (( n > 48 )) && n=48
+  local gw=$(( BC_COLS / 46 + 1 ))
+  local gh=$(( (n + gw - 1) / gw ))
+  local cw=$(( (BC_COLS - 2) / gw ))
+  local ch=$(( (BC_LINES - 2) / gh ))
+  (( cw < 8 )) && cw=8; (( ch < 6 )) && ch=6
+  local i w h x y gx gy
   for (( i = 0; i < n; i++ )); do
     if (( RANDOM % 2 )); then w=$MAXW; else w=$(( 14 + RANDOM % (MAXW - 13) )); fi
-    (( w + 1 >= BC_COLS )) && w=$(( BC_COLS - 2 ))
     h=$(( 8 + RANDOM % 12 ))
-    x=$(( RANDOM % (BC_COLS - w) ))
-    y=$(( RANDOM % (BC_LINES - h) ))
+    (( w + 1 >= BC_COLS - 2 )) && w=$(( BC_COLS - 4 ))
+    (( h + 1 >= BC_LINES - 2 )) && h=$(( BC_LINES - 4 ))
+    gx=$(( i % gw )); gy=$(( i / gw ))
+    x=$(( 1 + gx * cw + RANDOM % (cw > 2 ? cw - 1 : 1) ))
+    y=$(( 1 + gy * ch + RANDOM % (ch > 2 ? ch - 1 : 1) ))
+    (( x + w + 1 > BC_COLS - 1 )) && x=$(( BC_COLS - 2 - w - 1 ))
+    (( y + h + 1 > BC_LINES - 1 )) && y=$(( BC_LINES - 2 - h - 1 ))
+    (( x < 1 )) && x=1; (( y < 1 )) && y=1
     make_window "$y" "$x" "$h" "$w" 0
   done
 
