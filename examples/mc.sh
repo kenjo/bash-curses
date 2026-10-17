@@ -321,26 +321,25 @@ do_swap_panels() {
   CUR=$(( 1 - CUR ))
 }
 
-type_color() { # p idx -> pair (assumes not the current/highlighted row)
+type_color() { # p idx -> sets TC_PAIR (assumes not the current/highlighted row)
   # Colour the whole entry by type, like mc: directory bright white, regular
   # file yellow, executable bright green (symlinks/specials bright white).
   local p=$1 i=$2
   local -n TT=TYPES_$p XX=EXEC_$p NN=NAMES_$p
   local t=${TT[$i]}
   case $t in
-    d) echo 2 ;;
-    l) if [[ ${NN[$i]} == '!'* ]]; then echo 35; else echo 4; fi ;;
-    c|b|p|s) echo 5 ;;
-    *)  if (( XX[$i] )); then echo 3; else echo 11; fi ;;
+    d) TC_PAIR=2 ;;
+    l) if [[ ${NN[$i]} == '!'* ]]; then TC_PAIR=35; else TC_PAIR=4; fi ;;
+    c|b|p|s) TC_PAIR=5 ;;
+    *)  if (( XX[$i] )); then TC_PAIR=3; else TC_PAIR=11; fi ;;
   esac
 }
 
 # ------------------------------------------------------------------ drawing
-name_width() { # w -> name column width
+name_width() { # w -> sets NW to the name column width (no subshell fork)
   local w=$1
-  local nw=$(( w - SIZEW - TIMEW - 4 ))
-  (( nw < 4 )) && nw=4
-  echo "$nw"
+  NW=$(( w - SIZEW - TIMEW - 4 ))
+  (( NW < 4 )) && NW=4
 }
 
 draw_panel() {
@@ -393,15 +392,15 @@ draw_panel() {
   # header row: blue bg like the panel; column titles in bright yellow (pair 12),
   # inner dividers and the left border in white (pair 7 / border color).
   local NAMEW
-  NAMEW=$(name_width "$w")
+  name_width "$w"; NAMEW=$NW
   local SD=$(( 1 + NAMEW ))
   local skey ind
   case ${SORT[$p]} in size) skey=s ;; date) skey=d ;; *) skey=n ;; esac
   if (( REV[$p] )); then ind="^$skey"; else ind=".$skey"; fi
   local hname hsize htime
-  hname=$(printf '%-12sName%*s' "$ind" "$(( NAMEW - 16 ))" "")
-  hsize=$(printf ' Size%*s' "$(( SIZEW - 5 ))" "")
-  htime=$(printf 'Modify time%*s' "$(( TIMEW - 11 ))" "")
+  printf -v hname '%-12sName%*s' "$ind" "$(( NAMEW - 16 ))" ""
+  printf -v hsize ' Size%*s' "$(( SIZEW - 5 ))" ""
+  printf -v htime 'Modify time%*s' "$(( TIMEW - 11 ))" ""
   wattrset "$win" 0 "$bp"
   mvwaddch "$win" 1 0 "│"
   wattrset "$win" 0 12
@@ -432,28 +431,34 @@ draw_panel() {
       wmove "$win" "$row" 1
       wchgat "$win" $(( w - 2 )) 0 "$apair"
       wattrset "$win" 0 "$apair"
-      mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+      printf -v _s '%-*s' "$NAMEW" "${NN[$idx]}"
+      mvwaddstr "$win" "$row" 1 "$_s"
       wattrset "$win" 0 6
       mvwaddch "$win" "$row" "$SD" "│"
       wattrset "$win" 0 "$apair"
-      mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+      printf -v _s '%*s' "$SIZEW" "${SS[$idx]}"
+      mvwaddstr "$win" "$row" $(( SD + 1 )) "$_s"
       wattrset "$win" 0 6
       mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
       wattrset "$win" 0 "$apair"
-      mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+      printf -v _s '%-*s' "$TIMEW" "${TM[$idx]}"
+      mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$_s"
     else
-      cpair=$(type_color "$p" "$idx")
+      type_color "$p" "$idx"; cpair=$TC_PAIR
       if [[ -n ${SELARR[${RR[$idx]}]:-} ]]; then cpair=31; fi
       wattrset "$win" 0 "$cpair"
-      mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+      printf -v _s '%-*s' "$NAMEW" "${NN[$idx]}"
+      mvwaddstr "$win" "$row" 1 "$_s"
       wattrset "$win" 0 7
       mvwaddch "$win" "$row" "$SD" "│"
       wattrset "$win" 0 "$cpair"
-      mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+      printf -v _s '%*s' "$SIZEW" "${SS[$idx]}"
+      mvwaddstr "$win" "$row" $(( SD + 1 )) "$_s"
       wattrset "$win" 0 7
       mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
       wattrset "$win" 0 "$cpair"
-      mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+      printf -v _s '%-*s' "$TIMEW" "${TM[$idx]}"
+      mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$_s"
       wattrset "$win" 0 7
       mvwaddch "$win" "$row" $(( SD + SIZEW + TIMEW + 2 )) "│"
     fi
@@ -789,32 +794,38 @@ draw_entry_row() { # p idx hl
   row=$(( idx - off + 2 ))
   (( row < 2 )) && return
   local NAMEW SD cpair
-  NAMEW=$(name_width "$w")
+  name_width "$w"; NAMEW=$NW
   SD=$(( 1 + NAMEW ))
   if (( hl )); then
     # interior only; border columns keep the border color drawn by box()
     wmove "$win" "$row" 1
     wchgat "$win" $(( w - 2 )) 0 6
     wattrset "$win" 0 6
-    mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+    printf -v _s '%-*s' "$NAMEW" "${NN[$idx]}"
+    mvwaddstr "$win" "$row" 1 "$_s"
     mvwaddch "$win" "$row" "$SD" "│"
-    mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+    printf -v _s '%*s' "$SIZEW" "${SS[$idx]}"
+    mvwaddstr "$win" "$row" $(( SD + 1 )) "$_s"
     mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
-    mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+    printf -v _s '%-*s' "$TIMEW" "${TM[$idx]}"
+    mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$_s"
   else
     wmove "$win" "$row" 1
     wchgat "$win" $(( w - 2 )) 0 7
-    cpair=$(type_color "$p" "$idx")
+    type_color "$p" "$idx"; cpair=$TC_PAIR
     wattrset "$win" 0 "$cpair"
-    mvwaddstr "$win" "$row" 1 "$(printf '%-*s' "$NAMEW" "${NN[$idx]}")"
+    printf -v _s '%-*s' "$NAMEW" "${NN[$idx]}"
+    mvwaddstr "$win" "$row" 1 "$_s"
     wattrset "$win" 0 7
     mvwaddch "$win" "$row" "$SD" "│"
     wattrset "$win" 0 "$cpair"
-    mvwaddstr "$win" "$row" $(( SD + 1 )) "$(printf '%*s' "$SIZEW" "${SS[$idx]}")"
+    printf -v _s '%*s' "$SIZEW" "${SS[$idx]}"
+    mvwaddstr "$win" "$row" $(( SD + 1 )) "$_s"
     wattrset "$win" 0 7
     mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
     wattrset "$win" 0 "$cpair"
-    mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$(printf '%-*s' "$TIMEW" "${TM[$idx]}")"
+    printf -v _s '%-*s' "$TIMEW" "${TM[$idx]}"
+    mvwaddstr "$win" "$row" $(( SD + SIZEW + 2 )) "$_s"
   fi
 }
 

@@ -605,7 +605,7 @@ check "mc viewer fits shows total pct" "5/5 100%" "$(mc 'V_PATH=TREE/a.txt; V_TO
 check "mc dlg_field omits button" "abc       " "$(mc 'dw=0; dlg_field 0 0 10 "abc" 3 0; line=""; for ((x=0;x<10;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line"')"
 check "mc dlg_field button"       "abc    [^]" "$(mc 'dw=0; dlg_field 0 0 10 "abc" 3 0 1; line=""; for ((x=0;x<10;x++)); do line+="${BC_C["0/0 $x"]:- }"; done; printf "%s" "$line"')"
 check "mc broken symlink marker" "!broken" "$(mc 'rm -rf "$REPO/tmp/unit_broken_link"; mkdir -p "$REPO/tmp/unit_broken_link"; ln -s missing "$REPO/tmp/unit_broken_link/broken"; DIR[0]="$REPO/tmp/unit_broken_link"; list_dir 0; printf "%s" "${NAMES_0[1]}"')"
-check "mc broken symlink color"   "35"       "$(mc 'rm -rf "$REPO/tmp/unit_broken_link"; mkdir -p "$REPO/tmp/unit_broken_link"; ln -s missing "$REPO/tmp/unit_broken_link/broken"; DIR[0]="$REPO/tmp/unit_broken_link"; list_dir 0; type_color 0 1')"
+check "mc broken symlink color"   "35"       "$(mc 'rm -rf "$REPO/tmp/unit_broken_link"; mkdir -p "$REPO/tmp/unit_broken_link"; ln -s missing "$REPO/tmp/unit_broken_link/broken"; DIR[0]="$REPO/tmp/unit_broken_link"; list_dir 0; type_color 0 1; printf "%s" "$TC_PAIR"')"
 
 # J4. list_dir: parent first, directories before files, hidden filtering, exec marker
 check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(
