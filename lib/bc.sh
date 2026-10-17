@@ -3606,9 +3606,17 @@ doupdate() {
   declare -A RC=()
   local -a wins=("$BC_STDSCR")
   for p in "${BC_PSTACK[@]}"; do wins+=("${BC_PWIN[$p]}"); done
+  # bounding box of the dirty region, taken from the rects of the windows that
+  # reported dirty cells (an over-approximation that is cheap to track).
+  local bminy=999999 bmaxy=-1 bminx=999999 bmaxx=-1
   # dirty cells of every window (stdscr base + all panels in the stack)
   for w in "${wins[@]}"; do
     [[ -n ${BC_WD[$w]:-} ]] || continue
+    local wy=${BC_WY[$w]} wx=${BC_WX[$w]} wh=${BC_WH[$w]} ww=${BC_WW[$w]}
+    (( wy < bminy )) && bminy=$wy
+    (( wy + wh - 1 > bmaxy )) && bmaxy=$(( wy + wh - 1 ))
+    (( wx < bminx )) && bminx=$wx
+    (( wx + ww - 1 > bmaxx )) && bmaxx=$(( wx + ww - 1 ))
     local IFS=','
     for k in ${BC_WD[$w]}; do [[ -n $k ]] && RC[$k]=1; done
     unset IFS
@@ -3624,6 +3632,10 @@ doupdate() {
     for r in "${delrects[@]}"; do
       [[ -n $r ]] || continue
       read -r ry0 rx0 rh rww <<< "$r"
+      (( ry0 < bminy )) && bminy=$ry0
+      (( ry0 + rh - 1 > bmaxy )) && bmaxy=$(( ry0 + rh - 1 ))
+      (( rx0 < bminx )) && bminx=$rx0
+      (( rx0 + rww - 1 > bmaxx )) && bmaxx=$(( rx0 + rww - 1 ))
       for (( ay = ry0; ay < ry0 + rh; ay++ )); do
         for (( ax = rx0; ax < rx0 + rww; ax++ )); do
           RC["$ay $ax"]=1
@@ -3637,6 +3649,7 @@ doupdate() {
   if (( ${#RC[@]} == 0 && ${#BC_S[@]} == 0 )) || (( BC_FORCEFULL )); then
     BC_FORCEFULL=0
     BC_S=(); BC_SA=(); BC_SP=()
+    bminy=0; bmaxy=$(( BC_LINES - 1 )); bminx=0; bmaxx=$(( BC_COLS - 1 ))
     for (( ay = 0; ay < BC_LINES; ay++ )); do
       for (( ax = 0; ax < BC_COLS; ax++ )); do RC["$ay $ax"]=1; done
     done
@@ -3647,22 +3660,53 @@ doupdate() {
   fi
 
   local out="$scroll_out" lasty=-1 lastx=-1 last_sgr="" ch a pp emitted=0
-  # Fast path: if the topmost visible panel is a full-screen window it covers
-  # every cell, so compositing each cell by walking the whole stack is wasted
-  # work. Read the top window's cells directly instead.
-  local topbuf="" topbg=0
-  if (( ${#BC_PSTACK[@]} )); then
-    local tp=${BC_PSTACK[-1]}
-    if [[ ${BC_PHID[$tp]:-0} != 1 ]]; then
-      local tw=${BC_PWIN[$tp]}
-      if (( BC_WY[$tw] <= 0 && BC_WX[$tw] <= 0 &&
-            BC_WY[$tw] + BC_WH[$tw] >= BC_LINES && BC_WX[$tw] + BC_WW[$tw] >= BC_COLS )); then
-        topbuf=${BC_WBUF[$tw]}; topbg=${BC_WBG[$tw]}
-      fi
-    fi
+  # Fast path: if a single topmost visible panel fully contains the dirty
+  # region and no higher window overlaps it, that panel wins every dirty cell,
+  # so read its cells directly instead of walking the stack per cell. If no
+  # panel touches the region at all, stdscr owns it and is read directly.
+  local topbuf="" topbg=0 owner=0
+  local i p w j pj pw pwy pwx pwh pww wy wx wh ww
+  for (( i=${#BC_PSTACK[@]}-1; i>=0; i-- )); do
+    p=${BC_PSTACK[i]}
+    [[ ${BC_PHID[$p]:-0} == 1 ]] && continue
+    w=${BC_PWIN[$p]}
+    wy=${BC_WY[$w]}; wx=${BC_WX[$w]}; wh=${BC_WH[$w]}; ww=${BC_WW[$w]}
+    (( wy <= bminy && wx <= bminx && wy + wh > bmaxy && wx + ww > bmaxx )) || continue
+    local safe=1
+    for (( j=i+1; j<${#BC_PSTACK[@]}; j++ )); do
+      pj=${BC_PSTACK[j]}; [[ ${BC_PHID[$pj]:-0} == 1 ]] && continue
+      pw=${BC_PWIN[$pj]}
+      pwy=${BC_WY[$pw]}; pwx=${BC_WX[$pw]}; pwh=${BC_WH[$pw]}; pww=${BC_WW[$pw]}
+      if (( pwy <= bmaxy && pwy + pwh > bminy && pwx <= bmaxx && pwx + pww > bminx )); then safe=0; break; fi
+    done
+    (( safe )) || continue
+    topbuf=${BC_WBUF[$w]}; topbg=${BC_WBG[$w]}; owner=1; break
+  done
+  if (( ! owner )); then
+    local touches=0
+    for p in "${BC_PSTACK[@]}"; do
+      [[ ${BC_PHID[$p]:-0} == 1 ]] && continue
+      w=${BC_PWIN[$p]}
+      wy=${BC_WY[$w]}; wx=${BC_WX[$w]}; wh=${BC_WH[$w]}; ww=${BC_WW[$w]}
+      if (( wy <= bmaxy && wy + wh > bminy && wx <= bmaxx && wx + ww > bminx )); then touches=1; break; fi
+    done
+    if (( ! touches )); then topbuf=${BC_WBUF[$BC_STDSCR]}; topbg=${BC_WBG[$BC_STDSCR]}; fi
   fi
-  while read -r ay ax; do
-    k="$ay $ax"
+  # Order the dirty cells row-major. For large regions a bbox scan beats
+  # forking an external sort; for small ones sorting the few keys is cheaper.
+  local -a keys
+  if (( ${#RC[@]} > 1500 )); then
+    keys=()
+    for (( ay = bminy; ay <= bmaxy; ay++ )); do
+      for (( ax = bminx; ax <= bmaxx; ax++ )); do
+        [[ -n ${RC["$ay $ax"]+x} ]] && keys+=("$ay $ax")
+      done
+    done
+  else
+    mapfile -t keys < <(printf '%s\n' "${!RC[@]}" | sort -k1,1n -k2,2n)
+  fi
+  for k in "${keys[@]}"; do
+    read -r ay ax <<< "$k"
     if [[ -n $topbuf ]]; then
       _BC_CC=${BC_C["$topbuf/$k"]:-$topbg}; _BC_CA=${BC_A["$topbuf/$k"]:-0}; _BC_CP=${BC_P["$topbuf/$k"]:-0}
     else
@@ -3682,7 +3726,8 @@ doupdate() {
     BC_S[$k]=$ch; BC_SA[$k]=$a; BC_SP[$k]=$pp
     lasty=$ay; lastx=$ax
     emitted=$(( emitted + 1 ))
-  done < <(printf '%s\n' "${!RC[@]}" | sort -k1,1n -k2,2n)
+  done
+
 
   [[ -n $out ]] && printf '%s' "$out"
   printf '%s[%d;%dH' "$BC_ESC" "$(( BC_WAY[$BC_STDSCR] + 1 ))" "$(( BC_WAX[$BC_STDSCR] + 1 ))"
