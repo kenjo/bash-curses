@@ -75,11 +75,33 @@ draw_window() { # win
   done
 }
 
+draw_shadow() { # win : mc-style drop shadow (offset down-right) on stdscr
+  local w=$1
+  local y=${BC_WY[$w]} x=${BC_WX[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]} sy sx
+  for (( sy = y + 1; sy <= y + h; sy++ )); do
+    (( x + ww < BC_COLS )) && mvwaddch 0 "$sy" $(( x + ww )) '█' 0 "$SHADOW_PAIR"
+  done
+  for (( sx = x + 1; sx <= x + ww; sx++ )); do
+    (( y + h < BC_LINES )) && mvwaddch 0 $(( y + h )) "$sx" '█' 0 "$SHADOW_PAIR"
+  done
+}
+
 main() {
   initscr || exit 1
   cbreak
   curs_set 0
-  if has_colors; then start_color; fi
+  if has_colors; then
+    start_color
+    # dark-navy screen background (256-color cube index 17), black shadow
+    if (( BC_COLORS >= 16 )); then init_pair 1 0 17; else init_pair 1 0 0; fi
+    if (( BC_COLORS >= 256 )); then init_pair 2 238 238; else init_pair 2 0 0; fi
+    BG_PAIR=1 SHADOW_PAIR=2
+    wbkgdset 0 ' ' 0 "$BG_PAIR"
+    werase 0
+  else
+    BG_PAIR=0 SHADOW_PAIR=0
+  fi
+  new_panel "$BC_STDSCR" >/dev/null
 
   # scatter irregular top-level windows over the whole terminal (overlap ok);
   # each still spawns overlapping children inside make_window.
@@ -92,6 +114,9 @@ main() {
     y=$(( RANDOM % (BC_LINES - h + 1) ))
     make_window "$y" "$x" "$h" "$w" 0
   done
+
+  local win
+  for win in "${TREE_WINS[@]}"; do draw_shadow "$win"; done
 
   nodelay "$BC_STDSCR" 1
   local now el adv carry=0
