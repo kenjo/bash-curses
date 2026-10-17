@@ -765,6 +765,37 @@ _bc_put() { # w y x ch a p
 _bc_emit() { # w y x text a p
   local w=$1 y=$2 x=$3 text=$4 a=$5 p=$6
   local i=0 h=${BC_WH[$w]} ww=${BC_WW[$w]} ch
+  local len=${#text}
+  # Fast path: plain text that fits on one row within the window. Inline the
+  # bounds check, render and cell-set that _bc_put/_bc_render/_bc_cell would do
+  # per char, hoisting the constant attr/pair math out of the loop.
+  if (( y >= 0 && y < h && x >= 0 && x + len <= ww )) &&
+     [[ $text != *$'\n'* && $text != *$'\r'* && $text != *$'\b'* ]]; then
+    local wa=${BC_WCURA[$w]} wp=${BC_WCURP[$w]} ba=${BC_WBGA[$w]} bp=${BC_WBGP[$w]} bg=${BC_WBG[$w]}
+    local ra_ns=$(( ${a:-0} | wa | ba )) rp_ns
+    if (( ${p:-0} )); then rp_ns=$p; elif (( wp )); then rp_ns=$wp; else rp_ns=$bp; fi
+    local special=0 ra_sp=0 rp_sp=$rp_sp
+    if (( ${a:-0} == wa && ${p:-0} == wp )); then
+      special=1; ra_sp=$(( wa | ba ))
+      if (( wp )); then rp_sp=$wp; else rp_sp=$bp; fi
+    fi
+    local buf=${BC_WBUF[$w]} k mk yy=$y ayoff=${BC_WY[$w]} axoff=${BC_WX[$w]} ay ax
+    while (( i < len )); do
+      ch=${text:i:1}
+      ay=$(( ayoff + yy )); ax=$(( axoff + x ))
+      k="$buf/$ay $ax"
+      if (( special )) && [[ $ch == ' ' ]]; then
+        BC_C[$k]=$bg; BC_A[$k]=$ra_sp; BC_P[$k]=$rp_sp
+      else
+        BC_C[$k]=$ch; BC_A[$k]=$ra_ns; BC_P[$k]=$rp_ns
+      fi
+      mk="$w/$ay $ax"
+      [[ -z ${BC_MK[$mk]:-} ]] && { BC_MK[$mk]=1; BC_WD[$w]+=",$ay $ax"; }
+      x=$(( x + 1 )); i=$(( i + 1 ))
+    done
+    BC_WAX[$w]=$x; BC_WAY[$w]=$y
+    return 0
+  fi
   while (( i < ${#text} )); do
     ch=${text:i:1}
     case $ch in

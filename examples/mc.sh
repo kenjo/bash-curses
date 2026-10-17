@@ -359,7 +359,9 @@ draw_panel() {
   local bp; (( active )) && bp=7 || bp=8
 
   wbkgd "$win" ' ' 0 7
-  werase "$win"
+  # No werase: draw_panel overwrites every interior cell (padded listing rows,
+  # full-width empty-row fill below, padded status, box borders). Skipping the
+  # erase pass halves the per-cell work on a full redraw.
   wattrset "$win" 0 "$bp"
   box "$win"
 
@@ -470,6 +472,7 @@ draw_panel() {
     if (( off + ey >= cnt )); then
       row=$(( ey + 2 ))
       wattrset "$win" 0 7
+      mvwhline "$win" "$row" 1 ' ' "$(( w - 2 ))"
       mvwaddch "$win" "$row" "$SD" "│"
       mvwaddch "$win" "$row" $(( SD + SIZEW + 1 )) "│"
     fi
@@ -513,7 +516,8 @@ draw_panel() {
     status=${NN[$pos]}
   fi
   wattrset "$win" 0 7
-  mvwprintw "$win" "$(( h - 2 ))" 1 '%s' "${status:0:$(( w - 2 ))}"
+  printf -v _s '%-*s' "$(( w - 2 ))" "${status:0:$(( w - 2 ))}"
+  mvwaddstr "$win" "$(( h - 2 ))" 1 "$_s"
 
   local fstr=${FREE[$p]}
   [[ -z $fstr ]] && fstr="no info"
