@@ -3610,7 +3610,7 @@ main() {
         '!') do_filtered_view; continue ;;
         e) do_encoding; continue ;;
         '`') do_screen_list; continue ;;
-        *) ungetch "$mk"; continue ;;
+        *) continue ;;   # mc swallows unbound meta chords; don't leak the char
       esac
     fi
     if [[ $k == $'\x18' ]]; then
