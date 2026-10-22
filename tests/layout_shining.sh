@@ -46,10 +46,16 @@ sleep 3
 
 # a resize rebuilds every window (~140 here), so give it time
 tmux -S "$SOCK" resize-window -t "$T" -x 70 -y 20
-for _ in $(seq 1 40); do cap | sed -n 20p | grep -q '└' && break; sleep 0.5; done
+# wait for the whole bottom border (a half-finished repaint can show a '└')
+for _ in $(seq 1 80); do
+  r=$(cap | sed -n 20p)
+  [[ $r == └*┘ && ${#r} -eq 70 ]] && break
+  sleep 0.5
+done
 sleep 1
 s2=$(cap)
-[[ $(sed -n 20p <<< "$s2") == └*┘ && $(sed -n 20p <<< "$s2" | wc -m) -eq 71 ]] && ok "resize: border on new edges" \
+r=$(sed -n 20p <<< "$s2")
+[[ $r == └*┘ && ${#r} -eq 70 ]] && ok "resize: border on new edges" \
   || bad "resize: border on new edges: [$(sed -n 20p <<< "$s2")]"
 n2=$(grep -o '┌' <<< "$s2" | wc -l)
 (( n2 >= 5 )) && ok "resize: windows re-placed ($n2 corners)" || bad "resize: windows re-placed: $n2"
