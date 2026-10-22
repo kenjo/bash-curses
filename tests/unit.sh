@@ -414,6 +414,8 @@ check "dupwin copies"            "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; 
 check "dupwin independent"       "AB"      "$(scr 'newwin 2 2 5 5; src=$bc_win; mvwaddstr $src 0 0 AB; dupwin $src; dst=$bc_win; mvwaddstr $src 0 0 C; row $dst 5 5 2')"
 check "dupwin cursor"            "1 1"     "$(scr 'newwin 2 2 5 5; src=$bc_win; wmove $src 1 1; dupwin $src; dst=$bc_win; printf "%s %s" "${BC_WAY[$dst]}" "${BC_WAX[$dst]}"')"
 check "delwin removes window cells" "0"    "$(scr 'newwin 2 2 5 5; w=$bc_win; buf=${BC_WBUF[$w]}; mvwaddstr $w 0 0 AB; delwin $w; n=0; for k in "${!BC_C[@]}"; do [[ $k == "$buf/"* ]] && n=$((n+1)); done; printf "%s" "$n"')"
+check "delwin of a derwin keeps the parent's cells" "AB" "$(scr 'newwin 3 4 1 1; p=$bc_win; mvwaddstr $p 0 0 AB; derwin $p 1 2 0 0; c=$bc_win; delwin $c; mvwinch $p 0 0; a=$wch; mvwinch $p 0 1; printf "%s%s" "$a" "$wch"')"
+check "delwin clears only its own marks" "1" "$(scr 'newwin 2 2 1 1; a=$bc_win; newwin 2 2 5 5; b=$bc_win; mvwaddstr $b 0 0 X; delwin $a; [[ -n ${BC_MK[$b/5 5]:-} ]] && printf 1')"
 
 # --- H6. pad API (headless) ---
 check "newpad size"              "30 100"  "$(scr 'newpad 30 100; printf "%s %s" "${BC_WH[$bc_win]}" "${BC_WW[$bc_win]}"')"

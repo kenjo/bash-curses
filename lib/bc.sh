@@ -938,12 +938,12 @@ _bc_erase_region() { # w
   BC_WAY[$w]=0
 }
 
+# Every mark "w/key" is set together with an entry in BC_WD[w], so the
+# window's own dirty list names exactly its marks (no scan of all marks).
 _bc_clear_marks() { # w
-  local w=$1 mk
-  for mk in "${!BC_MK[@]}"; do
-    if [[ $mk == "$w/"* ]]; then
-      unset "BC_MK[$mk]"
-    fi
+  local w=$1 k IFS=','
+  for k in ${BC_WD[$w]:-}; do
+    [[ -n $k ]] && unset "BC_MK[$w/$k]"
   done
 }
 
@@ -2446,12 +2446,25 @@ delwin() {
   # remember the region so the next composite can reveal what is underneath it
   [[ -n ${BC_WY[$w]:-} ]] && BC_DELRECTS+="|${BC_WY[$w]} ${BC_WX[$w]} ${BC_WH[$w]} ${BC_WW[$w]}"
   _bc_clear_marks "$w"
-  local buf=${BC_WBUF[$w]:-} k
-  if [[ -n $buf ]]; then
-    for k in "${!BC_C[@]}"; do
-      [[ $k == "$buf/"* ]] && unset "BC_C[$k]" "BC_A[$k]" "BC_P[$k]"
+  # Drop the cells only when the window owns its buffer: a derwin/subwin
+  # shares its parent's cells, which must survive it (as in ncurses). The
+  # owner's cells live in its rectangle, so walk that instead of every cell.
+  local buf=${BC_WBUF[$w]:-} k ay ax
+  if [[ -n $buf && $buf == "$w" ]]; then
+    for (( ay = BC_WY[$w]; ay < BC_WY[$w] + BC_WH[$w]; ay++ )); do
+      unset "BC_CROW[$buf $ay]" "BC_PUNI[$buf $ay]"
+      for (( ax = BC_WX[$w]; ax < BC_WX[$w] + BC_WW[$w]; ax++ )); do
+        k="$buf/$ay $ax"
+        unset "BC_C[$k]" "BC_A[$k]" "BC_P[$k]"
+      done
     done
   fi
+  if [[ -n ${BC_WDR[$w]:-} ]]; then
+    local IFS=','
+    for k in ${BC_WDR[$w]}; do [[ -n $k ]] && unset "BC_MKR[$w/$k]"; done
+    unset IFS
+  fi
+  unset "BC_WDR[$w]"
   unset "BC_WD[$w]" "BC_WBUF[$w]"
   unset "BC_WY[$w]" "BC_WX[$w]" "BC_WH[$w]" "BC_WW[$w]"
   unset "BC_WBG[$w]" "BC_WBGA[$w]" "BC_WBGP[$w]"
@@ -3553,8 +3566,8 @@ wrefresh() { # win
     for k in ${BC_WD[$w]}; do
       [[ -n $k ]] && keys+=("$k")
     done
-    unset "BC_WD[$w]"
     _bc_clear_marks "$w"
+    unset "BC_WD[$w]"
   fi
   for k in "${keys[@]}"; do
     y=${k%% *}
