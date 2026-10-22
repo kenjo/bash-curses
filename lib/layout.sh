@@ -63,12 +63,20 @@ _bcl_drop_kids() { # grid
   local g=$1 k
   for k in ${BCL_KIDS[$g]:-}; do
     [[ -n ${BCL_TPL[$k]+set} ]] && _bcl_drop_kids "$k"
-    declare -F _bcl_unbind >/dev/null && _bcl_unbind "$k"
-    unset "BCL_KIND[$k]" "BCL_PARENT[$k]" "BCL_R0[$k]" "BCL_R1[$k]" "BCL_C0[$k]" "BCL_C1[$k]"
-    unset "BCL_RY[$k]" "BCL_RX[$k]" "BCL_RH[$k]" "BCL_RW[$k]"
-    unset "BCL_TPL[$k]" "BCL_KIDS[$k]" "BCL_CELLS[$k]"
+    _bcl_forget "$k"
   done
   BCL_KIDS[$g]=""
+}
+
+# Drop a name's windows and every piece of state kept for it.
+_bcl_forget() { # name
+  local a=$1 k
+  declare -F _bcl_unbind >/dev/null && _bcl_unbind "$a"
+  for k in KIND PARENT R0 R1 C0 C1 RY RX RH RW TPL KIDS ROWSPEC COLSPEC NR NC GAP BORDER CELLS \
+           CH CW PAIR ATTR FRAME TITLE SHADOW BPAIR TEXT TPAIR TATTR TALIGN NEEDDRAW \
+           FIN FAT FSIZE FRND FKEYS; do
+    unset "BCL_$k[$a]"
+  done
 }
 
 # Parse a template into areas with rectangular spans.
@@ -128,13 +136,11 @@ _bcl_parse() { # who grid template
   done
 
   # commit: keep areas that survive a redefinition (their windows stay bound)
-  local k keep
+  local k
   for k in ${BCL_KIDS[$g]:-}; do
     [[ -n ${cnt[$k]+set} ]] && continue
-    keep=$k
-    [[ -n ${BCL_TPL[$keep]+set} ]] && _bcl_drop_kids "$keep"
-    declare -F _bcl_unbind >/dev/null && _bcl_unbind "$keep"
-    unset "BCL_KIND[$keep]" "BCL_PARENT[$keep]" "BCL_TPL[$keep]" "BCL_KIDS[$keep]"
+    [[ -n ${BCL_TPL[$k]+set} ]] && _bcl_drop_kids "$k"
+    _bcl_forget "$k"
   done
   local IFS='|'
   BCL_TPL[$g]="${lines[*]}"
@@ -245,6 +251,8 @@ _bcl_min() { # area axis -> BCL_M
     i=$(( i + 1 ))
   done
   (( vis > 1 )) && sum=$(( sum + BCL_GAP[$a] * (vis - 1) ))
+  _bcl_insets "$a"
+  if (( ax == 0 )); then sum=$(( sum + BCL_IT + BCL_IB )); else sum=$(( sum + BCL_IL + BCL_IR )); fi
   BCL_M=$(( sum + 2 * BCL_BORDER[$a] ))
 }
 
@@ -344,7 +352,9 @@ _bcl_layout_grid() { # grid y x h w
   local g=$1 y=$2 x=$3 h=$4 w=$5
   BCL_RY[$g]=$y; BCL_RX[$g]=$x; BCL_RH[$g]=$h; BCL_RW[$g]=$w
   local b=${BCL_BORDER[$g]:-0}
-  y=$(( y + b )); x=$(( x + b )); h=$(( h - 2 * b )); w=$(( w - 2 * b ))
+  _bcl_insets "$g"
+  y=$(( y + b + BCL_IT )); x=$(( x + b + BCL_IL ))
+  h=$(( h - 2 * b - BCL_IT - BCL_IB )); w=$(( w - 2 * b - BCL_IL - BCL_IR ))
   (( h < 0 )) && h=0
   (( w < 0 )) && w=0
   [[ -n ${BCL_CELLS[$g]:-} ]] && { _bcl_cells_shape "$g" "$h" "$w" || return 1; }
@@ -408,12 +418,40 @@ _bcl_insets() { # name -> BCL_IT BCL_IL BCL_IB BCL_IR
   BCL_IT=$f BCL_IL=$f BCL_IB=$(( f + s )) BCL_IR=$(( f + s ))
 }
 
-# Leaf areas in template order (depth first), then floats bottom -> top.
-_bcl_leaves() { # grid -> appends to BCL_LV
+# Does a name get windows? Leaves always; containers only when they have
+# something to show themselves (floats, borders, shadows, colours).
+_bcl_bindable() { # name
+  local a=$1
+  [[ $a == screen ]] && return 1
+  [[ -z ${BCL_TPL[$a]+set} ]] && return 0
+  [[ ${BCL_KIND[$a]} == float || -n ${BCL_FRAME[$a]:-} || -n ${BCL_SHADOW[$a]:-} || -n ${BCL_PAIR[$a]:-} || -n ${BCL_ATTR[$a]:-} || -n ${BCL_TITLE[$a]:-} ]]
+}
+
+# Every bindable name in stacking order (bottom -> top) -> BCL_LV: the tiled
+# tree depth first (a container's frame below its kids), then each float with
+# its own sub-tree, in float order.
+_bcl_order() {
+  BCL_LV=()
+  _bcl_order_tree screen
+  local f
+  for f in ${BCL_FLOATS:-}; do _bcl_order_tree "$f"; done
+}
+_bcl_order_tree() { # name
   local k
-  for k in ${BCL_KIDS[$1]:-}; do
-    if [[ -n ${BCL_TPL[$k]+set} ]]; then _bcl_leaves "$k"; else BCL_LV+=("$k"); fi
+  _bcl_bindable "$1" && BCL_LV+=("$1")
+  for k in ${BCL_KIDS[$1]:-}; do _bcl_order_tree "$k"; done
+}
+
+# Effective pen: own pair/attr, else inherited from the enclosing grids.
+_bcl_eff() { # name -> BCL_EP BCL_EA
+  local a=$1
+  BCL_EP="" BCL_EA=""
+  while [[ -n $a ]]; do
+    [[ -z $BCL_EP && -n ${BCL_PAIR[$a]:-} ]] && BCL_EP=${BCL_PAIR[$a]}
+    [[ -z $BCL_EA && -n ${BCL_ATTR[$a]:-} ]] && BCL_EA=${BCL_ATTR[$a]}
+    a=${BCL_PARENT[$a]:-}
   done
+  BCL_EP=${BCL_EP:-0} BCL_EA=${BCL_EA:-0}
 }
 
 _bcl_unbind() { # name
@@ -429,7 +467,8 @@ _bcl_unbind() { # name
 # Paint the frame window: background, border + title, shadow.
 _bcl_paint_frame() { # name
   local a=$1 f=${BCL_FWIN[$1]}
-  local h=${BC_WH[$f]} w=${BC_WW[$f]} p=${BCL_PAIR[$a]:-0} at=${BCL_ATTR[$a]:-0}
+  _bcl_eff "$a"
+  local h=${BC_WH[$f]} w=${BC_WW[$f]} p=$BCL_EP at=$BCL_EA
   local s=${BCL_SHADOW[$a]:-0}
   wbkgd "$f" ' ' "$at" "$p"
   werase "$f"
@@ -472,7 +511,7 @@ _bcl_bind() { # name y x h w
   new_panel "$f"; BCL_FPAN[$a]=$bc_panel
   BCL_FWIN[$a]=$f; BCL_WIN[$a]=$f
   _bcl_insets "$a"
-  if (( BCL_IT || BCL_IB )); then
+  if [[ -z ${BCL_TPL[$a]+set} ]] && (( BCL_IT || BCL_IB )); then
     local ch=$(( h - BCL_IT - BCL_IB )) cw=$(( w - BCL_IL - BCL_IR ))
     if (( ch > 0 && cw > 0 )) && derwin "$f" "$ch" "$cw" "$BCL_IT" "$BCL_IL"; then
       BCL_WIN[$a]=$bc_win
@@ -480,8 +519,9 @@ _bcl_bind() { # name y x h w
     fi
   fi
   local c=${BCL_WIN[$a]}
-  wbkgd "$c" ' ' "${BCL_ATTR[$a]:-0}" "${BCL_PAIR[$a]:-0}"
-  wattrset "$c" "${BCL_ATTR[$a]:-0}" "${BCL_PAIR[$a]:-0}"
+  _bcl_eff "$a"
+  wbkgd "$c" ' ' "$BCL_EA" "$BCL_EP"
+  wattrset "$c" "$BCL_EA" "$BCL_EP"
   _bcl_paint_frame "$a"
   BCL_WRECT[$a]="$y $x $h $w"
   BCL_NEEDDRAW[$a]=1
@@ -490,18 +530,23 @@ _bcl_bind() { # name y x h w
 # Put the layout's panels in order: tiled areas at the bottom, panels created
 # directly by the app in the middle, floats on top (in float order).
 _bcl_restack() {
-  local -A mine=()
+  local -A mine=() isf=()
   local -a low=() high=() mid=() ns=()
-  local a p
+  local a p f
+  # names inside floats (the float itself and its sub-tree) go on top
+  for f in ${BCL_FLOATS:-}; do isf[$f]=1; done
+  _bcl_order
   for a in "${BCL_LV[@]}"; do
     [[ -n ${BCL_FPAN[$a]:-} ]] || continue
-    low+=("${BCL_FPAN[$a]}"); mine[${BCL_FPAN[$a]}]=1
-    [[ -n ${BCL_CPAN[$a]:-} ]] && { low+=("${BCL_CPAN[$a]}"); mine[${BCL_CPAN[$a]}]=1; }
-  done
-  for a in ${BCL_FLOATS:-}; do
-    [[ -n ${BCL_FPAN[$a]:-} ]] || continue
-    high+=("${BCL_FPAN[$a]}"); mine[${BCL_FPAN[$a]}]=1
-    [[ -n ${BCL_CPAN[$a]:-} ]] && { high+=("${BCL_CPAN[$a]}"); mine[${BCL_CPAN[$a]}]=1; }
+    f=$a
+    while [[ -n ${BCL_PARENT[$f]:-} ]]; do f=${BCL_PARENT[$f]}; done
+    mine[${BCL_FPAN[$a]}]=1
+    [[ -n ${BCL_CPAN[$a]:-} ]] && mine[${BCL_CPAN[$a]}]=1
+    if [[ -n ${isf[$f]:-} ]]; then
+      high+=("${BCL_FPAN[$a]}" ${BCL_CPAN[$a]:-})
+    else
+      low+=("${BCL_FPAN[$a]}" ${BCL_CPAN[$a]:-})
+    fi
   done
   for p in "${BC_PSTACK[@]}"; do [[ -n ${mine[$p]:-} ]] || mid+=("$p"); done
   ns=("${low[@]}" "${mid[@]}" "${high[@]}")
@@ -515,12 +560,9 @@ _bcl_restack() {
 # rectangle changed (rebuilding is far cheaper than wresize/mvwin here).
 bc_relayout() {
   _bcl_resolve || return 1
-  BCL_LV=()
-  _bcl_leaves screen
+  _bcl_order
   local a key
-  local -a all=("${BCL_LV[@]}")
-  for a in ${BCL_FLOATS:-}; do all+=("$a"); done
-  for a in "${all[@]}"; do
+  for a in "${BCL_LV[@]}"; do
     key="${BCL_RY[$a]} ${BCL_RX[$a]} ${BCL_RH[$a]} ${BCL_RW[$a]}"
     [[ ${BCL_WRECT[$a]:-} == "$key" ]] && continue
     _bcl_unbind "$a"
@@ -561,11 +603,22 @@ bc_style() {
     unset "BCL_WRECT[$a]"; BCL_LAYOUT_DIRTY=1
     # content size includes the insets: re-measure retained text
     [[ -n ${BCL_TEXT[$a]+set} ]] && bc_text "$a" "${BCL_TEXT[$a]}" pair="${BCL_TPAIR[$a]}" attr="${BCL_TATTR[$a]}" align="${BCL_TALIGN[$a]}"
-  elif [[ -n ${BCL_FWIN[$a]:-} ]]; then
-    wbkgd "${BCL_WIN[$a]}" ' ' "${BCL_ATTR[$a]:-0}" "${BCL_PAIR[$a]:-0}"
-    wattrset "${BCL_WIN[$a]}" "${BCL_ATTR[$a]:-0}" "${BCL_PAIR[$a]:-0}"
-    _bcl_paint_frame "$a"
-    BCL_NEEDDRAW[$a]=1
+  else
+    # repaint this area and everything inheriting its colours
+    _bcl_order
+    local n p
+    for n in "${BCL_LV[@]}"; do
+      p=$n
+      while [[ -n $p && $p != "$a" ]]; do p=${BCL_PARENT[$p]:-}; done
+      [[ $p == "$a" && -n ${BCL_FWIN[$n]:-} ]] || continue
+      _bcl_eff "$n"
+      wbkgd "${BCL_WIN[$n]}" ' ' "$BCL_EA" "$BCL_EP"
+      wattrset "${BCL_WIN[$n]}" "$BCL_EA" "$BCL_EP"
+      _bcl_paint_frame "$n"
+      BCL_NEEDDRAW[$n]=1
+    done
+    # a container that just became visible needs a window
+    _bcl_bindable "$a" && [[ -z ${BCL_FWIN[$a]:-} ]] && BCL_LAYOUT_DIRTY=1
   fi
 }
 
@@ -588,7 +641,8 @@ bc_size() {
 
 _bcl_pen() { # name opts... -> BCL_PA BCL_PP BCL_AL (attr, pair, align)
   local a=$1 o; shift
-  BCL_PA=${BCL_ATTR[$a]:-0} BCL_PP=${BCL_PAIR[$a]:-0} BCL_AL=left
+  _bcl_eff "$a"
+  BCL_PA=$BCL_EA BCL_PP=$BCL_EP BCL_AL=left
   for o in "$@"; do
     case $o in
       pair=*)  BCL_PP=${o#*=} ;;
@@ -618,7 +672,7 @@ bc_print() {
   [[ -n $c ]] || return 0
   _bcl_pen "$a" "$@" || return 1
   _bcl_put "$c" "$y" "$x" "$s" "$BCL_PA" "$BCL_PP"
-  wattrset "$c" "${BCL_ATTR[$a]:-0}" "${BCL_PAIR[$a]:-0}"
+  _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
 }
 
 # bc_clear NAME — erase the content to the area background.
@@ -664,7 +718,7 @@ _bcl_draw_text() { # name
     _bcl_put "$c" "$r" "$x" "$line" "${BCL_TATTR[$a]}" "${BCL_TPAIR[$a]}"
     r=$(( r + 1 ))
   done <<< "${BCL_TEXT[$a]}"
-  wattrset "$c" "${BCL_ATTR[$a]:-0}" "${BCL_PAIR[$a]:-0}"
+  _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
 }
 
 # bc_dirty NAME... — ask for NAME to be redrawn (draw_NAME / on_draw) before
@@ -712,17 +766,11 @@ bc_update() {
 # Which area (topmost) is at screen cell y,x -> BCL_AREA, BCL_MY, BCL_MX
 # (coordinates relative to the area's content). BCL_AREA="" if none.
 bc_hit() {
-  local y=$1 x=$2 a i c
-  local -a fl
+  local y=$1 x=$2 a i
   BCL_AREA="" BCL_MY=-1 BCL_MX=-1
-  read -r -a fl <<< "${BCL_FLOATS:-}"
-  for (( i = ${#fl[@]} - 1; i >= 0; i-- )); do
-    a=${fl[i]}
-    [[ -n ${BCL_FWIN[$a]:-} ]] || continue
-    _bcl_in "$a" "$y" "$x" && return 0
-  done
-  BCL_LV=(); _bcl_leaves screen
-  for a in "${BCL_LV[@]}"; do
+  _bcl_order
+  for (( i = ${#BCL_LV[@]} - 1; i >= 0; i-- )); do
+    a=${BCL_LV[i]}
     [[ -n ${BCL_FWIN[$a]:-} ]] || continue
     _bcl_in "$a" "$y" "$x" && return 0
   done
@@ -784,5 +832,182 @@ bc_getkey() {
       bc_hit "$BC_ME_Y" "$BC_ME_X"
     fi
   fi
+  return 0
+}
+
+# ============================================================ floats
+# A float is a window on top of the tiled screen, placed relative to a parent
+# (the screen, an area or another float) and kept inside it. It can hold text
+# (bc_text, auto-sized) or a grid of its own (bc_grid NAME "…") — a dialog.
+BCL_FLOATS=""              # bottom -> top
+declare -A BCL_FIN=()      # float -> parent name
+declare -A BCL_FAT=()      # float -> placement spec
+declare -A BCL_FSIZE=()    # float -> size spec "HxW"
+declare -A BCL_FRND=()     # float -> random choices "h w fy fx" (fixed at creation)
+declare -A BCL_FKEYS=()    # float -> key handler function (bc_run / bc_modal)
+
+# bc_float NAME [in=PARENT] [at=PLACE] [size=HxW] [style options…] [keys=FN]
+#   PLACE: center top bottom left right topleft topright bottomleft bottomright
+#          below:X above:X right:X left:X  random  Y,X (offset in the parent)
+#   H, W:  N  N%  auto  A..B (random in range, chosen once)
+#   style: border title=… shadow pair=N attr=N bpair=N (see bc_style)
+# Calling it again for an existing float updates it in place.
+bc_float() {
+  local a=$1 o; shift
+  [[ $a =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ && $a != screen ]] || { _bcl_err "bc_float: bad name '$a'"; return 1; }
+  if [[ -n ${BCL_KIND[$a]+set} && ${BCL_KIND[$a]} != float ]]; then
+    _bcl_err "bc_float: '$a' is already a tiled area"; return 1
+  fi
+  local new=0 in=${BCL_FIN[$a]:-screen} at=${BCL_FAT[$a]:-center} size=${BCL_FSIZE[$a]:-autoxauto}
+  local -a style=()
+  [[ -z ${BCL_KIND[$a]+set} ]] && new=1
+  for o in "$@"; do
+    case $o in
+      in=*)   in=${o#*=} ;;
+      at=*)   at=${o#*=} ;;
+      size=*) size=${o#*=}; size=${size// /} ;;
+      keys=*) BCL_FKEYS[$a]=${o#*=} ;;
+      *)      style+=("$o") ;;
+    esac
+  done
+  [[ $in == screen || -n ${BCL_KIND[$in]+set} ]] || { _bcl_err "bc_float $a: unknown parent '$in'"; return 1; }
+  [[ $at =~ ^(center|top|bottom|left|right|topleft|topright|bottomleft|bottomright|random|(below|above|right|left):[A-Za-z_][A-Za-z0-9_.-]*|[0-9]+,[0-9]+)$ ]] \
+    || { _bcl_err "bc_float $a: bad at='$at'"; return 1; }
+  [[ $size =~ ^(auto|[0-9]+%?|[0-9]+\.\.[0-9]+)x(auto|[0-9]+%?|[0-9]+\.\.[0-9]+)$ ]] \
+    || { _bcl_err "bc_float $a: bad size='$size' (HxW, each N, N%, auto or A..B)"; return 1; }
+  # random choices are made once so the float keeps its look across relayouts
+  local rh=0 rw=0 fy=$(( RANDOM % 1001 )) fx=$(( RANDOM % 1001 )) d lo hi
+  if (( ! new )) && [[ $size == "${BCL_FSIZE[$a]}" ]]; then
+    read -r rh rw fy fx <<< "${BCL_FRND[$a]}"
+  else
+    for d in h w; do
+      local spec=${size%x*}; [[ $d == w ]] && spec=${size#*x}
+      if [[ $spec == *..* ]]; then
+        lo=${spec%..*} hi=${spec#*..}; (( hi < lo )) && hi=$lo
+        local v=$(( lo + RANDOM % (hi - lo + 1) ))
+        if [[ $d == h ]]; then rh=$v; else rw=$v; fi
+      fi
+    done
+  fi
+  BCL_KIND[$a]=float BCL_FIN[$a]=$in BCL_FAT[$a]=$at BCL_FSIZE[$a]=$size
+  BCL_FRND[$a]="$rh $rw $fy $fx"
+  (( new )) && BCL_FLOATS+=" $a"
+  (( ${#style[@]} )) && { bc_style "$a" "${style[@]}" || return 1; }
+  unset "BCL_WRECT[$a]"
+  BCL_LAYOUT_DIRTY=1
+}
+
+# Content rectangle of a parent (outer rect minus its frame insets).
+_bcl_inner() { # name -> BCL_Y BCL_X BCL_H BCL_W
+  local a=$1
+  if [[ $a == screen ]]; then BCL_Y=0 BCL_X=0 BCL_H=$BC_LINES BCL_W=$BC_COLS; return 0; fi
+  _bcl_insets "$a"
+  BCL_Y=$(( ${BCL_RY[$a]:-0} + BCL_IT )) BCL_X=$(( ${BCL_RX[$a]:-0} + BCL_IL ))
+  BCL_H=$(( ${BCL_RH[$a]:-0} - BCL_IT - BCL_IB )) BCL_W=$(( ${BCL_RW[$a]:-0} - BCL_IL - BCL_IR ))
+  (( BCL_H < 0 )) && BCL_H=0
+  (( BCL_W < 0 )) && BCL_W=0
+  return 0
+}
+
+# One float dimension: N / N% / auto / A..B -> BCL_D (outer size incl. shadow)
+_bcl_fdim() { # float spec parentsize axis rnd
+  local a=$1 spec=$2 ps=$3 ax=$4 r=$5 s=${BCL_SHADOW[$1]:-0}
+  case $spec in
+    auto) _bcl_min "$a" "$ax"; BCL_D=$BCL_M ;;
+    *%)   BCL_D=$(( ps * ${spec%\%} / 100 + s )) ;;
+    *..*) BCL_D=$(( r + s )) ;;
+    *)    BCL_D=$(( spec + s )) ;;
+  esac
+  (( BCL_D > ps )) && BCL_D=$ps
+  (( BCL_D < 1 )) && BCL_D=1
+  return 0
+}
+
+# Place every float (parents before children: float order guarantees it).
+_bcl_place_floats() {
+  local a py px ph pw h w y x rh rw fy fx at ref
+  for a in ${BCL_FLOATS}; do
+    _bcl_inner "${BCL_FIN[$a]}"
+    py=$BCL_Y px=$BCL_X ph=$BCL_H pw=$BCL_W
+    read -r rh rw fy fx <<< "${BCL_FRND[$a]}"
+    _bcl_fdim "$a" "${BCL_FSIZE[$a]%x*}" "$ph" 0 "$rh"; h=$BCL_D
+    _bcl_fdim "$a" "${BCL_FSIZE[$a]#*x}" "$pw" 1 "$rw"; w=$BCL_D
+    (( ph == 0 )) && h=0
+    (( pw == 0 )) && w=0
+    at=${BCL_FAT[$a]}
+    y=$(( py + (ph - h) / 2 )) x=$(( px + (pw - w) / 2 ))
+    case $at in
+      top|topleft|topright)          y=$py ;;&
+      bottom|bottomleft|bottomright) y=$(( py + ph - h )) ;;&
+      left|topleft|bottomleft)       x=$px ;;&
+      right|topright|bottomright)    x=$(( px + pw - w )) ;;&
+      random) y=$(( py + (ph - h) * fy / 1000 )); x=$(( px + (pw - w) * fx / 1000 )) ;;
+      *,*)    y=$(( py + ${at%,*} )); x=$(( px + ${at#*,} )) ;;
+      *:*)
+        ref=${at#*:}
+        if [[ -n ${BCL_RY[$ref]+set} ]]; then
+          case ${at%%:*} in
+            below) y=$(( BCL_RY[$ref] + BCL_RH[$ref] )); x=${BCL_RX[$ref]} ;;
+            above) y=$(( BCL_RY[$ref] - h ));            x=${BCL_RX[$ref]} ;;
+            right) y=${BCL_RY[$ref]}; x=$(( BCL_RX[$ref] + BCL_RW[$ref] )) ;;
+            left)  y=${BCL_RY[$ref]}; x=$(( BCL_RX[$ref] - w )) ;;
+          esac
+        fi ;;
+    esac
+    # keep it inside the parent
+    (( y + h > py + ph )) && y=$(( py + ph - h ))
+    (( x + w > px + pw )) && x=$(( px + pw - w ))
+    (( y < py )) && y=$py
+    (( x < px )) && x=$px
+    if [[ -n ${BCL_TPL[$a]+set} ]]; then
+      _bcl_layout_grid "$a" "$y" "$x" "$h" "$w"
+    else
+      BCL_RY[$a]=$y BCL_RX[$a]=$x BCL_RH[$a]=$h BCL_RW[$a]=$w
+    fi
+  done
+}
+
+# Floats whose parent chain (via in=) reaches NAME, NAME included, in float
+# order -> BCL_SUB. A float inside an area of a float's grid counts too.
+_bcl_subfloats() { # name
+  local f p hit
+  BCL_SUB=()
+  for f in ${BCL_FLOATS}; do
+    p=$f
+    while [[ -n $p && $p != screen ]]; do
+      [[ $p == "$1" ]] && { BCL_SUB+=("$f"); break; }
+      if [[ ${BCL_KIND[$p]} == float ]]; then p=${BCL_FIN[$p]}; else p=${BCL_PARENT[$p]:-}; fi
+    done
+  done
+}
+
+# bc_raise NAME — bring a float (with the floats inside it) to the top.
+bc_raise() {
+  local a=$1 f
+  [[ ${BCL_KIND[$a]:-} == float ]] || { _bcl_err "bc_raise: '$a' is not a float"; return 1; }
+  _bcl_subfloats "$a"
+  local -A mv=()
+  for f in "${BCL_SUB[@]}"; do mv[$f]=1; done
+  local rest=""
+  for f in ${BCL_FLOATS}; do [[ -n ${mv[$f]:-} ]] || rest+=" $f"; done
+  BCL_FLOATS="$rest ${BCL_SUB[*]}"
+  _bcl_restack
+}
+
+# bc_close NAME — remove a float, the floats inside it and all their windows.
+bc_close() {
+  local a=$1 f k
+  [[ ${BCL_KIND[$a]:-} == float ]] || { _bcl_err "bc_close: '$a' is not a float"; return 1; }
+  _bcl_subfloats "$a"
+  local -A gone=()
+  for f in "${BCL_SUB[@]}"; do gone[$f]=1; done
+  local rest=""
+  for f in ${BCL_FLOATS}; do [[ -n ${gone[$f]:-} ]] || rest+=" $f"; done
+  BCL_FLOATS=$rest
+  for f in "${BCL_SUB[@]}"; do
+    [[ -n ${BCL_TPL[$f]+set} ]] && _bcl_drop_kids "$f"
+    _bcl_forget "$f"
+  done
+  BCL_LAYOUT_DIRTY=1
   return 0
 }

@@ -273,5 +273,123 @@ check "W hit body" "body 3 9" "$BCL_AREA $BCL_MY $BCL_MX"
 bc_hit 0 3
 check "W hit top" "top 0 3" "$BCL_AREA $BCL_MY $BCL_MX"
 
+
+# ======================================================= floats (step 3)
+frect() { printf '%s %s %s %s' "${BCL_RY[$1]}" "${BCL_RX[$1]}" "${BCL_RH[$1]}" "${BCL_RW[$1]}"; }
+fresh 30 100
+bc_screen "
+  menu  menu
+  left  right
+" rows="1 *" cols="* *"
+bc_float d1 size=7x40
+bc_relayout
+check "F center"         "11 30 7 40" "$(frect d1)"
+bc_float d1 shadow
+bc_relayout
+check "F shadow adds 1"  "11 29 8 41" "$(frect d1)"
+check "F shadow content" "7 40" "$(bc_size d1; echo "$BCL_H $BCL_W")"
+bc_float d1 size=50x200
+bc_relayout
+check "F clamped"        "0 0 30 100" "$(frect d1)"
+bc_close d1
+bc_float d2 size=50%x25% at=bottomright
+bc_relayout
+check "F percent+corner" "15 75 15 25" "$(frect d2)"
+bc_close d2
+bc_float dd in=right at=below:menu size=5x12
+bc_relayout
+check "F below: clamped into parent" "1 50 5 12" "$(frect dd)"
+bc_float dd at=below:left
+bc_relayout
+check "F below: bottom edge clamps" "25 50 5 12" "$(frect dd)"
+bc_close dd
+bc_float pos in=left at=3,4 size=2x5
+bc_relayout
+check "F Y,X offset in parent" "4 4 2 5" "$(frect pos)"
+bc_close pos
+
+# auto size from text, including border insets
+bc_float msg border title=Info
+bc_text msg "hello
+world!"
+bc_relayout
+check "F auto from text" "13 46 4 8" "$(frect msg)"
+bc_update >/dev/null
+check "F float drawn on top" "│hello │" "$(srow 14 46 8)"
+bc_close msg
+bc_update >/dev/null
+check "F close reveals below" "        " "$(srow 14 46 8)"
+check "F close frees windows" "" "${BCL_WIN[msg]:-}${BCL_TEXT[msg]:-}"
+
+# random placement is fixed at creation and scales with the parent
+RANDOM=7
+bc_float r1 in=left at=random size=4..8x10..20
+bc_relayout
+read -r ry rx rh rw <<< "$(frect r1)"
+(( ry >= 1 && ry + rh <= 30 && rx >= 0 && rx + rw <= 50 && rh >= 4 && rh <= 8 && rw >= 10 && rw <= 20 )) \
+  && ok "F random inside parent" || bad "F random inside parent: $ry $rx $rh $rw"
+s1="$rh $rw"
+term 60 200; bc_relayout
+read -r ry2 rx2 rh2 rw2 <<< "$(frect r1)"
+check "F random size kept on resize" "$s1" "$rh2 $rw2"
+(( ry2 > ry && rx2 > rx )) && ok "F random position scales" || bad "F random position scales: $ry,$rx -> $ry2,$rx2"
+bc_close r1
+term 30 100; bc_relayout
+
+# a dialog: float + grid, children inherit its colours
+bc_float copy size=8x40 border title=Copy pair=5 shadow
+bc_grid copy "
+  l1  src
+  l2  dst
+  .   .
+  ok  cancel
+" rows="1 1 * 1" cols="auto *" gap=1
+bc_text l1 "From:"
+bc_text l2 "To:"
+bc_relayout
+check "F dialog rect"      "10 29 9 41" "$(frect copy)"
+check "F dialog label"     "11 30 1 5"  "$(frect l1)"
+check "F dialog field"     "11 36 1 32" "$(frect src)"
+check "F dialog buttons"   "16 30 1 5"  "$(frect ok)"
+check "F child inherits pair" "5" "${BC_WBGP[${BCL_WIN[src]}]}"
+bc_update >/dev/null
+check "F dialog painted" "│From: " "$(srow 11 29 7)"
+check "F dialog pair on screen" "5" "${BC_SP[13 50]}"
+bc_hit 11 40
+check "F hit dialog child" "src 0 4" "$BCL_AREA $BCL_MY $BCL_MX"
+bc_hit 2 2
+check "F hit tiled below" "left 1 2" "$BCL_AREA $BCL_MY $BCL_MX"
+
+# stacking + raise + nested floats + close cascade
+bc_float a size=5x10 at=2,2
+bc_float b size=5x10 at=4,6
+bc_float c in=a size=1x3 at=0,0
+blk() { local l; printf -v l "%10s" ""; l=${l// /$1}; printf "%s\n%s\n%s\n%s\n%s" "$l" "$l" "$l" "$l" "$l"; }
+bc_text a "$(blk A)"; bc_text b "$(blk B)"; bc_text c "ccc"
+bc_update >/dev/null
+check "F later float on top"    "AAAABBBBBB" "$(srow 5 2 10)"
+check "F order"                 "copy a b c" "$(echo $BCL_FLOATS)"
+bc_raise a
+check "F raise moves children"  "copy b a c" "$(echo $BCL_FLOATS)"
+bc_update >/dev/null
+check "F raised float on top"   "AAAAAAAAAA" "$(srow 5 2 10)"
+check "F child float above parent" "cccAAAAAAA" "$(srow 2 2 10)"
+np=${#BC_PSTACK[@]}
+bc_close a
+check "F close cascades"        "copy b" "$(echo $BCL_FLOATS)"
+check "F close frees panels"    "$(( np - 2 ))" "${#BC_PSTACK[@]}"
+bc_close copy
+check "F close dialog drops kids" "" "${BCL_KIND[src]:-}${BCL_WIN[src]:-}"
+bc_float copy size=6x30
+bc_grid copy "l1 src"
+check "F reopen has no stale text" "" "${BCL_TEXT[l1]:-}"
+bc_close copy; bc_close b
+
+fails "F bad at"   "bad at='middle'" bc_float x at=middle
+fails "F bad size" "bad size='7'"    bc_float x size=7
+fails "F parent"   "unknown parent 'nope'" bc_float x in=nope
+fails "F tiled"    "already a tiled area" bc_float left
+fails "F raise"    "'left' is not a float" bc_raise left
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 ))
