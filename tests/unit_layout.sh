@@ -329,6 +329,22 @@ bc_screen "
   left  right
 " rows="1 *" cols="* *"
 
+# within=: placed in a small cell, clamped to a bigger area (may overhang)
+bc_float ov in=left within=screen at=topleft size=4x70
+bc_relayout
+check "F within: overhangs its cell" "1 0 4 70" "$(frect ov)"
+bc_float ov at=bottomright
+bc_relayout
+check "F within: clamped to within area" "26 0 4 70" "$(frect ov)"
+bc_close ov
+# percentage ranges are relative to the in= parent and fixed at creation
+RANDOM=3
+bc_float pr in=left size=50%..50%x10%..20%
+bc_relayout
+read -r _ _ ph pw <<< "$(frect pr)"
+(( ph == 14 && pw >= 5 && pw <= 10 )) && ok "F percent range" || bad "F percent range: $ph x $pw"
+bc_close pr
+
 # auto size from text, including border insets
 bc_float msg border title=Info
 bc_text msg "hello

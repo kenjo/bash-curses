@@ -74,7 +74,7 @@ _bcl_forget() { # name
   declare -F _bcl_unbind >/dev/null && _bcl_unbind "$a"
   for k in KIND PARENT R0 R1 C0 C1 RY RX RH RW TPL KIDS ROWSPEC COLSPEC NR NC GAP BORDER CELLS \
            CH CW PAIR ATTR FRAME TITLE SHADOW BPAIR TEXT TPAIR TATTR TALIGN NEEDDRAW \
-           FIN FAT FSIZE FRND FKEYS; do
+           FIN FAT FSIZE FRND FKEYS FWITHIN; do
     unset "BCL_$k[$a]"
   done
 }
@@ -869,11 +869,17 @@ declare -A BCL_FAT=()      # float -> placement spec
 declare -A BCL_FSIZE=()    # float -> size spec "HxW"
 declare -A BCL_FRND=()     # float -> random choices "h w fy fx" (fixed at creation)
 declare -A BCL_FKEYS=()    # float -> key handler function (bc_run / bc_modal)
+declare -A BCL_FWITHIN=()  # float -> area it is clamped to ("" = its in= parent)
 
-# bc_float NAME [in=PARENT] [at=PLACE] [size=HxW] [style options…] [keys=FN]
-#   PLACE: center top bottom left right topleft topright bottomleft bottomright
-#          below:X above:X right:X left:X  random  Y,X (offset in the parent)
-#   H, W:  N  N%  auto  A..B (random in range, chosen once)
+# bc_float NAME [in=PARENT] [within=AREA] [at=PLACE] [size=HxW] [style…] [keys=FN]
+#   in:     where it is placed and what N% sizes refer to (default: screen)
+#   within: what it must stay inside (default: the in= parent); a float placed
+#           in a small cell but kept within the whole screen can overhang it
+#   PLACE:  center top bottom left right topleft topright bottomleft bottomright
+#           below:X above:X right:X left:X  random  Y,X (offset in the parent)
+#           (random puts the top-left corner anywhere it fits, or anywhere in
+#           the parent when the float is bigger than it)
+#   H, W:   N  N%  auto  A..B  A%..B% (random in range, chosen once)
 #   style: border title=… shadow pair=N attr=N bpair=N (see bc_style)
 # Calling it again for an existing float updates it in place.
 bc_float() {
@@ -883,11 +889,13 @@ bc_float() {
     _bcl_err "bc_float: '$a' is already a tiled area"; return 1
   fi
   local new=0 in=${BCL_FIN[$a]:-screen} at=${BCL_FAT[$a]:-center} size=${BCL_FSIZE[$a]:-autoxauto}
+  local within=${BCL_FWITHIN[$a]:-}
   local -a style=()
   [[ -z ${BCL_KIND[$a]+set} ]] && new=1
   for o in "$@"; do
     case $o in
       in=*)   in=${o#*=} ;;
+      within=*) within=${o#*=} ;;
       at=*)   at=${o#*=} ;;
       size=*) size=${o#*=}; size=${size// /} ;;
       keys=*) BCL_FKEYS[$a]=${o#*=} ;;
@@ -895,10 +903,12 @@ bc_float() {
     esac
   done
   [[ $in == screen || -n ${BCL_KIND[$in]+set} ]] || { _bcl_err "bc_float $a: unknown parent '$in'"; return 1; }
+  [[ -z $within || $within == screen || -n ${BCL_KIND[$within]+set} ]] || { _bcl_err "bc_float $a: unknown area '$within'"; return 1; }
   [[ $at =~ ^(center|top|bottom|left|right|topleft|topright|bottomleft|bottomright|random|(below|above|right|left):[A-Za-z_][A-Za-z0-9_.-]*|[0-9]+,[0-9]+)$ ]] \
     || { _bcl_err "bc_float $a: bad at='$at'"; return 1; }
-  [[ $size =~ ^(auto|[0-9]+%?|[0-9]+\.\.[0-9]+)x(auto|[0-9]+%?|[0-9]+\.\.[0-9]+)$ ]] \
-    || { _bcl_err "bc_float $a: bad size='$size' (HxW, each N, N%, auto or A..B)"; return 1; }
+  local dim='(auto|[0-9]+%?|[0-9]+\.\.[0-9]+|[0-9]+%\.\.[0-9]+%)'
+  [[ $size =~ ^${dim}x${dim}$ ]] \
+    || { _bcl_err "bc_float $a: bad size='$size' (HxW, each N, N%, auto, A..B or A%..B%)"; return 1; }
   # random choices are made once so the float keeps its look across relayouts
   local rh=0 rw=0 fy=$(( RANDOM % 1001 )) fx=$(( RANDOM % 1001 )) d lo hi
   if (( ! new )) && [[ $size == "${BCL_FSIZE[$a]}" ]]; then
@@ -907,13 +917,15 @@ bc_float() {
     for d in h w; do
       local spec=${size%x*}; [[ $d == w ]] && spec=${size#*x}
       if [[ $spec == *..* ]]; then
-        lo=${spec%..*} hi=${spec#*..}; (( hi < lo )) && hi=$lo
-        local v=$(( lo + RANDOM % (hi - lo + 1) ))
+        lo=${spec%..*} hi=${spec#*..}
+        local pct=""; [[ $lo == *% ]] && { pct=%; lo=${lo%\%}; hi=${hi%\%}; }
+        (( hi < lo )) && hi=$lo
+        local v=$(( lo + RANDOM % (hi - lo + 1) ))$pct
         if [[ $d == h ]]; then rh=$v; else rw=$v; fi
       fi
     done
   fi
-  BCL_KIND[$a]=float BCL_FIN[$a]=$in BCL_FAT[$a]=$at BCL_FSIZE[$a]=$size
+  BCL_KIND[$a]=float BCL_FIN[$a]=$in BCL_FAT[$a]=$at BCL_FSIZE[$a]=$size BCL_FWITHIN[$a]=$within
   BCL_FRND[$a]="$rh $rw $fy $fx"
   (( new )) && BCL_FLOATS+=" $a"
   (( ${#style[@]} )) && { bc_style "$a" "${style[@]}" || return 1; }
@@ -934,30 +946,32 @@ _bcl_inner() { # name -> BCL_Y BCL_X BCL_H BCL_W
 }
 
 # One float dimension: N / N% / auto / A..B -> BCL_D (outer size incl. shadow)
-_bcl_fdim() { # float spec parentsize axis rnd
+_bcl_fdim() { # float spec parentsize axis rnd clampsize
   local a=$1 spec=$2 ps=$3 ax=$4 r=$5 s=${BCL_SHADOW[$1]:-0}
   case $spec in
     auto) _bcl_min "$a" "$ax"; BCL_D=$BCL_M ;;
+    *..*) if [[ $r == *% ]]; then BCL_D=$(( ps * ${r%\%} / 100 + s )); else BCL_D=$(( r + s )); fi ;;
     *%)   BCL_D=$(( ps * ${spec%\%} / 100 + s )) ;;
-    *..*) BCL_D=$(( r + s )) ;;
     *)    BCL_D=$(( spec + s )) ;;
   esac
-  (( BCL_D > ps )) && BCL_D=$ps
+  (( BCL_D > ${6:-$ps} )) && BCL_D=${6:-$ps}
   (( BCL_D < 1 )) && BCL_D=1
   return 0
 }
 
 # Place every float (parents before children: float order guarantees it).
 _bcl_place_floats() {
-  local a py px ph pw h w y x rh rw fy fx at ref
+  local a py px ph pw cy cx ch cw h w y x rh rw fy fx at ref
   for a in ${BCL_FLOATS}; do
+    _bcl_inner "${BCL_FWITHIN[$a]:-${BCL_FIN[$a]}}"
+    cy=$BCL_Y cx=$BCL_X ch=$BCL_H cw=$BCL_W
     _bcl_inner "${BCL_FIN[$a]}"
     py=$BCL_Y px=$BCL_X ph=$BCL_H pw=$BCL_W
     read -r rh rw fy fx <<< "${BCL_FRND[$a]}"
-    _bcl_fdim "$a" "${BCL_FSIZE[$a]%x*}" "$ph" 0 "$rh"; h=$BCL_D
-    _bcl_fdim "$a" "${BCL_FSIZE[$a]#*x}" "$pw" 1 "$rw"; w=$BCL_D
-    (( ph == 0 )) && h=0
-    (( pw == 0 )) && w=0
+    _bcl_fdim "$a" "${BCL_FSIZE[$a]%x*}" "$ph" 0 "$rh" "$ch"; h=$BCL_D
+    _bcl_fdim "$a" "${BCL_FSIZE[$a]#*x}" "$pw" 1 "$rw" "$cw"; w=$BCL_D
+    (( ch == 0 )) && h=0
+    (( cw == 0 )) && w=0
     at=${BCL_FAT[$a]}
     y=$(( py + (ph - h) / 2 )) x=$(( px + (pw - w) / 2 ))
     case $at in
@@ -965,7 +979,9 @@ _bcl_place_floats() {
       bottom|bottomleft|bottomright) y=$(( py + ph - h )) ;;&
       left|topleft|bottomleft)       x=$px ;;&
       right|topright|bottomright)    x=$(( px + pw - w )) ;;&
-      random) y=$(( py + (ph - h) * fy / 1000 )); x=$(( px + (pw - w) * fx / 1000 )) ;;
+      random)
+        if (( h <= ph )); then y=$(( py + (ph - h) * fy / 1000 )); else y=$(( py + (ph - 1) * fy / 1000 )); fi
+        if (( w <= pw )); then x=$(( px + (pw - w) * fx / 1000 )); else x=$(( px + (pw - 1) * fx / 1000 )); fi ;;
       *,*)    y=$(( py + ${at%,*} )); x=$(( px + ${at#*,} )) ;;
       *:*)
         ref=${at#*:}
@@ -978,11 +994,11 @@ _bcl_place_floats() {
           esac
         fi ;;
     esac
-    # keep it inside the parent
-    (( y + h > py + ph )) && y=$(( py + ph - h ))
-    (( x + w > px + pw )) && x=$(( px + pw - w ))
-    (( y < py )) && y=$py
-    (( x < px )) && x=$px
+    # keep it inside the clamp area
+    (( y + h > cy + ch )) && y=$(( cy + ch - h ))
+    (( x + w > cx + cw )) && x=$(( cx + cw - w ))
+    (( y < cy )) && y=$cy
+    (( x < cx )) && x=$cx
     if [[ -n ${BCL_TPL[$a]+set} ]]; then
       _bcl_layout_grid "$a" "$y" "$x" "$h" "$w"
     else
