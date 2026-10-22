@@ -416,6 +416,27 @@ check "dupwin cursor"            "1 1"     "$(scr 'newwin 2 2 5 5; src=$bc_win; 
 check "delwin removes window cells" "0"    "$(scr 'newwin 2 2 5 5; w=$bc_win; buf=${BC_WBUF[$w]}; mvwaddstr $w 0 0 AB; delwin $w; n=0; for k in "${!BC_C[@]}"; do [[ $k == "$buf/"* ]] && n=$((n+1)); done; printf "%s" "$n"')"
 check "delwin of a derwin keeps the parent's cells" "AB" "$(scr 'newwin 3 4 1 1; p=$bc_win; mvwaddstr $p 0 0 AB; derwin $p 1 2 0 0; c=$bc_win; delwin $c; mvwinch $p 0 0; a=$wch; mvwinch $p 0 1; printf "%s%s" "$a" "$wch"')"
 check "delwin clears only its own marks" "1" "$(scr 'newwin 2 2 1 1; a=$bc_win; newwin 2 2 5 5; b=$bc_win; mvwaddstr $b 0 0 X; delwin $a; [[ -n ${BC_MK[$b/5 5]:-} ]] && printf 1')"
+# the cached owner map composites exactly like the per-cell stack walk
+ownmap_check() {
+  local n=0 bad=0 i y x
+  RANDOM=42
+  new_panel 0
+  for (( i = 0; i < 25; i++ )); do
+    newwin $(( RANDOM % 8 + 1 )) $(( RANDOM % 20 + 1 )) $(( RANDOM % 22 )) $(( RANDOM % 70 )); new_panel $bc_win
+    (( i % 7 == 3 )) && hide_panel $bc_panel
+    wbkgd $bc_win "$(( i % 10 ))" 0 0
+  done
+  derwin 3 1 1 1 1 && new_panel $bc_win
+  check_all() { _bc_owner_map; for (( y = 0; y < 24; y++ )); do for (( x = 0; x < 80; x++ )); do
+    _bc_composite_cell $y $x; local ow=${BC_OWN["$y $x"]:-0} ob
+    ob=${BC_WBUF[$ow]}; [[ ${BC_C["$ob/$y $x"]:-${BC_WBG[$ow]}} == "$_BC_CC" ]] || bad=$(( bad + 1 )); n=$(( n + 1 ))
+  done; done; }
+  check_all
+  top_panel 2; move_panel 5 10 40; hide_panel 7; show_panel 3
+  check_all
+  printf '%s/%s' "$bad" "$n"
+}
+check "owner map matches per-cell composite" "0/3840" "$(scr 'ownmap_check')"
 
 # --- H6. pad API (headless) ---
 check "newpad size"              "30 100"  "$(scr 'newpad 30 100; printf "%s %s" "${BC_WH[$bc_win]}" "${BC_WW[$bc_win]}"')"

@@ -927,13 +927,20 @@ _bc_clear_cell() { # w ay ax
 _bc_erase_region() { # w
   local w=$1
   local y0=${BC_WY[$w]} x0=${BC_WX[$w]} h=${BC_WH[$w]} ww=${BC_WW[$w]}
-  local y x
+  local buf=${BC_WBUF[$w]} ay ax k mk wd=""
   _bc_bg "$w"
-  for (( y = 0; y < h; y++ )); do
-    for (( x = 0; x < ww; x++ )); do
-      _bc_cell "$w" "$(( y0 + y ))" "$(( x0 + x ))" "$BC_RCH" "$BC_RA" "$BC_RP"
+  local ch=$BC_RCH a=$BC_RA p=$BC_RP
+  # same effect as _bc_cell per cell, inlined (this is a hot path)
+  for (( ay = y0; ay < y0 + h; ay++ )); do
+    _bc_flush_row "$w" "$ay"
+    for (( ax = x0; ax < x0 + ww; ax++ )); do
+      k="$buf/$ay $ax"
+      BC_C[$k]=$ch; BC_A[$k]=$a; BC_P[$k]=$p
+      mk="$w/$ay $ax"
+      if [[ -z ${BC_MK[$mk]:-} ]]; then BC_MK[$mk]=1; wd+=",$ay $ax"; fi
     done
   done
+  BC_WD[$w]+=$wd
   BC_WAX[$w]=0
   BC_WAY[$w]=0
 }
@@ -1728,7 +1735,8 @@ _bc_mouse_run() {
 }
 
 # mode switches (mostly no-ops under stty raw, kept for API parity)
-cbreak() { stty -icanon 2>/dev/null; return 0; }
+# as in ncurses, cbreak keeps signal keys working (initscr's stty raw drops them)
+cbreak() { stty -icanon isig 2>/dev/null; return 0; }
 noecho() { stty -echo 2>/dev/null; return 0; }
 raw() { stty raw -echo 2>/dev/null; return 0; }
 noraw() { if [[ -n $BC_OLDSTTY ]]; then stty "$BC_OLDSTTY" 2>/dev/null; fi; return 0; }
@@ -3669,6 +3677,38 @@ is_linetouched() { # win line
   return 1
 }
 
+# Which window shows at each screen cell: BC_OWN["y x"] = window (cells not
+# covered by a visible panel are stdscr's). Rebuilt only when the panel stack,
+# a hidden flag or a panel window's rectangle changes, so compositing a dirty
+# cell is one lookup instead of a walk over every panel.
+declare -A BC_OWN=()
+BC_OWNSIG=""
+_bc_owner_map() {
+  local p w sig="$BC_LINES $BC_COLS"
+  for p in "${BC_PSTACK[@]}"; do
+    w=${BC_PWIN[$p]}
+    sig+="|$w ${BC_PHID[$p]:-0} ${BC_WY[$w]} ${BC_WX[$w]} ${BC_WH[$w]} ${BC_WW[$w]}"
+  done
+  [[ $sig == "$BC_OWNSIG" ]] && return 0
+  BC_OWN=()
+  local y x y0 y1 x0 x1
+  for p in "${BC_PSTACK[@]}"; do
+    [[ ${BC_PHID[$p]:-0} == 1 ]] && continue
+    w=${BC_PWIN[$p]}
+    [[ -n ${BC_WY[$w]:-} ]] || continue
+    y0=${BC_WY[$w]} x0=${BC_WX[$w]}
+    y1=$(( y0 + BC_WH[$w] )) x1=$(( x0 + BC_WW[$w] ))
+    (( y0 < 0 )) && y0=0
+    (( x0 < 0 )) && x0=0
+    (( y1 > BC_LINES )) && y1=$BC_LINES
+    (( x1 > BC_COLS )) && x1=$BC_COLS
+    for (( y = y0; y < y1; y++ )); do
+      for (( x = x0; x < x1; x++ )); do BC_OWN["$y $x"]=$w; done
+    done
+  done
+  BC_OWNSIG=$sig
+}
+
 # Composite the visible content at one absolute cell: stdscr is the base, and
 # the topmost visible panel in the stack that covers the cell wins. Sets
 # _BC_CC / _BC_CA / _BC_CP.
@@ -3909,12 +3949,16 @@ doupdate() {
   else
     mapfile -t keys < <(printf '%s\n' "${!RC[@]}" | sort -k1,1n -k2,2n)
   fi
+  [[ -n $topbuf ]] || _bc_owner_map
+  local ow ob
   for k in "${keys[@]}"; do
-    read -r ay ax <<< "$k"
+    ay=${k% *} ax=${k#* }
     if [[ -n $topbuf ]]; then
       _BC_CC=${BC_C["$topbuf/$k"]:-$topbg}; _BC_CA=${BC_A["$topbuf/$k"]:-0}; _BC_CP=${BC_P["$topbuf/$k"]:-0}
     else
-      _bc_composite_cell "$ay" "$ax"
+      # same result as _bc_composite_cell, via the cached owner map
+      ow=${BC_OWN[$k]:-$BC_STDSCR}; ob=${BC_WBUF[$ow]}
+      _BC_CC=${BC_C["$ob/$k"]:-${BC_WBG[$ow]}}; _BC_CA=${BC_A["$ob/$k"]:-0}; _BC_CP=${BC_P["$ob/$k"]:-0}
     fi
     ch=$_BC_CC; a=$_BC_CA; pp=$_BC_CP
     if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$pp" ]]; then
