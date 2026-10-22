@@ -826,6 +826,7 @@ bc_init() {
   fi
   (( mouse )) && mousemask "$ALL_MOUSE_EVENTS" >/dev/null
   trap 'endwin' EXIT
+  trap 'exit 130' INT TERM
   trap 'BC_WINCH=1' WINCH
   BCL_STARTED=1
 }

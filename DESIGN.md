@@ -321,18 +321,26 @@ sub-tree), else `on_key`; frame timing uses `wtimeout` on stdscr with the time
 left until the next `on_tick`. `_bcl_readkey` is the only input call, so tests
 replace it with a fake key source.
 
-Cost (tests/bench_layout.sh, this host): solving the mc-like screen is ~1.8 ms
-and a no-op `bc_relayout` ~2.3 ms; a real resize of it is ~225 ms, almost all
-of it `werase` painting rebuilt windows cell by cell (~24 us/cell). The
-shining-like stress case (136 floats, 566 panels) solves in ~19 ms, rebuilds
-in ~1 s, and animates at under 1 frame/s, the same rate as `shining.sh`:
-`doupdate`'s per-cell composite walks the whole panel stack.
+Cost (tests/bench_layout.sh, this host): solving the mc-like screen is ~1.9 ms
+and a no-op `bc_relayout` ~2.5 ms; a real resize of it is ~130 ms, mostly
+painting the rebuilt windows. The shining-like stress case (136 floats, 566
+panels) solves in ~18 ms and rebuilds in ~0.9 s. Measured in a real 191x74
+terminal: `91-shining-layout.sh` shows its first frame after ~1.8 s and runs
+at ~2.4 frames/s (`shining.sh`: ~1.5 s, ~1.1 frames/s). Startup and frame
+times must be measured in a real terminal (tmux + `BC_TEST_DIR` frame
+counter); headless runs that send `doupdate` to /dev/null hide its cost.
 
 `bc.sh` fixes found while building it: the uniform row cache is only used by
 the window that owns the buffer (a derwin's full-width rows were replayed from
 the owner's left edge, over its border); `delwin` of a derwin no longer
 deletes the parent's cells and only walks its own rectangle; clearing a
-window's dirty marks walks its own dirty list instead of all marks.
+window's dirty marks walks its own dirty list instead of all marks;
+`doupdate` composites through a cached owner map (`BC_OWN`, which window
+shows at each cell, rebuilt only when the panel stack or a panel's
+rectangle changes) instead of walking every panel for every dirty cell —
+that walk made the shining demos take ~19 s per full frame at 191x74;
+`werase` no longer calls a function per cell; `cbreak` re-enables signal
+keys as in ncurses (Ctrl-C was delivered as a byte under initscr's raw mode).
 
 ## Bash 5.3 implementation pitfalls
 

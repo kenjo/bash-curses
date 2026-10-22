@@ -51,13 +51,13 @@ on_draw() {
   local a line seg pos r
   for a in "${!OFF[@]}"; do
     bc_size "$a"
-    bc_clear "$a"
     pos=${OFF[$a]}
     for (( r = 0; r < BCL_H; r++ )); do
       seg=${REP:pos:BCL_W}
       line=${seg%%$'\n'*}
-      bc_print "$a" "$r" 0 "$line"
       pos=$(( pos + ${#line} + (${#line} < ${#seg} ? 1 : 0) ))
+      printf -v line '%-*s' "$BCL_W" "$line"    # pad: no separate clear needed
+      bc_print "$a" "$r" 0 "$line"
     done
   done
 }
