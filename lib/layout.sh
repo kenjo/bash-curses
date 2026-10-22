@@ -469,7 +469,9 @@ _bcl_paint_frame() { # name
   local a=$1 f=${BCL_FWIN[$1]} sw
   _bcl_eff "$a"
   local bh=${BC_WH[$f]} bw=${BC_WW[$f]} p=$BCL_EP at=$BCL_EA
-  wbkgd "$f" ' ' "$at" "$p"
+  # set the background and paint every cell once (wbkgd would repaint all
+  # cells itself, and the content derwin shares these cells)
+  wbkgdset "$f" ' ' "$at" "$p"
   werase "$f"
   if (( ${BCL_FRAME[$a]:-0} && bh >= 2 && bw >= 2 )); then
     local bp=${BCL_BPAIR[$a]:-$p} r line
@@ -492,7 +494,7 @@ _bcl_paint_frame() { # name
   local sp=${BCL_SHADOW_PAIR:-0} sa=0
   (( sp )) || sa=$A_REVERSE
   for sw in ${BCL_SWINS[$a]:-}; do
-    wbkgd "$sw" ' ' "$sa" "$sp"; werase "$sw"
+    wbkgdset "$sw" ' ' "$sa" "$sp"; werase "$sw"
   done
 }
 
@@ -526,7 +528,7 @@ _bcl_bind() { # name y x h w
   BCL_PANS[$a]=$pans BCL_WINS[$a]=$wins
   local c=${BCL_WIN[$a]}
   _bcl_eff "$a"
-  wbkgd "$c" ' ' "$BCL_EA" "$BCL_EP"
+  wbkgdset "$c" ' ' "$BCL_EA" "$BCL_EP"
   wattrset "$c" "$BCL_EA" "$BCL_EP"
   _bcl_paint_frame "$a"
   BCL_WRECT[$a]="$y $x $h $w"
@@ -613,7 +615,7 @@ bc_style() {
       while [[ -n $p && $p != "$a" ]]; do p=${BCL_PARENT[$p]:-}; done
       [[ $p == "$a" && -n ${BCL_FWIN[$n]:-} ]] || continue
       _bcl_eff "$n"
-      wbkgd "${BCL_WIN[$n]}" ' ' "$BCL_EA" "$BCL_EP"
+      wbkgdset "${BCL_WIN[$n]}" ' ' "$BCL_EA" "$BCL_EP"
       wattrset "${BCL_WIN[$n]}" "$BCL_EA" "$BCL_EP"
       _bcl_paint_frame "$n"
       BCL_NEEDDRAW[$n]=1

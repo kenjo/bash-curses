@@ -59,6 +59,57 @@ tmux send-keys -t bc q          # feed a key
 tmux kill-session -t bc
 ```
 
+## Layout layer (`lib/layout.sh`)
+
+An optional layer on top of `lib/bc.sh` for apps that would rather describe
+the screen than compute coordinates. The screen is a template of area names;
+the library turns it into windows, keeps them laid out across resizes, and
+the app draws by area name:
+
+```bash
+source lib/layout.sh
+bc_init mouse
+init_pair 1 7 4; init_pair 2 0 6
+
+bc_screen "
+  menu  menu
+  left  right
+  keys  keys
+" rows="1 * 1" cols="* *"
+
+bc_style menu pair=2
+bc_style left  pair=1 border title=Left
+bc_style right pair=1 border title=Right
+bc_text  menu  " File  Command  Options"
+
+draw_left() { bc_print left 0 0 "drawn by name, no coordinates"; }
+on_key()    { [[ $1 == q ]] && bc_quit; }
+bc_run
+```
+
+- **Templates** name areas; a name repeated across cells spans them, `.` is
+  empty. Track sizes: `N` fixed, `*`/`N*` share of the rest, `auto` fit the
+  content, `0` hidden. `bc_grid AREA "…"` nests a template in an area;
+  `bc_cells AREA N` splits an area into N cells shaped by its aspect ratio.
+- **Floats** are windows on top (dialogs, popups, overlapping windows):
+  `bc_float NAME in=AREA at=center|below:X|random|Y,X|… size=HxW` with sizes
+  `N`, `N%`, `auto`, `A..B` (random, chosen once); `within=AREA` clamps to a
+  larger area; `border title=… shadow pair=…`. A float can hold a grid, which
+  makes a dialog. `bc_raise`, `bc_close NAME [RESULT]`.
+- **Drawing**: `bc_print NAME y x text [pair=] [attr=]` (clipped),
+  `bc_text NAME text [align=]` (retained, redrawn on rebuild, measured for
+  `auto`), `bc_clear`, `bc_size` → `BCL_H BCL_W`, `bc_win NAME` → `bc_win`
+  for any `bc.sh` call, `bc_style`, `bc_dirty NAME…`.
+- **Loop**: either `bc_run [fps=N]`, which calls `draw_NAME`/`on_draw`,
+  `on_key`, `key_FLOAT`, `click_NAME`/`on_click`, `on_tick MS`, `on_resize`,
+  plus `bc_modal NAME` for a dialog that returns its result; or your own loop
+  with `bc_getkey` (flushes drawing, handles resize, maps clicks to
+  `BCL_AREA BCL_MY BCL_MX`).
+
+`examples/90-layout.sh` is an mc-like file manager with a modal Copy dialog;
+`examples/91-shining-layout.sh` redoes `shining.sh` with floats in 53 lines
+of code instead of 131. See DESIGN.md "Layout layer" for the internals.
+
 ## Mouse
 
 ```bash
@@ -142,6 +193,12 @@ bash tests/run.sh
   the installed ncurses header.
 - `tests/unit_screen.sh` — headless: SGR capture parser, per-cell grid model,
   and raw cursor tracker.
+- `tests/unit_layout.sh` — headless: `lib/layout.sh` template parsing and
+  errors, track sizing, window binding/rebuilds, floats, and the event loop
+  (with a fake key source).
+- `tests/layout_demo.sh`, `tests/layout_shining.sh` — tmux-driven: the two
+  layout examples, incl. dialogs, shadows, clicks and resizes.
+  (`tests/bench_layout.sh` is a benchmark, not part of `run.sh`.)
 - `tests/integration.sh` — tmux-driven: runs `tests/battery_app.sh` in a pane,
   injects key and mouse bytes via `send-keys -H`, and asserts the decoded
   `KEY`/`EV` output.
@@ -154,6 +211,7 @@ bash tests/run.sh
 
 ```
 lib/bc.sh        the library (source it)
+lib/layout.sh    optional layout layer: templates, floats, draw by name, bc_run
 examples/        ports of ncurses test-suite demos (smoke tests)
 tests/           run.sh, unit.sh, unit_screen.sh, integration.sh, mc_* tests
 references/      read-only vendored ncurses corpus (do not edit)

@@ -263,6 +263,77 @@ terminal usable.
 - `slk_wset` is not provided: there is exactly one slk window (ncurses
   allows a per-window slk context via WINDOW*); slk state is global.
 
+## Layout layer (lib/layout.sh)
+
+An optional layer sourced after (or instead of) `lib/bc.sh`; the ncurses API is
+untouched. Public names are `bc_*`, internal state is `BCL_*` (associative
+arrays keyed by area name), results come back in globals as in `bc.sh`.
+
+Model:
+
+- **Grids.** `bc_screen` defines the root grid `screen`; `bc_grid AREA` gives an
+  area its own grid; `bc_cells AREA N` is a grid whose template is generated
+  (and re-shaped on every relayout from the area's aspect ratio, with cells
+  about twice as wide as tall). A template is parsed once into per-area track
+  spans (`BCL_R0/R1/C0/C1`); every area must fill its bounding box, and errors
+  name the line, column and area.
+- **Track sizing** (`_bcl_tracks`): fixed and `auto` tracks first (shrinking
+  from the last track when they overflow), then the rest is split by weight
+  with rounding leftovers going to the first weighted tracks, so tracks tile
+  exactly. `auto` is the largest minimum of the areas spanning only that track:
+  measured `bc_text` content, or a nested grid's fixed+auto sum, plus insets.
+  `0` hides a track (no gap is spent on it).
+- **Floats** are placed after the tiled tree, in float order (parents first):
+  size from `N`/`N%`/`auto`/`A..B`/`A%..B%` (random picks and the random
+  position fraction are made once, in `BCL_FRND`, so a float keeps its size
+  and relative position across resizes), position relative to `in=`, clamped
+  inside `within=` (default: the `in=` parent's content rect).
+- **Insets.** A `border` insets content by 1; a `shadow` adds one row/column
+  to the rectangle. Grids inside a framed area lay out in its inset rect.
+
+Windows (`bc_relayout`):
+
+- Each leaf area and each container with something to show (float, border,
+  colour, title) is bound to a frame window `F` with its own panel. A bordered
+  leaf draws into a derwin `C` inset by 1, which is its own panel right above
+  `F` because `doupdate` only collects dirty cells from panel windows. A
+  shadow is two more strip windows (right of and below the box), leaving the
+  two outer corners uncovered so the screen shows through.
+- Only windows whose rectangle changed are rebuilt (`delwin` + `newwin`; much
+  cheaper than `wresize`/`mvwin`, which re-mark or move every cell). Panels are
+  restacked: tiled areas at the bottom (a container's frame below its kids),
+  panels the app created itself in the middle, floats on top.
+- Content colours (`pair`/`attr`) are inherited through enclosing grids, so a
+  dialog's fields take the dialog's colours.
+- `bc_text` content is retained and replayed when a window is rebuilt; it only
+  triggers a relayout when an `auto` track or auto-sized float depends on it.
+  `draw_NAME` is called on a freshly cleared area, then `on_draw` once.
+
+Input: `bc_getkey` flushes (`bc_update`: relayout if needed, pending draws,
+`doupdate` — so `wgetch`'s implicit `wrefresh(stdscr)` finds nothing dirty)
+and reads a key; on `KEY_RESIZE` it runs `resizeterm`, relayouts and forces a
+full repaint, dropping `BC_DELRECTS` because the old rectangles may lie
+off-screen after a shrink; on `KEY_MOUSE` it maps the event to the topmost
+area (`BCL_AREA`, content-relative `BCL_MY/BCL_MX`). `bc_run` uses one loop
+(`_bcl_loop`) for itself and for `bc_modal NAME`; keys go to the topmost
+float with a handler (`keys=FN` / `key_NAME`, restricted to the modal float's
+sub-tree), else `on_key`; frame timing uses `wtimeout` on stdscr with the time
+left until the next `on_tick`. `_bcl_readkey` is the only input call, so tests
+replace it with a fake key source.
+
+Cost (tests/bench_layout.sh, this host): solving the mc-like screen is ~1.8 ms
+and a no-op `bc_relayout` ~2.3 ms; a real resize of it is ~225 ms, almost all
+of it `werase` painting rebuilt windows cell by cell (~24 us/cell). The
+shining-like stress case (136 floats, 566 panels) solves in ~19 ms, rebuilds
+in ~1 s, and animates at under 1 frame/s, the same rate as `shining.sh`:
+`doupdate`'s per-cell composite walks the whole panel stack.
+
+`bc.sh` fixes found while building it: the uniform row cache is only used by
+the window that owns the buffer (a derwin's full-width rows were replayed from
+the owner's left edge, over its border); `delwin` of a derwin no longer
+deletes the parent's cells and only walks its own rectangle; clearing a
+window's dirty marks walks its own dirty list instead of all marks.
+
 ## Bash 5.3 implementation pitfalls
 
 - Unbraced `$arr[sub]` inside an unquoted `for` word corrupts the split
