@@ -257,7 +257,7 @@ unset -f draw_f1 on_draw
 draw_f2() { bc_print f2 0 0 "$msg"; }
 msg="long text"; bc_dirty f2; bc_update >/dev/null
 msg="hi"; bc_dirty f2; bc_update >/dev/null
-check "W draw_NAME on cleared area" "hi       " "$(srow 1 12 9)"
+check "W draw_NAME on cleared area" "hi       " "$(srow 3 12 9)"
 unset -f draw_f2
 
 # hit testing with content-relative coordinates
