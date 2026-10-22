@@ -437,6 +437,22 @@ ownmap_check() {
   printf '%s/%s' "$bad" "$n"
 }
 check "owner map matches per-cell composite" "0/3840" "$(scr 'ownmap_check')"
+# tint panels: char from below, colour from the tint; a normal panel above hides it
+tint_check() {
+  newwin 3 10 1 1; a=$bc_win; new_panel $a; mvwaddstr $a 0 0 "abcdefghij"
+  newwin 2 4 1 3; t=$bc_win; new_panel $t; tp=$bc_panel; wbkgd $t ' ' 0 7; panel_tint $tp 1
+  doupdate >/dev/null
+  local r1="${BC_S[1 3]}${BC_SP[1 3]} ${BC_S[1 2]}${BC_SP[1 2]}"
+  _bc_composite_cell 1 4; local r2="$_BC_CC$_BC_CP"
+  newwin 1 2 1 4; c=$bc_win; new_panel $c; mvwaddstr $c 0 0 XY
+  doupdate >/dev/null
+  local r3="${BC_S[1 4]}${BC_SP[1 4]} ${BC_S[1 3]}${BC_SP[1 3]}"
+  mvwaddstr $a 0 2 "Q"; doupdate >/dev/null
+  local r4="${BC_S[1 3]}${BC_SP[1 3]}"
+  del_panel $tp; delwin $t; doupdate >/dev/null
+  printf '%s|%s|%s|%s|%s' "$r1" "$r2" "$r3" "$r4" "${BC_S[1 3]}${BC_SP[1 3]}"
+}
+check "tint panel composites see-through" "c7 b0|d7|X0 c7|Q7|Q0" "$(scr 'tint_check')"
 
 # --- H6. pad API (headless) ---
 check "newpad size"              "30 100"  "$(scr 'newpad 30 100; printf "%s %s" "${BC_WH[$bc_win]}" "${BC_WW[$bc_win]}"')"

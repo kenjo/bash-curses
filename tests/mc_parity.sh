@@ -1,9 +1,13 @@
 #!/bin/bash
 # tmux-driven regression tests for MC-vs-clone parity findings.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_parity.sock"
-TREE="$REPO/tmp/test_parity"
-CAP="$REPO/tmp/mc_parity.sgr"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+SOCK="$REPO/tmp/${MCT}bc_parity.sock"
+TREE="$REPO/tmp/${MCT}test_parity"
+CAP="$REPO/tmp/${MCT}mc_parity.sgr"
 T=bcp
 pass=0 fail=0
 ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
@@ -20,7 +24,7 @@ printf 'z\n' > "$TREE/z.txt"
 
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
-tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 -c "$TREE" bash "$REPO/examples/mc.sh"
+tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 -c "$TREE" bash "$MC_SCRIPT"
 
 ready=0
 for _ in $(seq 1 80); do
@@ -72,8 +76,8 @@ if (( avail_kb < 10240 * 1024 )); then
 fi
 
 tmux -S "$SOCK" send-keys -t "$T" F9; sleep 1
-tmux -S "$SOCK" capture-pane -t "$T" -p -e > "$REPO/tmp/mc_parity_menu.sgr"
-screen_load "$REPO/tmp/mc_parity_menu.sgr" 100 30
+tmux -S "$SOCK" capture-pane -t "$T" -p -e > "$REPO/tmp/${MCT}mc_parity_menu.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_menu.sgr" 100 30
 IFS=$'\t' read -r _ _ bg _ <<< "$(cell 0 1)"
 if [[ $bg == 16:0 ]]; then
   ok "selected menu item has a black leading space"
@@ -88,13 +92,13 @@ else
 fi
 
 tmux -S "$SOCK" send-keys -t "$T" Down; sleep 1
-tmux -S "$SOCK" capture-pane -t "$T" -p -e > "$REPO/tmp/mc_parity_dd.sgr"
+tmux -S "$SOCK" capture-pane -t "$T" -p -e > "$REPO/tmp/${MCT}mc_parity_dd.sgr"
 if tmux -S "$SOCK" capture-pane -t "$T" -p | grep -q '└'; then
   ok "Left dropdown has a bottom border"
 else
   bad "Left dropdown has a bottom border"
 fi
-screen_load "$REPO/tmp/mc_parity_dd.sgr" 100 30
+screen_load "$REPO/tmp/${MCT}mc_parity_dd.sgr" 100 30
 IFS=$'\t' read -r _ _ bg _ <<< "$(cell 2 27)"
 if [[ $bg == 16:0 ]]; then
   ok "dropdown has a black right shadow"
@@ -125,8 +129,8 @@ tmux -S "$SOCK" send-keys -t "$T" Escape; sleep 1.2
 tmux -S "$SOCK" send-keys -t "$T" F9; sleep 1
 tmux -S "$SOCK" send-keys -t "$T" Right Right Down; sleep 1
 plain="$(tmux -S "$SOCK" capture-pane -t "$T" -p)"
-tmux -S "$SOCK" capture-pane -t "$T" -p -e > "$REPO/tmp/mc_parity_hot.sgr"
-screen_load "$REPO/tmp/mc_parity_hot.sgr" 100 30
+tmux -S "$SOCK" capture-pane -t "$T" -p -e > "$REPO/tmp/${MCT}mc_parity_hot.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_hot.sgr" 100 30
 mapfile -t lines <<<"$plain"
 for want in "Show directory sizes|i|s" "Viewed/edited files history|s|i" "Edit extension file|e| "; do
   IFS='|' read -r label wantch wantprev <<<"$want"
@@ -200,8 +204,8 @@ if [[ "$plain" == *'┌'*'Select'*'┐'* ]]; then
 else
   bad "'+' opens the Select dialog"
 fi
-capE > "$REPO/tmp/mc_parity_plus.sgr"
-screen_load "$REPO/tmp/mc_parity_plus.sgr" 100 30
+capE > "$REPO/tmp/${MCT}mc_parity_plus.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_plus.sgr" 100 30
 IFS=$'\t' read -r _ _ bg _ <<< "$(cell 9 22)"
 if [[ $bg == 16:7 ]]; then
   ok "Select dialog has a white top shadow"
@@ -231,8 +235,8 @@ sendk Escape
 # F1 Help draws MC's white margin and gray-on-black dialog shadow.
 sendk F1
 sleep 1
-capE > "$REPO/tmp/mc_parity_help.sgr"
-screen_load "$REPO/tmp/mc_parity_help.sgr" 100 30
+capE > "$REPO/tmp/${MCT}mc_parity_help.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_help.sgr" 100 30
 shadow=0
 for (( y = 0; y < 30; y++ )); do
   for (( x = 0; x < 100; x++ )); do
@@ -251,8 +255,8 @@ sleep 1
 # F2 User menu draws MC's cyan margin and gray-on-black dialog shadow.
 sendk F2
 sleep 1
-capE > "$REPO/tmp/mc_parity_usermenu.sgr"
-screen_load "$REPO/tmp/mc_parity_usermenu.sgr" 100 30
+capE > "$REPO/tmp/${MCT}mc_parity_usermenu.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_usermenu.sgr" 100 30
 shadow=0
 for (( y = 0; y < 30; y++ )); do
   for (( x = 0; x < 100; x++ )); do
@@ -274,8 +278,8 @@ sendk Enter
 sleep 1
 sendk Escape h
 sleep 1
-capE > "$REPO/tmp/mc_parity_hist.sgr"
-screen_load "$REPO/tmp/mc_parity_hist.sgr" 100 30
+capE > "$REPO/tmp/${MCT}mc_parity_hist.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_hist.sgr" 100 30
 hist_title=0
 hist_shadow=0
 for (( y = 0; y < 30; y++ )); do
@@ -306,8 +310,8 @@ sleep 1
 # M-c opens Quick cd with MC's title and gray-on-black shadow.
 sendk Escape c
 sleep 1
-capE > "$REPO/tmp/mc_parity_quickcd.sgr"
-screen_load "$REPO/tmp/mc_parity_quickcd.sgr" 100 30
+capE > "$REPO/tmp/${MCT}mc_parity_quickcd.sgr"
+screen_load "$REPO/tmp/${MCT}mc_parity_quickcd.sgr" 100 30
 qc_title=0
 qc_shadow=0
 for (( y = 0; y < 30; y++ )); do

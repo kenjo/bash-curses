@@ -1,8 +1,12 @@
 #!/bin/bash
 # tmux-driven regression test for mouse input in examples/mc.sh.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_mouse.sock"
-TREE="$REPO/tmp/mc_mouse"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+SOCK="$REPO/tmp/${MCT}bc_mouse.sock"
+TREE="$REPO/tmp/${MCT}mc_mouse"
 T=bcmouse
 pass=0 fail=0
 ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
@@ -20,7 +24,7 @@ printf 'hello\n' > "$TREE/alpha"
 printf 'beta\n' > "$TREE/sub/beta"
 seq 1 100 > "$TREE/big"
 
-tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 -c "$TREE" bash "$REPO/examples/mc.sh"
+tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 -c "$TREE" bash "$MC_SCRIPT"
 
 ready=0
 for _ in $(seq 1 80); do

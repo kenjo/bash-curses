@@ -9,10 +9,14 @@
 #   - focus moves to "Preserve attributes" and leaves "Follow links" unhighlighted
 #   - Space on the focused Cancel button closes the dialog
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_dialog.sock"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+SOCK="$REPO/tmp/${MCT}bc_dialog.sock"
 T=bcdialog
-WORK="$REPO/tmp/dialog_test"
-TMP="$REPO/tmp/mc_dialog"
+WORK="$REPO/tmp/${MCT}dialog_test"
+TMP="$REPO/tmp/${MCT}mc_dialog"
 W=100
 H=30
 pass=0
@@ -29,7 +33,7 @@ source "$REPO/tests/lib/screen.sh"
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
 tmux -S "$SOCK" new-session -d -s "$T" -x "$W" -y "$H" \
-  bash -c "cd '$WORK' && exec bash '$REPO/examples/mc.sh'"
+  bash -c "cd '$WORK' && exec bash '$MC_SCRIPT'"
 
 ready=0
 for _ in $(seq 1 80); do

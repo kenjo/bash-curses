@@ -6,7 +6,11 @@
 # selection row must stay visible (black-on-cyan, pair 6 -> SGR bg 46) at all
 # times. The menu bar must also be cyan (pair 6).
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_nav.sock"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+SOCK="$REPO/tmp/${MCT}bc_nav.sock"
 T=bcnav
 pass=0 fail=0
 ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
@@ -14,7 +18,7 @@ bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
 
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
-tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 bash "$REPO/examples/mc.sh"
+tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 bash "$MC_SCRIPT"
 
 # wait for the file view to render
 ready=0

@@ -548,5 +548,47 @@ bc_run fps=100 >/dev/null
 check "L on_tick until quit" "3" "$ticks"
 unset -f on_key on_click click_top draw_body key_pop dlg_keys on_tick
 
+
+# ======================================================= mc-style frames, focus
+fresh 20 40
+bc_screen "bg"
+txt=""; for i in {1..20}; do txt+="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"$'\n'; done
+bc_text bg "$txt"
+bc_float dlg size=4x10 border margin=1 shadow=mc spair=9 pair=5 title=T tpair=6 nudge=-2,0
+bc_relayout
+check "M outer rect = box + margin + shadow" "4 13 7 14" "$(frect dlg)"
+bc_size dlg
+check "M content inside margin+border" "2 8" "$BCL_H $BCL_W"
+bc_update >/dev/null
+check "M margin ring is background" "            " "$(srow 4 13 12)"
+check "M border inside margin" " ┌── T ───┐ " "$(srow 5 13 12)"
+check "M title pen" "6" "${BC_SP[5 18]}"
+check "M mc shadow right is see-through" "zA 9" "${BC_S[5 25]}${BC_S[5 26]} ${BC_SP[5 25]}"
+check "M top-right corner untouched" "z 0" "${BC_S[4 25]} ${BC_SP[4 25]}"
+check "M mc shadow bottom row" "p 9" "${BC_S[10 15]} ${BC_SP[10 15]}"
+check "M bottom-left corner untouched" "o 0" "${BC_S[10 14]} ${BC_SP[10 14]}"
+bc_close dlg; bc_update >/dev/null
+check "M closed: shadow gone" "zA 0" "${BC_S[5 25]}${BC_S[5 26]} ${BC_SP[5 25]}"
+
+# cursor follows an area
+bc_float inp size=1x10 at=2,3
+bc_cursor inp 0 4; bc_update >/dev/null
+check "M cursor parked in area" "2 7" "${BC_WAY[0]} ${BC_WAX[0]}"
+bc_cursor; bc_close inp
+
+# focus first, bc_pass hands on; registered widget handlers
+log=""
+on_key() { log+="on:$1 "; }
+fk() { log+="f:$1 "; [[ $1 == p ]] && bc_pass; }
+bc_float w1 size=2x5 at=0,0
+BCL_KEYFN[w1]=fk
+bc_float w2 size=2x5 at=0,10 keys=w2k
+w2k() { log+="w2:$1 "; bc_pass; }
+bc_focus w1; bc_update >/dev/null
+BCL_STARTED=1; KQ=(x p q); _bcl_readkey() { if (( ${#KQ[@]} == 0 )); then bc_quit; return 1; fi; key=${KQ[0]}; KQ=("${KQ[@]:1}"); }
+bc_run >/dev/null
+check "M focus first, pass goes to floats then on_key" "f:x f:p w2:p on:p f:q " "$log"
+bc_focus; bc_close w1; bc_close w2; unset -f on_key fk w2k
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 ))

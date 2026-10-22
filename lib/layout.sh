@@ -74,7 +74,7 @@ _bcl_forget() { # name
   declare -F _bcl_unbind >/dev/null && _bcl_unbind "$a"
   for k in KIND PARENT R0 R1 C0 C1 RY RX RH RW TPL KIDS ROWSPEC COLSPEC NR NC GAP BORDER CELLS \
            CH CW PAIR ATTR FRAME TITLE SHADOW BPAIR TEXT TPAIR TATTR TALIGN NEEDDRAW \
-           FIN FAT FSIZE FRND FKEYS FWITHIN; do
+           FIN FAT FSIZE FRND FKEYS FWITHIN FNUDGE MARGIN SPAIR TPEN KEYFN CLICKFN; do
     unset "BCL_$k[$a]"
   done
 }
@@ -409,15 +409,32 @@ declare -A BCL_WRECT=()   # name -> "y x h w" the windows were built for
 declare -A BCL_NEEDDRAW=()
 # style
 declare -A BCL_PAIR=() BCL_ATTR=() BCL_FRAME=() BCL_TITLE=() BCL_SHADOW=() BCL_BPAIR=()
+declare -A BCL_MARGIN=()  # name -> cells of background around the border
+declare -A BCL_SPAIR=()   # name -> shadow colour pair (default BCL_SHADOW_PAIR)
+declare -A BCL_TPEN=()    # name -> title colour pair (default: border pair)
+declare -A BCL_KEYFN=()   # name -> key handler (widgets register here)
+declare -A BCL_CLICKFN=() # name -> mouse handler (widgets register here)
+BCL_FOCUS=""              # area whose key handler sees keys first
+BCL_CURSOR=""             # "name y x": where the visible cursor goes
 # retained text (bc_text) — replayed whenever the window is rebuilt
 declare -A BCL_TEXT=() BCL_TPAIR=() BCL_TATTR=() BCL_TALIGN=()
 BCL_LAYOUT_DIRTY=0
 BCL_STARTED=0
 
 # Insets of an area's content inside its rectangle.
+# Shadows: "1" is a solid strip one cell right and below; "mc" is Midnight
+# Commander's: two columns right and one row below, see-through (tinted).
 _bcl_insets() { # name -> BCL_IT BCL_IL BCL_IB BCL_IR
-  local a=$1 f=${BCL_FRAME[$1]:-0} s=${BCL_SHADOW[$1]:-0}
-  BCL_IT=$f BCL_IL=$f BCL_IB=$(( f + s )) BCL_IR=$(( f + s ))
+  local a=$1 f=$(( ${BCL_FRAME[$1]:-0} + ${BCL_MARGIN[$1]:-0} ))
+  _bcl_shadow_size "$a"
+  BCL_IT=$f BCL_IL=$f BCL_IB=$(( f + BCL_SH )) BCL_IR=$(( f + BCL_SW ))
+}
+_bcl_shadow_size() { # name -> BCL_SH BCL_SW (rows below, columns right)
+  case ${BCL_SHADOW[$1]:-0} in
+    mc) BCL_SH=1 BCL_SW=2 ;;
+    0)  BCL_SH=0 BCL_SW=0 ;;
+    *)  BCL_SH=1 BCL_SW=1 ;;
+  esac
 }
 
 # Does a name get windows? Leaves always; containers only when they have
@@ -426,7 +443,7 @@ _bcl_bindable() { # name
   local a=$1
   [[ $a == screen ]] && return 1
   [[ -z ${BCL_TPL[$a]+set} ]] && return 0
-  [[ ${BCL_KIND[$a]} == float || -n ${BCL_FRAME[$a]:-} || -n ${BCL_SHADOW[$a]:-} || -n ${BCL_PAIR[$a]:-} || -n ${BCL_ATTR[$a]:-} || -n ${BCL_TITLE[$a]:-} ]]
+  [[ ${BCL_KIND[$a]} == float || -n ${BCL_FRAME[$a]:-} || -n ${BCL_SHADOW[$a]:-} || -n ${BCL_PAIR[$a]:-} || -n ${BCL_ATTR[$a]:-} || -n ${BCL_TITLE[$a]:-} || -n ${BCL_MARGIN[$a]:-} ]]
 }
 
 # Every bindable name in stacking order (bottom -> top) -> BCL_LV: the tiled
@@ -474,25 +491,28 @@ _bcl_paint_frame() { # name
   # cells itself, and the content derwin shares these cells)
   wbkgdset "$f" ' ' "$at" "$p"
   werase "$f"
-  if (( ${BCL_FRAME[$a]:-0} && bh >= 2 && bw >= 2 )); then
-    local bp=${BCL_BPAIR[$a]:-$p} r line
-    printf -v line '%*s' $(( bw - 2 )) ''; line=${line// /$ACS_HLINE}
+  local m=${BCL_MARGIN[$a]:-0}
+  local y0=$m x0=$m y1=$(( bh - 1 - m )) x1=$(( bw - 1 - m ))
+  if (( ${BCL_FRAME[$a]:-0} && y1 - y0 >= 1 && x1 - x0 >= 1 )); then
+    local bp=${BCL_BPAIR[$a]:-$p} r line iw=$(( x1 - x0 - 1 ))
+    printf -v line '%*s' "$iw" ''; line=${line// /$ACS_HLINE}
     wattrset "$f" "$at" "$bp"
-    mvwaddstr "$f" 0 0 "$ACS_ULCORNER$line$ACS_URCORNER"
-    for (( r = 1; r < bh - 1; r++ )); do
-      mvwaddch "$f" "$r" 0 "$ACS_VLINE"; mvwaddch "$f" "$r" $(( bw - 1 )) "$ACS_VLINE"
+    mvwaddstr "$f" "$y0" "$x0" "$ACS_ULCORNER$line$ACS_URCORNER"
+    for (( r = y0 + 1; r < y1; r++ )); do
+      mvwaddch "$f" "$r" "$x0" "$ACS_VLINE"; mvwaddch "$f" "$r" "$x1" "$ACS_VLINE"
     done
-    mvwaddstr "$f" $(( bh - 1 )) 0 "$ACS_LLCORNER$line"
-    mvwaddch "$f" $(( bh - 1 )) $(( bw - 1 )) "$ACS_LRCORNER"
+    mvwaddstr "$f" "$y1" "$x0" "$ACS_LLCORNER$line"
+    mvwaddch "$f" "$y1" "$x1" "$ACS_LRCORNER"
     if [[ -n ${BCL_TITLE[$a]:-} ]]; then
-      local t=" ${BCL_TITLE[$a]} "
+      local t=" ${BCL_TITLE[$a]} " bw2=$(( x1 - x0 + 1 ))
       # too long: keep the end (paths read best from the right)
-      (( ${#t} > bw - 2 )) && t=" …${t:${#t}-(bw-5)}"
-      mvwaddstr "$f" 0 $(( (bw - ${#t}) / 2 )) "$t"
+      (( ${#t} > bw2 - 2 )) && t=" …${t:${#t}-(bw2-5)}"
+      wattrset "$f" "$at" "${BCL_TPEN[$a]:-$bp}"
+      mvwaddstr "$f" "$y0" $(( x0 + (bw2 - ${#t}) / 2 )) "$t"
     fi
     wattrset "$f" "$at" "$p"
   fi
-  local sp=${BCL_SHADOW_PAIR:-0} sa=0
+  local sp=${BCL_SPAIR[$a]:-${BCL_SHADOW_PAIR:-0}} sa=0
   (( sp )) || sa=$A_REVERSE
   for sw in ${BCL_SWINS[$a]:-}; do
     wbkgdset "$sw" ' ' "$sa" "$sp"; werase "$sw"
@@ -504,27 +524,42 @@ _bcl_paint_frame() { # name
 # box — leaving the two outer corners uncovered so the screen shows through.
 _bcl_bind() { # name y x h w
   local a=$1 y=$2 x=$3 h=$4 w=$5
-  local s=${BCL_SHADOW[$a]:-0} fr=${BCL_FRAME[$a]:-0}
-  (( h <= s || w <= s )) && s=0
-  local bh=$(( h - s )) bw=$(( w - s )) pans="" wins=""
+  local fr=$(( ${BCL_FRAME[$a]:-0} + ${BCL_MARGIN[$a]:-0} )) st=${BCL_SHADOW[$a]:-0}
+  _bcl_shadow_size "$a"
+  local sh=$BCL_SH sw=$BCL_SW
+  (( h <= sh || w <= sw )) && sh=0 sw=0
+  local bh=$(( h - sh )) bw=$(( w - sw )) pans="" wins=""
   newwin "$bh" "$bw" "$y" "$x" || return 1
   local f=$bc_win
   new_panel "$f"; pans=$bc_panel
   BCL_FWIN[$a]=$f; BCL_WIN[$a]=$f
   if [[ -z ${BCL_TPL[$a]+set} ]] && (( fr )); then
-    local ch=$(( bh - 2 )) cw=$(( bw - 2 ))
-    if (( ch > 0 && cw > 0 )) && derwin "$f" "$ch" "$cw" 1 1; then
+    local ch=$(( bh - 2 * fr )) cw=$(( bw - 2 * fr ))
+    if (( ch > 0 && cw > 0 )) && derwin "$f" "$ch" "$cw" "$fr" "$fr"; then
       BCL_WIN[$a]=$bc_win
       new_panel "$bc_win"; pans+=" $bc_panel"; wins="$bc_win "
     fi
   fi
   wins+=$f
   BCL_SWINS[$a]=""
-  if (( s )); then
-    newwin "$bh" 1 $(( y + 1 )) $(( x + bw )) && { new_panel "$bc_win"; pans+=" $bc_panel"; wins+=" $bc_win"; BCL_SWINS[$a]+=" $bc_win"; }
-    if (( bw > 1 )); then
-      newwin 1 $(( bw - 1 )) $(( y + bh )) $(( x + 1 )) && { new_panel "$bc_win"; pans+=" $bc_panel"; wins+=" $bc_win"; BCL_SWINS[$a]+=" $bc_win"; }
+  if (( sh || sw )); then
+    # right strip from the 2nd row down to the box's last row, bottom strip
+    # from the sw+1-th column to the right edge (outer corners stay uncovered)
+    local -a strips=("$(( bh - 1 )) $sw $(( y + 1 )) $(( x + bw ))")
+    if [[ $st == mc ]]; then
+      strips+=("$sh $bw $(( y + bh )) $(( x + sw ))")
+    else
+      strips[0]="$bh $sw $(( y + 1 )) $(( x + bw ))"
+      strips+=("$sh $(( bw - 1 )) $(( y + bh )) $(( x + 1 ))")
     fi
+    local sdef
+    for sdef in "${strips[@]}"; do
+      set -- $sdef
+      (( $1 > 0 && $2 > 0 )) || continue
+      newwin "$1" "$2" "$3" "$4" || continue
+      new_panel "$bc_win"; pans+=" $bc_panel"; wins+=" $bc_win"; BCL_SWINS[$a]+=" $bc_win"
+      [[ $st == mc ]] && panel_tint "$bc_panel" 1
+    done
   fi
   BCL_PANS[$a]=$pans BCL_WINS[$a]=$wins
   local c=${BCL_WIN[$a]}
@@ -578,7 +613,10 @@ bc_relayout() {
 }
 
 # ------------------------------------------------------------ styling
-# bc_style NAME [pair=N] [attr=N] [border|border=0] [title=TEXT] [bpair=N] [shadow|shadow=0]
+# bc_style NAME [pair=N] [attr=N] [border|border=0] [title=TEXT] [bpair=N]
+#              [tpair=N] [margin=N] [shadow|shadow=mc|shadow=0] [spair=N]
+#   margin: rows/columns of background between the window edge and the border
+#   shadow=mc: Midnight Commander's see-through shadow (2 columns, 1 row)
 # "screen" styles the background (stdscr).
 bc_style() {
   local a=$1 o; shift
@@ -593,7 +631,11 @@ bc_style() {
       border)   BCL_FRAME[$a]=1; geom=1 ;;
       border=*) BCL_FRAME[$a]=$(( ${o#*=} ? 1 : 0 )); geom=1 ;;
       shadow)   BCL_SHADOW[$a]=1; geom=1 ;;
+      shadow=mc) BCL_SHADOW[$a]=mc; geom=1 ;;
       shadow=*) BCL_SHADOW[$a]=$(( ${o#*=} ? 1 : 0 )); geom=1 ;;
+      spair=*)  BCL_SPAIR[$a]=${o#*=} ;;
+      tpair=*)  BCL_TPEN[$a]=${o#*=} ;;
+      margin=*) BCL_MARGIN[$a]=${o#*=}; geom=1 ;;
       *) _bcl_err "bc_style: unknown option '$o'"; return 1 ;;
     esac
   done
@@ -899,7 +941,31 @@ _bcl_draw_pending() {
 bc_update() {
   (( BCL_LAYOUT_DIRTY )) && bc_relayout
   _bcl_draw_pending
+  _bcl_place_cursor
   doupdate
+}
+
+# bc_cursor NAME Y X — show the terminal cursor at Y,X of NAME's content (it
+# follows the area across relayouts). bc_cursor with no arguments hides it.
+bc_cursor() {
+  if (( $# < 3 )); then
+    [[ -n $BCL_CURSOR ]] && curs_set 0 >/dev/null
+    BCL_CURSOR=""
+    return 0
+  fi
+  [[ -z $BCL_CURSOR ]] && curs_set 1 >/dev/null
+  BCL_CURSOR="$1 $2 $3"
+}
+
+# doupdate leaves the terminal cursor at stdscr's cursor: put that where the
+# visible cursor belongs.
+_bcl_place_cursor() {
+  [[ -n $BCL_CURSOR ]] || return 0
+  local a y x c
+  read -r a y x <<< "$BCL_CURSOR"
+  c=${BCL_WIN[$a]:-}
+  [[ -n $c ]] || return 0
+  BC_WAY[$BC_STDSCR]=$(( BC_WY[$c] + y )) BC_WAX[$BC_STDSCR]=$(( BC_WX[$c] + x ))
 }
 
 # ------------------------------------------------------------ input
@@ -924,11 +990,19 @@ _bcl_in() { # name y x
   return 0
 }
 
-# bc_init [mouse] — initscr + the usual terminal modes, colours if available,
-# endwin on exit, and SIGWINCH -> KEY_RESIZE.
+# bc_init [mouse] [motion] [clickms=N] — initscr + the usual terminal modes,
+# colours if available, endwin on exit, and SIGWINCH -> KEY_RESIZE. motion
+# also reports mouse movement (for drags); clickms is the click interval.
 bc_init() {
-  local o mouse=0
-  for o in "$@"; do [[ $o == mouse ]] && mouse=1; done
+  local o mouse=0 mmask=$ALL_MOUSE_EVENTS
+  for o in "$@"; do
+    case $o in
+      mouse)     mouse=1 ;;
+      motion)    mouse=1; mmask=$(( mmask | REPORT_MOUSE_POSITION )) ;;
+      clickms=*) mouseinterval "${o#*=}" >/dev/null ;;
+      *) _bcl_err "bc_init: unknown option '$o'"; return 1 ;;
+    esac
+  done
   initscr || return 1
   cbreak; noecho; keypad "$BC_STDSCR" 1; curs_set 0
   if has_colors; then
@@ -938,7 +1012,7 @@ bc_init() {
       init_pair "$BCL_SHADOW_PAIR" 0 0
     fi
   fi
-  (( mouse )) && mousemask "$ALL_MOUSE_EVENTS" >/dev/null
+  (( mouse )) && mousemask "$mmask" >/dev/null
   trap 'endwin' EXIT
   trap 'exit 130' INT TERM
   trap 'BC_WINCH=1' WINCH
@@ -987,6 +1061,7 @@ declare -A BCL_FSIZE=()    # float -> size spec "HxW"
 declare -A BCL_FRND=()     # float -> random choices "h w fy fx" (fixed at creation)
 declare -A BCL_FKEYS=()    # float -> key handler function (bc_run / bc_modal)
 declare -A BCL_FWITHIN=()  # float -> area it is clamped to ("" = its in= parent)
+declare -A BCL_FNUDGE=()   # float -> "DY,DX" moved after placement, before clamping
 
 # bc_float NAME [in=PARENT] [within=AREA] [at=PLACE] [size=HxW] [style…] [keys=FN]
 #   in:     where it is placed and what N% sizes refer to (default: screen)
@@ -997,7 +1072,8 @@ declare -A BCL_FWITHIN=()  # float -> area it is clamped to ("" = its in= parent
 #           (random puts the top-left corner anywhere it fits, or anywhere in
 #           the parent when the float is bigger than it)
 #   H, W:   N  N%  auto  A..B  A%..B% (random in range, chosen once)
-#   style: border title=… shadow pair=N attr=N bpair=N (see bc_style)
+#   nudge:  DY,DX added to the position before it is clamped
+#   style: border title=… shadow pair=N attr=N bpair=N margin=N (see bc_style)
 # Calling it again for an existing float updates it in place.
 bc_float() {
   local a=$1 o; shift
@@ -1016,6 +1092,7 @@ bc_float() {
       at=*)   at=${o#*=} ;;
       size=*) size=${o#*=}; size=${size// /} ;;
       keys=*) BCL_FKEYS[$a]=${o#*=} ;;
+      nudge=*) BCL_FNUDGE[$a]=${o#*=} ;;
       *)      style+=("$o") ;;
     esac
   done
@@ -1063,8 +1140,13 @@ _bcl_inner() { # name -> BCL_Y BCL_X BCL_H BCL_W
 }
 
 # One float dimension: N / N% / auto / A..B -> BCL_D (outer size incl. shadow)
+# N / N% / A..B give the size of the box (inside any margin); margin and
+# shadow are added around it.
 _bcl_fdim() { # float spec parentsize axis rnd clampsize
-  local a=$1 spec=$2 ps=$3 ax=$4 r=$5 s=${BCL_SHADOW[$1]:-0}
+  local a=$1 spec=$2 ps=$3 ax=$4 r=$5 s
+  _bcl_shadow_size "$a"
+  if (( ax == 0 )); then s=$BCL_SH; else s=$BCL_SW; fi
+  s=$(( s + 2 * ${BCL_MARGIN[$a]:-0} ))
   case $spec in
     auto) _bcl_min "$a" "$ax"; BCL_D=$BCL_M ;;
     *..*) if [[ $r == *% ]]; then BCL_D=$(( ps * ${r%\%} / 100 + s )); else BCL_D=$(( r + s )); fi ;;
@@ -1111,6 +1193,9 @@ _bcl_place_floats() {
           esac
         fi ;;
     esac
+    if [[ -n ${BCL_FNUDGE[$a]:-} ]]; then
+      y=$(( y + ${BCL_FNUDGE[$a]%,*} )) x=$(( x + ${BCL_FNUDGE[$a]#*,} ))
+    fi
     # keep it inside the clamp area
     (( y + h > cy + ch )) && y=$(( cy + ch - h ))
     (( x + w > cx + cw )) && x=$(( cx + cw - w ))
@@ -1190,12 +1275,27 @@ _bcl_readkey() { wgetch "$BC_STDSCR"; }
 
 _bcl_now_ms() { local t=${EPOCHREALTIME//[!0-9]/}; BCL_NOW=$(( t / 1000 )); }
 
-# Key handler of a float, if it has one -> BCL_FN
-_bcl_keyfn() { # float
-  BCL_FN=${BCL_FKEYS[$1]:-}
+# Key handler of an area or float, if it has one -> BCL_FN: keys=FN given to
+# bc_float, else a widget's handler, else a function named key_NAME.
+_bcl_keyfn() { # name
+  BCL_FN=${BCL_FKEYS[$1]:-${BCL_KEYFN[$1]:-}}
   [[ -z $BCL_FN ]] && declare -F "key_$1" >/dev/null && BCL_FN="key_$1"
   [[ -n $BCL_FN ]]
 }
+
+# bc_pass — called by a key or click handler: "not mine", so the event goes on
+# to the next handler (focus -> floats top-down -> on_key / on_click).
+bc_pass() { BCL_PASSED=1; }
+
+# Call a handler; status 0 if it took the event (did not bc_pass).
+_bcl_handle() { # fn args...
+  BCL_PASSED=0
+  "$@"
+  (( ! BCL_PASSED ))
+}
+
+# bc_focus NAME — the area whose key handler sees keys first ("" for none).
+bc_focus() { BCL_FOCUS=${1:-}; }
 
 # Is NAME inside float F (F itself, its grid, or floats placed in it)?
 _bcl_inside() { # name float
@@ -1219,22 +1319,37 @@ _bcl_dispatch() { # key (modal float or "")
       bc_hit "$BC_ME_Y" "$BC_ME_X" || continue
       [[ -n $m ]] && ! _bcl_inside "$BCL_AREA" "$m" && continue
       BCL_MB=$BC_ME_BSTATE
-      if declare -F "click_$BCL_AREA" >/dev/null; then
-        "click_$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB"
-      elif declare -F on_click >/dev/null; then
-        on_click "$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB"
-      fi
+      _bcl_click "$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB" "$m"
     done
     return 0
+  fi
+  # the focused area first, then floats top-down, then on_key
+  if [[ -n $BCL_FOCUS && -n ${BCL_WIN[$BCL_FOCUS]:-} ]] && { [[ -z $m ]] || _bcl_inside "$BCL_FOCUS" "$m"; }; then
+    _bcl_keyfn "$BCL_FOCUS" && _bcl_handle "$BCL_FN" "$k" && return 0
   fi
   local -a fl
   read -r -a fl <<< "$BCL_FLOATS"
   for (( i = ${#fl[@]} - 1; i >= 0; i-- )); do
     [[ -n $m ]] && ! _bcl_inside "${fl[i]}" "$m" && continue
-    _bcl_keyfn "${fl[i]}" && { "$BCL_FN" "$k"; return 0; }
+    [[ ${fl[i]} == "$BCL_FOCUS" ]] && continue
+    _bcl_keyfn "${fl[i]}" && _bcl_handle "$BCL_FN" "$k" && return 0
   done
   [[ -n $m ]] && return 0
   declare -F on_key >/dev/null && on_key "$k"
+  return 0
+}
+
+# A click goes to the area's widget handler, then click_NAME, then on_click
+# (each may bc_pass it on).
+_bcl_click() { # area y x bstate modal
+  local a=$1
+  if [[ -n ${BCL_CLICKFN[$a]:-} ]]; then
+    _bcl_handle "${BCL_CLICKFN[$a]}" "$a" "$2" "$3" "$4" && return 0
+  fi
+  if declare -F "click_$a" >/dev/null; then
+    _bcl_handle "click_$a" "$2" "$3" "$4" && return 0
+  fi
+  declare -F on_click >/dev/null && on_click "$a" "$2" "$3" "$4"
   return 0
 }
 
@@ -1288,10 +1403,12 @@ bc_run() {
 bc_modal() {
   local a=$1 prev=$BCL_MODAL
   [[ ${BCL_KIND[$a]:-} == float ]] || { _bcl_err "bc_modal: '$a' is not a float"; return 1; }
+  local pfocus=$BCL_FOCUS
   BCL_RESULT=""
   BCL_MODAL=$a
   _bcl_loop "$a"
   BCL_MODAL=$prev
+  BCL_FOCUS=$pfocus
   [[ -n $BCL_RESULT ]]
 }
 

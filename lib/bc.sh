@@ -3681,17 +3681,20 @@ is_linetouched() { # win line
 # covered by a visible panel are stdscr's). Rebuilt only when the panel stack,
 # a hidden flag or a panel window's rectangle changes, so compositing a dirty
 # cell is one lookup instead of a walk over every panel.
-declare -A BC_OWN=()
+# BC_TINT["y x"] = a tint panel above that window (see panel_tint): the
+# character comes from the owner, the attributes/colour from the tint.
+declare -A BC_OWN=() BC_TINT=()
+declare -A BC_PTINT=()  # panel id -> 1 for a tint (see-through) panel
 BC_OWNSIG=""
 _bc_owner_map() {
   local p w sig="$BC_LINES $BC_COLS"
   for p in "${BC_PSTACK[@]}"; do
     w=${BC_PWIN[$p]}
-    sig+="|$w ${BC_PHID[$p]:-0} ${BC_WY[$w]} ${BC_WX[$w]} ${BC_WH[$w]} ${BC_WW[$w]}"
+    sig+="|$w ${BC_PHID[$p]:-0} ${BC_PTINT[$p]:-0} ${BC_WY[$w]} ${BC_WX[$w]} ${BC_WH[$w]} ${BC_WW[$w]}"
   done
   [[ $sig == "$BC_OWNSIG" ]] && return 0
-  BC_OWN=()
-  local y x y0 y1 x0 x1
+  BC_OWN=() BC_TINT=()
+  local y x y0 y1 x0 x1 t
   for p in "${BC_PSTACK[@]}"; do
     [[ ${BC_PHID[$p]:-0} == 1 ]] && continue
     w=${BC_PWIN[$p]}
@@ -3702,11 +3705,26 @@ _bc_owner_map() {
     (( x0 < 0 )) && x0=0
     (( y1 > BC_LINES )) && y1=$BC_LINES
     (( x1 > BC_COLS )) && x1=$BC_COLS
+    t=${BC_PTINT[$p]:-0}
     for (( y = y0; y < y1; y++ )); do
-      for (( x = x0; x < x1; x++ )); do BC_OWN["$y $x"]=$w; done
+      if (( t )); then
+        for (( x = x0; x < x1; x++ )); do BC_TINT["$y $x"]=$w; done
+      else
+        for (( x = x0; x < x1; x++ )); do BC_OWN["$y $x"]=$w; unset "BC_TINT[$y $x]"; done
+      fi
     done
   done
   BC_OWNSIG=$sig
+}
+
+# Extension (not in ncurses): a tint panel is see-through. Where it is the
+# topmost panel, the screen shows the character of whatever lies below with
+# the tint window's attributes and colour pair (e.g. Midnight Commander's
+# shadows, which darken the text they fall on).
+panel_tint() { # p on
+  BC_PTINT[$1]=$(( ${2:-1} ? 1 : 0 ))
+  _bc_win_rect_dirty "${BC_PWIN[$1]}"
+  return 0
 }
 
 # Composite the visible content at one absolute cell: stdscr is the base, and
@@ -3718,16 +3736,24 @@ _bc_composite_cell() { # ay ax
   _BC_CC=${BC_C["$buf/$ay $ax"]:-${BC_WBG[$BC_STDSCR]}}
   _BC_CA=${BC_A["$buf/$ay $ax"]:-0}
   _BC_CP=${BC_P["$buf/$ay $ax"]:-0}
+  local tw=""
   for p in "${BC_PSTACK[@]}"; do
     [[ ${BC_PHID[$p]} == 1 ]] && continue
     w=${BC_PWIN[$p]}
     if (( ay >= BC_WY[$w] && ay < BC_WY[$w] + BC_WH[$w] && ax >= BC_WX[$w] && ax < BC_WX[$w] + BC_WW[$w] )); then
+      if [[ ${BC_PTINT[$p]:-0} == 1 ]]; then tw=$w; continue; fi
+      tw=""
       buf=${BC_WBUF[$w]}
       _BC_CC=${BC_C["$buf/$ay $ax"]:-${BC_WBG[$w]}}
       _BC_CA=${BC_A["$buf/$ay $ax"]:-0}
       _BC_CP=${BC_P["$buf/$ay $ax"]:-0}
     fi
   done
+  if [[ -n $tw ]]; then
+    buf=${BC_WBUF[$tw]}
+    _BC_CA=${BC_A["$buf/$ay $ax"]:-${BC_WBGA[$tw]}}
+    _BC_CP=${BC_P["$buf/$ay $ax"]:-${BC_WBGP[$tw]}}
+  fi
   return 0
 }
 
@@ -3824,7 +3850,7 @@ doupdate() {
   local i p w j pj pw pwy pwx pwh pww wy wx wh ww
   for (( i=${#BC_PSTACK[@]}-1; i>=0; i-- )); do
     p=${BC_PSTACK[i]}
-    [[ ${BC_PHID[$p]:-0} == 1 ]] && continue
+    [[ ${BC_PHID[$p]:-0} == 1 || ${BC_PTINT[$p]:-0} == 1 ]] && continue
     w=${BC_PWIN[$p]}
     wy=${BC_WY[$w]}; wx=${BC_WX[$w]}; wh=${BC_WH[$w]}; ww=${BC_WW[$w]}
     (( wy <= bminy && wx <= bminx && wy + wh > bmaxy && wx + ww > bmaxx )) || continue
@@ -3959,6 +3985,10 @@ doupdate() {
       # same result as _bc_composite_cell, via the cached owner map
       ow=${BC_OWN[$k]:-$BC_STDSCR}; ob=${BC_WBUF[$ow]}
       _BC_CC=${BC_C["$ob/$k"]:-${BC_WBG[$ow]}}; _BC_CA=${BC_A["$ob/$k"]:-0}; _BC_CP=${BC_P["$ob/$k"]:-0}
+      if [[ -n ${BC_TINT[$k]:-} ]]; then
+        ow=${BC_TINT[$k]}; ob=${BC_WBUF[$ow]}
+        _BC_CA=${BC_A["$ob/$k"]:-${BC_WBGA[$ow]}}; _BC_CP=${BC_P["$ob/$k"]:-${BC_WBGP[$ow]}}
+      fi
     fi
     ch=$_BC_CC; a=$_BC_CA; pp=$_BC_CP
     if [[ ${BC_S[$k]:-} == "$ch" && ${BC_SA[$k]:-0} == "$a" && ${BC_SP[$k]:-0} == "$pp" ]]; then
@@ -4026,7 +4056,7 @@ del_panel() { # p
     [[ $z != "$p" ]] && ns+=("$z")
   done
   BC_PSTACK=("${ns[@]}")
-  unset "BC_PWIN[$p]" "BC_PHID[$p]" "BC_PUSR[$p]"
+  unset "BC_PWIN[$p]" "BC_PHID[$p]" "BC_PUSR[$p]" "BC_PTINT[$p]"
   return 0
 }
 

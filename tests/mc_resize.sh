@@ -5,7 +5,11 @@
 # After a resize the button bar must sit on the new last row and the hint line
 # must move to its new position.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_resize.sock"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+SOCK="$REPO/tmp/${MCT}bc_resize.sock"
 T=bcresize
 pass=0 fail=0
 ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
@@ -13,7 +17,7 @@ bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
 
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
-tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 bash "$REPO/examples/mc.sh"
+tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 bash "$MC_SCRIPT"
 
 ready=0
 for _ in $(seq 1 80); do

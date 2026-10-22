@@ -16,9 +16,13 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
 source "$REPO/tests/lib/screen.sh"
 
-ROOT="$REPO/tmp/p"
+ROOT="$REPO/tmp/${MCT}p"
 TREE="$ROOT/t"
 TREE_M="$ROOT/t0"
 TREE_C="$ROOT/t1"
@@ -113,7 +117,7 @@ start_app() {
   if [[ $which == mc ]]; then
     sock=$SOCKM; sess=$SESSM; tree=$TREE_M; cmd="exec /usr/bin/mc"
   else
-    sock=$SOCKC; sess=$SESSC; tree=$TREE_C; cmd="exec bash '$REPO/examples/mc.sh'"
+    sock=$SOCKC; sess=$SESSC; tree=$TREE_C; cmd="exec bash '$MC_SCRIPT'"
   fi
   kill_app "$which"
   rm -f "$sock"

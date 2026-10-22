@@ -6,9 +6,13 @@
 #   - End scrolls to the bottom (the offset in the title becomes non-zero)
 #   - q closes the viewer and restores the file-manager panels
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-SOCK="$REPO/tmp/bc_view2.sock"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+SOCK="$REPO/tmp/${MCT}bc_view2.sock"
 T=bcview2
-WORK="$REPO/tmp/view_test"
+WORK="$REPO/tmp/${MCT}view_test"
 pass=0 fail=0
 ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
 bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
@@ -28,7 +32,7 @@ for i in $(seq 1 59); do printf 'L%d\n' "$i" > "$WORK/tab.txt"; done
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
 tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 \
-  bash -c "cd '$WORK' && exec bash '$REPO/examples/mc.sh'"
+  bash -c "cd '$WORK' && exec bash '$MC_SCRIPT'"
 
 # wait for the listing to render
 ready=0

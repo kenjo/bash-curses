@@ -1,8 +1,12 @@
 #!/bin/bash
 # tmux-driven regression tests for menu actions in examples/mc.sh.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="$REPO/tmp/mc_actions"
-SOCK="$REPO/tmp/bc_actions.sock"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
+WORK="$REPO/tmp/${MCT}mc_actions"
+SOCK="$REPO/tmp/${MCT}bc_actions.sock"
 T=bcactions
 W=100
 H=30
@@ -18,7 +22,7 @@ seq 1 200  > "$WORK/sample.txt"
 
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
-tmux -S "$SOCK" new-session -d -s "$T" -x "$W" -y "$H" bash -c "cd '$WORK' && exec bash '$REPO/examples/mc.sh'"
+tmux -S "$SOCK" new-session -d -s "$T" -x "$W" -y "$H" bash -c "cd '$WORK' && exec bash '$MC_SCRIPT'"
 
 ready=0
 for _ in $(seq 1 80); do

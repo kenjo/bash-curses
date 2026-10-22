@@ -16,9 +16,13 @@
 #   diff_<n>_<label>.txt          raw diff for the (first) differing step, if any
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# this run's tmp files/sockets so two runs can go in parallel.
+MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MCT=${MC_TAG:-}
 # per-cell SGR grid parser (text + fg + bg + attrs) for rich color diffs
 source "$REPO/tests/lib/screen.sh"
-ROOT="$REPO/tmp/vd"
+ROOT="$REPO/tmp/${MCT}vd"
 TREE="$ROOT/tree"
 SOCKM="$ROOT/mc.sock";  SESSM=vdmcm
 SOCKC="$ROOT/cl.sock";  SESSC=vdmcl
@@ -51,7 +55,7 @@ start_app() { # which (mc|clone)
       bash -c "cd '$TREE' && exec /usr/bin/mc"
   else
     tmux -S "$sock" new-session -d -s "$sess" -x "$X" -y "$Y" \
-      bash -c "cd '$TREE' && exec bash '$REPO/examples/mc.sh'"
+      bash -c "cd '$TREE' && exec bash '$MC_SCRIPT'"
   fi
   local ready=0
   for _ in $(seq 1 120); do
