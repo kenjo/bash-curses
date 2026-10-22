@@ -459,6 +459,7 @@ _bcl_eff() { # name -> BCL_EP BCL_EA
 _bcl_unbind() { # name
   local a=$1 p w
   [[ -n ${BCL_FWIN[$a]:-} ]] || return 0
+  _bcl_forget_text "$a" "${BC_WH[${BCL_WIN[$a]}]:-0}"
   for p in ${BCL_PANS[$a]}; do del_panel "$p"; done
   for w in ${BCL_WINS[$a]}; do delwin "$w"; done
   unset "BCL_WIN[$a]" "BCL_FWIN[$a]" "BCL_PANS[$a]" "BCL_WINS[$a]" "BCL_SWINS[$a]" "BCL_WRECT[$a]"
@@ -618,6 +619,7 @@ bc_style() {
       wbkgdset "${BCL_WIN[$n]}" ' ' "$BCL_EA" "$BCL_EP"
       wattrset "${BCL_WIN[$n]}" "$BCL_EA" "$BCL_EP"
       _bcl_paint_frame "$n"
+      _bcl_forget_text "$n" "${BC_WH[${BCL_WIN[$n]}]}"
       BCL_NEEDDRAW[$n]=1
     done
     # a container that just became visible needs a window
@@ -630,6 +632,9 @@ bc_style() {
 # Returns 1 if the area is currently hidden (no window).
 bc_win() {
   bc_win=${BCL_WIN[$1]:-}
+  # the app may now draw cells the layer does not know about, so this area
+  # falls back to a full clear before each redraw (see _bcl_draw_area)
+  [[ -n $bc_win ]] && BCL_RAW[$1]=1
   [[ -n $bc_win ]]
 }
 
@@ -656,16 +661,125 @@ _bcl_pen() { # name opts... -> BCL_PA BCL_PP BCL_AL (attr, pair, align)
   done
 }
 
-# Write one clipped string into a content window.
-_bcl_put() { # win y x str attr pair
-  local c=$1 y=$2 x=$3 s=$4
+# ---- change-only drawing
+# Repainting a whole area for every keystroke is what makes immediate-style
+# drawing slow here: every cell written is marked dirty and doupdate pays for
+# each one. So the layer only writes cells whose content actually changes, and
+# instead of clearing an area before draw_NAME it remembers, per row, how far
+# text may extend (BCL_EXT) and which spans the current redraw wrote
+# (BCL_SPAN); after the redraw only the remembered cells that were not
+# rewritten are blanked. The result equals "draw on a cleared area".
+declare -A BCL_EXT=()     # "name/row" -> end column of possibly non-blank text
+declare -A BCL_SPAN=()    # "name/row" -> " x0 x1 …" written in the current redraw
+declare -A BCL_RAW=()     # name -> app drew with raw bc.sh calls (bc_win)
+declare -A BCL_LAST=()    # "name/row" -> "x|pen|text" of the last write to that row
+BCL_DRAWING=""
+
+# Write one clipped string into an area, skipping it if the cells already hold
+# exactly this text and pen, and trimming it to the part that differs.
+_bcl_put() { # name y x str attr pair
+  local a=$1 y=$2 x=$3 s=$4 c=${BCL_WIN[$1]:-}
+  [[ -n $c ]] || return 0
   local w=${BC_WW[$c]}
   (( y < 0 || y >= BC_WH[$c] || x >= w )) && return 0
   if (( x < 0 )); then s=${s:$(( -x ))}; x=0; fi
   (( ${#s} > w - x )) && s=${s:0:w-x}
-  [[ -n $s ]] || return 0
+  local n=${#s}
+  (( n )) || return 0
+  if [[ -n $BCL_DRAWING && $BCL_DRAWING == "$a" ]]; then BCL_SPAN[$a/$y]+=" $x $(( x + n ))"; fi
+  (( ${BCL_EXT[$a/$y]:-0} < x + n )) && BCL_EXT[$a/$y]=$(( x + n ))
+  # rendered form of what mvwaddstr would store (see _bc_emit / _bc_render)
+  local buf=${BC_WBUF[$c]} bg=${BC_WBG[$c]}
+  local ra=$(( $5 | BC_WBGA[$c] )) rp=$6
+  (( rp )) || rp=${BC_WBGP[$c]}
+  local want=$s
+  [[ $bg != ' ' ]] && want=${s// /$bg}
+  # same text, pen and column as the last write to this row: nothing to do
+  # (any other change to the row's cells goes through here or forgets it)
+  local sig="$x|$ra $rp|$want"
+  if [[ -z ${BCL_RAW[$a]:-} && ${BCL_LAST[$a/$y]:-} == "$sig" ]]; then return 0; fi
+  BCL_LAST[$a/$y]=$sig
+  local ay=$(( BC_WY[$c] + y )) ax=$(( BC_WX[$c] + x )) rk
+  rk="$buf $ay"
+  if [[ -n ${BC_PUNI[$rk]+x} ]]; then
+    # owner row cache: one string compare
+    [[ ${BC_PUNI[$rk]} == "$ra $rp" && ${BC_CROW[$rk]:ax-BC_WX[$buf]:n} == "$want" ]] && return 0
+  else
+    local i=0 j=$(( n - 1 )) k
+    while (( i < n )); do
+      k="$buf/$ay $(( ax + i ))"
+      [[ ${BC_C[$k]:-} == "${want:i:1}" && ${BC_A[$k]:-} == "$ra" && ${BC_P[$k]:-} == "$rp" ]] || break
+      i=$(( i + 1 ))
+    done
+    (( i == n )) && return 0
+    while (( j > i )); do
+      k="$buf/$ay $(( ax + j ))"
+      [[ ${BC_C[$k]:-} == "${want:j:1}" && ${BC_A[$k]:-} == "$ra" && ${BC_P[$k]:-} == "$rp" ]] || break
+      j=$(( j - 1 ))
+    done
+    s=${s:i:j-i+1}; x=$(( x + i ))
+  fi
   wattrset "$c" "$5" "$6"
   mvwaddstr "$c" "$y" "$x" "$s"
+}
+
+# Forget what the layer knows about an area's text (fresh or erased window).
+_bcl_forget_text() { # name rows
+  local a=$1 r
+  for (( r = 0; r < $2; r++ )); do unset "BCL_EXT[$a/$r]" "BCL_SPAN[$a/$r]" "BCL_LAST[$a/$r]"; done
+}
+
+# Redraw one area: retained text, then draw_NAME, then blank what the previous
+# content left behind (or a plain full clear first for raw-drawn areas).
+_bcl_draw_area() { # name
+  local a=$1 c=${BCL_WIN[$1]:-}
+  [[ -n $c ]] || return 0
+  # only areas whose whole content is described (text / draw_NAME) are redrawn;
+  # anything else keeps what was printed into it
+  [[ -n ${BCL_TEXT[$a]+set} ]] || declare -F "draw_$a" >/dev/null || return 0
+  local h=${BC_WH[$c]} r
+  if [[ -n ${BCL_RAW[$a]:-} ]]; then
+    werase "$c"; _bcl_forget_text "$a" "$h"
+  fi
+  local prev=$BCL_DRAWING
+  BCL_DRAWING=$a
+  for (( r = 0; r < h; r++ )); do BCL_SPAN[$a/$r]=""; done
+  [[ -n ${BCL_TEXT[$a]+set} ]] && _bcl_draw_text "$a"
+  declare -F "draw_$a" >/dev/null && "draw_$a" "$a"
+  BCL_DRAWING=$prev
+  # blank the cells that held text before and were not written now
+  _bcl_eff "$a"
+  local ea=$BCL_EA ep=$BCL_EP e x0 x1 pos end blank
+  local -a sp
+  for (( r = 0; r < h; r++ )); do
+    e=${BCL_EXT[$a/$r]:-0}
+    (( e )) || continue
+    read -r -a sp <<< "${BCL_SPAN[$a/$r]}"
+    # spans in write order; sort them by start (few per row)
+    local -a st=() en=()
+    local i m t
+    for (( i = 0; i < ${#sp[@]}; i += 2 )); do st+=("${sp[i]}"); en+=("${sp[i+1]}"); done
+    for (( i = 1; i < ${#st[@]}; i++ )); do
+      for (( m = i; m > 0 && st[m-1] > st[m]; m-- )); do
+        t=${st[m]}; st[m]=${st[m-1]}; st[m-1]=$t
+        t=${en[m]}; en[m]=${en[m-1]}; en[m-1]=$t
+      done
+    done
+    pos=0 end=0
+    for (( i = 0; i <= ${#st[@]}; i++ )); do
+      if (( i < ${#st[@]} )); then x0=${st[i]} x1=${en[i]}; else x0=$e x1=$e; fi
+      (( x0 > e )) && x0=$e
+      if (( x0 > pos )); then
+        printf -v blank '%*s' $(( x0 - pos )) ''
+        BCL_DRAWING="" _bcl_put "$a" "$r" "$pos" "$blank" "$ea" "$ep"
+      fi
+      (( x1 > pos )) && pos=$x1
+      (( x1 > end )) && end=$x1
+    done
+    if (( end )); then BCL_EXT[$a/$r]=$end; else unset "BCL_EXT[$a/$r]"; fi
+    unset "BCL_SPAN[$a/$r]"
+  done
+  wattrset "$c" "$ea" "$ep"
 }
 
 # bc_print NAME Y X TEXT [pair=N] [attr=N] — clipped to the area (no wrap).
@@ -674,20 +788,21 @@ bc_print() {
   local c=${BCL_WIN[$a]:-}
   [[ -n $c ]] || return 0
   _bcl_pen "$a" "$@" || return 1
-  _bcl_put "$c" "$y" "$x" "$s" "$BCL_PA" "$BCL_PP"
+  _bcl_put "$a" "$y" "$x" "$s" "$BCL_PA" "$BCL_PP"
   _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
 }
 
 # bc_clear NAME — erase the content to the area background.
 bc_clear() {
   local c=${BCL_WIN[$1]:-}
-  [[ -n $c ]] && werase "$c"
-  return 0
+  [[ -n $c ]] || return 0
+  werase "$c"
+  _bcl_forget_text "$1" "${BC_WH[$c]}"
 }
 
 # bc_text NAME TEXT [pair=N] [attr=N] [align=left|center|right]
 # Sets the area's content: it is measured (auto tracks and auto-sized floats
-# fit it), drawn now, and redrawn automatically whenever the window is rebuilt.
+# fit it) and drawn at the next update, and again whenever the window is rebuilt.
 bc_text() {
   local a=$1 t=$2; shift 2
   [[ -n ${BCL_KIND[$a]+set} ]] || { _bcl_err "bc_text: unknown area '$a'"; return 1; }
@@ -703,7 +818,7 @@ bc_text() {
     BCL_CH[$a]=$n BCL_CW[$a]=$mw
     _bcl_content_sized "$a" && BCL_LAYOUT_DIRTY=1
   fi
-  _bcl_draw_text "$a"
+  BCL_NEEDDRAW[$a]=1
 }
 
 # Can NAME's content size change the layout? True when it (or an enclosing
@@ -732,7 +847,6 @@ _bcl_content_sized() { # name
 _bcl_draw_text() { # name
   local a=$1 c=${BCL_WIN[$1]:-} line r=0 x w
   [[ -n $c ]] || return 0
-  werase "$c"
   w=${BC_WW[$c]}
   while IFS= read -r line; do
     case ${BCL_TALIGN[$a]} in
@@ -741,7 +855,7 @@ _bcl_draw_text() { # name
       *)      x=0 ;;
     esac
     (( x < 0 )) && x=0
-    _bcl_put "$c" "$r" "$x" "$line" "${BCL_TATTR[$a]}" "${BCL_TPAIR[$a]}"
+    _bcl_put "$a" "$r" "$x" "$line" "${BCL_TATTR[$a]}" "${BCL_TPAIR[$a]}"
     r=$(( r + 1 ))
   done <<< "${BCL_TEXT[$a]}"
   _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
@@ -760,21 +874,21 @@ bc_dirty() {
   done
 }
 
-# Redraw what needs it: retained text, then draw_NAME functions (called on a
-# freshly cleared area, so they always describe its whole content), then on_draw
-# (once, if anything at all was pending). Returns 1 if nothing was pending.
+# Redraw what needs it: retained text, then draw_NAME functions (which see
+# the area as if freshly cleared, so they always describe its whole content),
+# then on_draw (once, if anything at all was pending). Returns 1 if nothing
+# was pending.
 _bcl_draw_pending() {
-  local a any=0
-  for a in "${!BCL_NEEDDRAW[@]}"; do
-    unset "BCL_NEEDDRAW[$a]"
-    [[ -n ${BCL_WIN[$a]:-} ]] || continue
-    any=1
-    if [[ -n ${BCL_TEXT[$a]+set} ]]; then
-      _bcl_draw_text "$a"
-    elif declare -F "draw_$a" >/dev/null; then
-      werase "${BCL_WIN[$a]}"
-    fi
-    declare -F "draw_$a" >/dev/null && "draw_$a" "$a"
+  local a any=0 pass
+  # a draw_NAME may mark other areas (e.g. bc_text on a status line): keep
+  # going until nothing is pending (bounded, in case two areas mark each other)
+  for (( pass = 0; pass < 4 && ${#BCL_NEEDDRAW[@]}; pass++ )); do
+    for a in "${!BCL_NEEDDRAW[@]}"; do
+      unset "BCL_NEEDDRAW[$a]"
+      [[ -n ${BCL_WIN[$a]:-} ]] || continue
+      any=1
+      _bcl_draw_area "$a"
+    done
   done
   (( any )) || return 1
   declare -F on_draw >/dev/null && on_draw

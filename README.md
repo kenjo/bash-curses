@@ -100,6 +100,11 @@ bc_run
   `bc_text NAME text [align=]` (retained, redrawn on rebuild, measured for
   `auto`), `bc_clear`, `bc_size` → `BCL_H BCL_W`, `bc_win NAME` → `bc_win`
   for any `bc.sh` call, `bc_style`, `bc_dirty NAME…`.
+- **Redraws are cheap**: a `draw_NAME` describes the area's whole content as
+  if on a cleared area, but the layer only writes cells that actually change
+  (and blanks text left over from the previous draw), so redrawing a whole
+  panel on every keystroke costs about what changed. Areas drawn with raw
+  `bc.sh` calls (after `bc_win NAME`) are fully cleared before each redraw.
 - **Loop**: either `bc_run [fps=N]`, which calls `draw_NAME`/`on_draw`,
   `on_key`, `key_FLOAT`, `click_NAME`/`on_click`, `on_tick MS`, `on_resize`,
   plus `bc_modal NAME` for a dialog that returns its result; or your own loop

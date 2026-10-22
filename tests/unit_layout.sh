@@ -274,6 +274,64 @@ bc_hit 0 3
 check "W hit top" "top 0 3" "$BCL_AREA $BCL_MY $BCL_MX"
 
 
+# change-only drawing: same result as drawing on a cleared area, but only
+# changed cells are written (and marked dirty)
+ndirty() { local w n=0 k; for w in "${!BC_WD[@]}"; do local IFS=','; for k in ${BC_WD[$w]}; do [[ -n $k ]] && n=$(( n + 1 )); done; done; echo $n; }
+fresh 12 40
+bc_screen "list" border=0
+bc_style list border
+SEL=1; ITEMS=(alpha beta gamma delta)
+draw_list() { local i p; bc_size list
+  for (( i = 0; i < ${#ITEMS[@]}; i++ )); do
+    p=0; (( i == SEL )) && p=2
+    printf -v l '%-*s' "$BCL_W" "${ITEMS[i]}"; bc_print list "$i" 0 "$l" pair=$p
+  done; }
+bc_update >/dev/null
+check "C first draw" "│beta" "$(srow 2 0 5)"
+bc_dirty list; bc_update >/dev/null
+bc_dirty list; _bcl_draw_pending
+check "C unchanged redraw dirties nothing" "0" "$(ndirty)"
+doupdate >/dev/null
+SEL=2; bc_dirty list; _bcl_draw_pending
+check "C moving selection dirties 2 rows" "$(( 2 * 38 ))" "$(ndirty)"
+doupdate >/dev/null
+check "C new selection pair" "2" "${BC_SP[3 1]}"
+check "C old selection pair" "0" "${BC_SP[2 1]}"
+draw_list() { bc_print list 0 0 "hi"; bc_print list 1 3 "x"; }
+bc_dirty list; bc_update >/dev/null
+check "C leftovers blanked row 0" "│hi    " "$(srow 1 0 7)"
+check "C leftovers blanked row 1" "│   x  " "$(srow 2 0 7)"
+check "C leftovers blanked row 3" "│      " "$(srow 4 0 7)"
+draw_list() { bc_win list; mvwaddstr "$bc_win" 0 0 "${RAWTXT:-raw text}"; }
+bc_dirty list; bc_update >/dev/null
+RAWTXT=ab; bc_dirty list; bc_update >/dev/null
+check "C raw-drawn area is cleared first" "│ab      " "$(srow 1 0 9)"
+unset -f draw_list
+# the per-row memory of the last write must not survive a clear / repaint
+fresh 6 20
+bc_screen "box"
+bc_style box border
+draw_box() { bc_print box 0 0 "keep me"; }
+bc_update >/dev/null
+bc_clear box; bc_dirty box; bc_update >/dev/null
+check "C reprinted after bc_clear" "│keep me" "$(srow 1 0 8)"
+bc_style box pair=4; bc_update >/dev/null
+check "C reprinted after frame repaint" "│keep me" "$(srow 1 0 8)"
+check "C repaint uses new pair" "4" "${BC_SP[1 2]}"
+unset -f draw_box
+# a draw_NAME that sets another area's text shows up in the same update
+fresh 6 30
+bc_screen "
+  body
+  status
+" rows="* 1"
+draw_body() { bc_text status "sel=$SEL"; }
+SEL=7; bc_update >/dev/null
+check "C bc_text from draw_NAME same update" "sel=7" "$(srow 5 0 5)"
+SEL=8; bc_dirty body; bc_update >/dev/null
+check "C ...and on later updates" "sel=8" "$(srow 5 0 5)"
+unset -f draw_body
+
 # ======================================================= floats (step 3)
 frect() { printf '%s %s %s %s' "${BCL_RY[$1]}" "${BCL_RX[$1]}" "${BCL_RH[$1]}" "${BCL_RW[$1]}"; }
 fresh 30 100

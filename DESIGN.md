@@ -305,9 +305,21 @@ Windows (`bc_relayout`):
   panels the app created itself in the middle, floats on top.
 - Content colours (`pair`/`attr`) are inherited through enclosing grids, so a
   dialog's fields take the dialog's colours.
-- `bc_text` content is retained and replayed when a window is rebuilt; it only
-  triggers a relayout when an `auto` track or auto-sized float depends on it.
-  `draw_NAME` is called on a freshly cleared area, then `on_draw` once.
+- `bc_text` content is retained and redrawn at the next update (and when a
+  window is rebuilt); it only triggers a relayout when an `auto` track or
+  auto-sized float depends on it. Redraws repeat until nothing is pending, so
+  a `draw_NAME` that sets another area's text shows up in the same update.
+- **Change-only drawing.** A `draw_NAME` sees its area as if freshly cleared,
+  but clearing it for real would mark every cell dirty and `doupdate` pays
+  ~23 us per dirty cell (a Down in `90-layout.sh` at 191x74 took ~290 ms).
+  Instead `_bcl_put` writes only the differing part of a string (comparing
+  rendered char/attr/pair against the window's cells, or the owner row cache;
+  skipped outright when it equals the last write to that row, `BCL_LAST`),
+  records what each redraw wrote (`BCL_SPAN`) and how far text may extend per
+  row (`BCL_EXT`), and after the redraw blanks only the old text that was not
+  rewritten. A Down now dirties two rows: ~35 ms, the same as `mc.sh`.
+  Clears, frame repaints and rebuilds forget that per-row state; an area the
+  app drew with raw `bc.sh` calls (`bc_win`) is fully cleared before redraws.
 
 Input: `bc_getkey` flushes (`bc_update`: relayout if needed, pending draws,
 `doupdate` — so `wgetch`'s implicit `wrefresh(stdscr)` finds nothing dirty)
@@ -325,8 +337,9 @@ Cost (tests/bench_layout.sh, this host): solving the mc-like screen is ~1.9 ms
 and a no-op `bc_relayout` ~2.5 ms; a real resize of it is ~130 ms, mostly
 painting the rebuilt windows. The shining-like stress case (136 floats, 566
 panels) solves in ~18 ms and rebuilds in ~0.9 s. Measured in a real 191x74
-terminal: `91-shining-layout.sh` shows its first frame after ~1.8 s and runs
-at ~2.4 frames/s (`shining.sh`: ~1.5 s, ~1.1 frames/s). Startup and frame
+terminal: `91-shining-layout.sh` shows its first frame after ~1.9 s and runs
+at ~3.9 frames/s (`shining.sh`: ~1.5 s, ~1.1 frames/s); a Down in
+`90-layout.sh` takes ~35 ms, like `mc.sh`. Startup and frame
 times must be measured in a real terminal (tmux + `BC_TEST_DIR` frame
 counter); headless runs that send `doupdate` to /dev/null hide its cost.
 

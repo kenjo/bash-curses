@@ -61,6 +61,25 @@ grid 80 16
 [[ $(bg 4 1) == 16:6 ]] && ok "B selected row highlighted" || bad "B selected row highlighted: bg $(bg 4 1)"
 [[ $(bg 5 1) == 16:4 ]] && ok "B other rows plain" || bad "B other rows plain: bg $(bg 5 1)"
 
+# --- B2. key latency: a Down must not repaint the whole panel (it was ~290 ms
+# at 191x74 when every redraw cleared and recomposited every panel cell; now
+# ~35 ms, like mc.sh). Measured at 191x74, where the panels are big enough to
+# show it. Generous bound: run.sh runs tmux suites in parallel.
+tmux -S "$SOCK" resize-window -t "$T" -x 191 -y 74; sleep 2.5
+keys Up Up; sleep 0.8
+tot=0
+for i in 1 2 3 4; do
+  before=$(cap | md5sum); t0=${EPOCHREALTIME//[!0-9]/}
+  keys Down
+  while [[ $(cap | md5sum) == "$before" ]]; do
+    sleep 0.005; (( ${EPOCHREALTIME//[!0-9]/} - t0 > 3000000 )) && break
+  done
+  tot=$(( tot + ${EPOCHREALTIME//[!0-9]/} - t0 )); sleep 0.3
+done
+keys Up Up Up Up Up Down Down; sleep 0.8
+tmux -S "$SOCK" resize-window -t "$T" -x 80 -y 16; sleep 2.5
+(( tot / 4000 < 150 )) && ok "B2 Down latency $(( tot / 4000 )) ms" || bad "B2 Down latency $(( tot / 4000 )) ms (want < 150)"
+
 # --- C. modal Copy dialog (float + nested grids + shadow)
 keys 5; sleep 1.2
 has "C dialog title"     3  "Copy"
