@@ -397,12 +397,14 @@ bc_rect() {
 
 # ============================================================ windows
 # Every visible leaf area (and float) is bound to a frame window F that is a
-# panel. If the area has a border or shadow, the drawable content is a derwin C
-# of F, inset by the frame and stacked as its own panel right above F (doupdate
-# only collects dirty cells from panel windows). Otherwise C == F.
+# panel. If a leaf has a border, the drawable content is a derwin C of F inset
+# by it, stacked as its own panel right above F (doupdate only collects dirty
+# cells from panel windows). Otherwise C == F. A shadow is two more windows.
 declare -A BCL_WIN=()     # name -> content window (what apps draw into)
 declare -A BCL_FWIN=()    # name -> frame window
-declare -A BCL_FPAN=() BCL_CPAN=()
+declare -A BCL_PANS=()    # name -> its panels, bottom -> top
+declare -A BCL_WINS=()    # name -> its windows, derwins before their parent
+declare -A BCL_SWINS=()   # name -> shadow strip windows
 declare -A BCL_WRECT=()   # name -> "y x h w" the windows were built for
 declare -A BCL_NEEDDRAW=()
 # style
@@ -455,24 +457,20 @@ _bcl_eff() { # name -> BCL_EP BCL_EA
 }
 
 _bcl_unbind() { # name
-  local a=$1
+  local a=$1 p w
   [[ -n ${BCL_FWIN[$a]:-} ]] || return 0
-  if [[ ${BCL_WIN[$a]} != "${BCL_FWIN[$a]}" ]]; then
-    del_panel "${BCL_CPAN[$a]}"; delwin "${BCL_WIN[$a]}"
-  fi
-  del_panel "${BCL_FPAN[$a]}"; delwin "${BCL_FWIN[$a]}"
-  unset "BCL_WIN[$a]" "BCL_FWIN[$a]" "BCL_FPAN[$a]" "BCL_CPAN[$a]" "BCL_WRECT[$a]"
+  for p in ${BCL_PANS[$a]}; do del_panel "$p"; done
+  for w in ${BCL_WINS[$a]}; do delwin "$w"; done
+  unset "BCL_WIN[$a]" "BCL_FWIN[$a]" "BCL_PANS[$a]" "BCL_WINS[$a]" "BCL_SWINS[$a]" "BCL_WRECT[$a]"
 }
 
-# Paint the frame window: background, border + title, shadow.
+# Paint the frame window (background, border, title) and the shadow strips.
 _bcl_paint_frame() { # name
-  local a=$1 f=${BCL_FWIN[$1]}
+  local a=$1 f=${BCL_FWIN[$1]} sw
   _bcl_eff "$a"
-  local h=${BC_WH[$f]} w=${BC_WW[$f]} p=$BCL_EP at=$BCL_EA
-  local s=${BCL_SHADOW[$a]:-0}
+  local bh=${BC_WH[$f]} bw=${BC_WW[$f]} p=$BCL_EP at=$BCL_EA
   wbkgd "$f" ' ' "$at" "$p"
   werase "$f"
-  local bh=$(( h - s )) bw=$(( w - s ))
   if (( ${BCL_FRAME[$a]:-0} && bh >= 2 && bw >= 2 )); then
     local bp=${BCL_BPAIR[$a]:-$p} r line
     printf -v line '%*s' $(( bw - 2 )) ''; line=${line// /$ACS_HLINE}
@@ -485,39 +483,47 @@ _bcl_paint_frame() { # name
     mvwaddch "$f" $(( bh - 1 )) $(( bw - 1 )) "$ACS_LRCORNER"
     if [[ -n ${BCL_TITLE[$a]:-} ]]; then
       local t=" ${BCL_TITLE[$a]} "
-      (( ${#t} > bw - 2 )) && t=${t:0:bw-2}
+      # too long: keep the end (paths read best from the right)
+      (( ${#t} > bw - 2 )) && t=" …${t:${#t}-(bw-5)}"
       mvwaddstr "$f" 0 $(( (bw - ${#t}) / 2 )) "$t"
     fi
     wattrset "$f" "$at" "$p"
   fi
-  if (( s )); then
-    local sp=${BCL_SHADOW_PAIR:-0} sa=0 bl
-    (( sp )) || sa=$A_REVERSE
-    printf -v bl '%*s' $(( w - 1 )) ''
-    for (( r = 1; r < h; r++ )); do mvwaddch "$f" "$r" $(( w - 1 )) ' ' "$sa" "$sp"; done
-    wattrset "$f" "$sa" "$sp"; mvwaddstr "$f" $(( h - 1 )) 1 "$bl"
-    # the two corners outside the shadow look like the screen behind
-    mvwaddch "$f" 0 $(( w - 1 )) "${BC_WBG[0]}" "${BC_WBGA[0]}" "${BC_WBGP[0]}"
-    mvwaddch "$f" $(( h - 1 )) 0 "${BC_WBG[0]}" "${BC_WBGA[0]}" "${BC_WBGP[0]}"
-    wattrset "$f" "$at" "$p"
-  fi
+  local sp=${BCL_SHADOW_PAIR:-0} sa=0
+  (( sp )) || sa=$A_REVERSE
+  for sw in ${BCL_SWINS[$a]:-}; do
+    wbkgd "$sw" ' ' "$sa" "$sp"; werase "$sw"
+  done
 }
 
-# Build the windows for a rectangle.
+# Build the windows for a rectangle: frame (the box), content derwin inset by
+# the border (leaves only), and the shadow as two strips right and below the
+# box — leaving the two outer corners uncovered so the screen shows through.
 _bcl_bind() { # name y x h w
   local a=$1 y=$2 x=$3 h=$4 w=$5
-  newwin "$h" "$w" "$y" "$x" || return 1
+  local s=${BCL_SHADOW[$a]:-0} fr=${BCL_FRAME[$a]:-0}
+  (( h <= s || w <= s )) && s=0
+  local bh=$(( h - s )) bw=$(( w - s )) pans="" wins=""
+  newwin "$bh" "$bw" "$y" "$x" || return 1
   local f=$bc_win
-  new_panel "$f"; BCL_FPAN[$a]=$bc_panel
+  new_panel "$f"; pans=$bc_panel
   BCL_FWIN[$a]=$f; BCL_WIN[$a]=$f
-  _bcl_insets "$a"
-  if [[ -z ${BCL_TPL[$a]+set} ]] && (( BCL_IT || BCL_IB )); then
-    local ch=$(( h - BCL_IT - BCL_IB )) cw=$(( w - BCL_IL - BCL_IR ))
-    if (( ch > 0 && cw > 0 )) && derwin "$f" "$ch" "$cw" "$BCL_IT" "$BCL_IL"; then
+  if [[ -z ${BCL_TPL[$a]+set} ]] && (( fr )); then
+    local ch=$(( bh - 2 )) cw=$(( bw - 2 ))
+    if (( ch > 0 && cw > 0 )) && derwin "$f" "$ch" "$cw" 1 1; then
       BCL_WIN[$a]=$bc_win
-      new_panel "$bc_win"; BCL_CPAN[$a]=$bc_panel
+      new_panel "$bc_win"; pans+=" $bc_panel"; wins="$bc_win "
     fi
   fi
+  wins+=$f
+  BCL_SWINS[$a]=""
+  if (( s )); then
+    newwin "$bh" 1 $(( y + 1 )) $(( x + bw )) && { new_panel "$bc_win"; pans+=" $bc_panel"; wins+=" $bc_win"; BCL_SWINS[$a]+=" $bc_win"; }
+    if (( bw > 1 )); then
+      newwin 1 $(( bw - 1 )) $(( y + bh )) $(( x + 1 )) && { new_panel "$bc_win"; pans+=" $bc_panel"; wins+=" $bc_win"; BCL_SWINS[$a]+=" $bc_win"; }
+    fi
+  fi
+  BCL_PANS[$a]=$pans BCL_WINS[$a]=$wins
   local c=${BCL_WIN[$a]}
   _bcl_eff "$a"
   wbkgd "$c" ' ' "$BCL_EA" "$BCL_EP"
@@ -537,16 +543,11 @@ _bcl_restack() {
   for f in ${BCL_FLOATS:-}; do isf[$f]=1; done
   _bcl_order
   for a in "${BCL_LV[@]}"; do
-    [[ -n ${BCL_FPAN[$a]:-} ]] || continue
+    [[ -n ${BCL_PANS[$a]:-} ]] || continue
     f=$a
     while [[ -n ${BCL_PARENT[$f]:-} ]]; do f=${BCL_PARENT[$f]}; done
-    mine[${BCL_FPAN[$a]}]=1
-    [[ -n ${BCL_CPAN[$a]:-} ]] && mine[${BCL_CPAN[$a]}]=1
-    if [[ -n ${isf[$f]:-} ]]; then
-      high+=("${BCL_FPAN[$a]}" ${BCL_CPAN[$a]:-})
-    else
-      low+=("${BCL_FPAN[$a]}" ${BCL_CPAN[$a]:-})
-    fi
+    for p in ${BCL_PANS[$a]}; do mine[$p]=1; done
+    if [[ -n ${isf[$f]:-} ]]; then high+=(${BCL_PANS[$a]}); else low+=(${BCL_PANS[$a]}); fi
   done
   for p in "${BC_PSTACK[@]}"; do [[ -n ${mine[$p]:-} ]] || mid+=("$p"); done
   ns=("${low[@]}" "${mid[@]}" "${high[@]}")
@@ -698,9 +699,32 @@ bc_text() {
   n=$(( n + BCL_IT + BCL_IB )); mw=$(( mw + BCL_IL + BCL_IR ))
   if [[ ${BCL_CH[$a]:-} != "$n" || ${BCL_CW[$a]:-} != "$mw" ]]; then
     BCL_CH[$a]=$n BCL_CW[$a]=$mw
-    BCL_LAYOUT_DIRTY=1
+    _bcl_content_sized "$a" && BCL_LAYOUT_DIRTY=1
   fi
   _bcl_draw_text "$a"
+}
+
+# Can NAME's content size change the layout? True when it (or an enclosing
+# grid) sits alone in an auto track, or it is (inside) an auto-sized float.
+_bcl_content_sized() { # name
+  local a=$1 g t
+  local -a sp
+  while [[ -n $a && $a != screen ]]; do
+    if [[ ${BCL_KIND[$a]:-} == float ]]; then
+      [[ ${BCL_FSIZE[$a]} == *auto* ]] && return 0
+      a=${BCL_FIN[$a]}; continue
+    fi
+    g=${BCL_PARENT[$a]:-}
+    [[ -n $g ]] || return 1
+    if (( BCL_R0[$a] == BCL_R1[$a] )); then
+      read -r -a sp <<< "${BCL_ROWSPEC[$g]}"; [[ ${sp[BCL_R0[$a]]} == auto ]] && return 0
+    fi
+    if (( BCL_C0[$a] == BCL_C1[$a] )); then
+      read -r -a sp <<< "${BCL_COLSPEC[$g]}"; [[ ${sp[BCL_C0[$a]]} == auto ]] && return 0
+    fi
+    a=$g
+  done
+  return 1
 }
 
 _bcl_draw_text() { # name

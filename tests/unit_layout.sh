@@ -308,6 +308,27 @@ bc_relayout
 check "F Y,X offset in parent" "4 4 2 5" "$(frect pos)"
 bc_close pos
 
+# shadow: two strips; the outer corners show what is underneath
+fresh 10 20
+bc_screen "bg"
+hash10=""; for i in {1..10}; do hash10+="####################"$'\n'; done
+bc_text bg "$hash10"
+bc_float sh size=3x6 shadow
+bc_update >/dev/null
+check "F shadow corner top-right shows below"  "#" "${BC_S[3 12]}"
+check "F shadow corner bottom-left shows below" "#" "${BC_S[6 6]}"
+check "F shadow right strip"  "[ ] $A_REVERSE" "[${BC_S[4 12]}] ${BC_SA[4 12]}"
+check "F shadow bottom strip" "[ ] $A_REVERSE" "[${BC_S[6 7]}] ${BC_SA[6 7]}"
+check "F shadow box + strip"  "       #" "$(srow 5 6 8)"
+bc_close sh
+bc_update >/dev/null
+check "F shadow gone after close" "#######" "$(srow 6 6 7)"
+fresh 30 100
+bc_screen "
+  menu  menu
+  left  right
+" rows="1 *" cols="* *"
+
 # auto size from text, including border insets
 bc_float msg border title=Info
 bc_text msg "hello
