@@ -994,9 +994,11 @@ bc_raise() {
   _bcl_restack
 }
 
-# bc_close NAME — remove a float, the floats inside it and all their windows.
+# bc_close NAME [RESULT] — remove a float, the floats inside it and all their
+# windows. RESULT is handed to a waiting bc_modal (in BCL_RESULT).
 bc_close() {
   local a=$1 f k
+  [[ -n ${2:-} ]] && BCL_RESULT=$2
   [[ ${BCL_KIND[$a]:-} == float ]] || { _bcl_err "bc_close: '$a' is not a float"; return 1; }
   _bcl_subfloats "$a"
   local -A gone=()
@@ -1011,3 +1013,130 @@ bc_close() {
   BCL_LAYOUT_DIRTY=1
   return 0
 }
+
+# ============================================================ event loop
+# bc_run owns the loop and calls the app's handlers:
+#   draw_NAME / on_draw     redraw (see bc_dirty)
+#   on_key KEY              keys not taken by a float handler
+#   on_tick MS              every frame when fps=N is given (MS since last tick)
+#   click_NAME Y X BSTATE   mouse on an area (else on_click NAME Y X BSTATE)
+# Keys go to the topmost float that has a handler (keys=FN on bc_float, or a
+# function named key_NAME), otherwise to on_key. bc_modal NAME runs a nested
+# loop that only lets NAME (and what is inside it) see keys and clicks.
+BCL_QUIT=0
+BCL_FPS=""
+BCL_RESULT=""
+BCL_MODAL=""
+
+# One key -> $key; status 1 when nothing arrived (timeout). Tests replace this.
+_bcl_readkey() { wgetch "$BC_STDSCR"; }
+
+_bcl_now_ms() { local t=${EPOCHREALTIME//[!0-9]/}; BCL_NOW=$(( t / 1000 )); }
+
+# Key handler of a float, if it has one -> BCL_FN
+_bcl_keyfn() { # float
+  BCL_FN=${BCL_FKEYS[$1]:-}
+  [[ -z $BCL_FN ]] && declare -F "key_$1" >/dev/null && BCL_FN="key_$1"
+  [[ -n $BCL_FN ]]
+}
+
+# Is NAME inside float F (F itself, its grid, or floats placed in it)?
+_bcl_inside() { # name float
+  local p=$1
+  while [[ -n $p && $p != screen ]]; do
+    [[ $p == "$2" ]] && return 0
+    if [[ ${BCL_KIND[$p]:-} == float ]]; then p=${BCL_FIN[$p]}; else p=${BCL_PARENT[$p]:-}; fi
+  done
+  return 1
+}
+
+_bcl_dispatch() { # key (modal float or "")
+  local k=$1 m=$2 f i
+  if [[ $k == "$KEY_RESIZE" ]]; then
+    _bcl_resized
+    declare -F on_resize >/dev/null && on_resize
+    return 0
+  fi
+  if [[ $k == "$KEY_MOUSE" ]]; then
+    while getmouse; do
+      bc_hit "$BC_ME_Y" "$BC_ME_X" || continue
+      [[ -n $m ]] && ! _bcl_inside "$BCL_AREA" "$m" && continue
+      BCL_MB=$BC_ME_BSTATE
+      if declare -F "click_$BCL_AREA" >/dev/null; then
+        "click_$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB"
+      elif declare -F on_click >/dev/null; then
+        on_click "$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB"
+      fi
+    done
+    return 0
+  fi
+  local -a fl
+  read -r -a fl <<< "$BCL_FLOATS"
+  for (( i = ${#fl[@]} - 1; i >= 0; i-- )); do
+    [[ -n $m ]] && ! _bcl_inside "${fl[i]}" "$m" && continue
+    _bcl_keyfn "${fl[i]}" && { "$BCL_FN" "$k"; return 0; }
+  done
+  [[ -n $m ]] && return 0
+  declare -F on_key >/dev/null && on_key "$k"
+  return 0
+}
+
+_bcl_loop() { # modal-float or ""
+  local m=$1 frame=0 last next wait
+  [[ -n $BCL_FPS ]] && frame=$(( 1000 / BCL_FPS ))
+  (( frame < 1 && ${BCL_FPS:-0} > 0 )) && frame=1
+  _bcl_now_ms; last=$BCL_NOW
+  while (( ! BCL_QUIT )); do
+    [[ -n $m && ${BCL_KIND[$m]:-} != float ]] && break
+    bc_update
+    if (( frame )); then
+      _bcl_now_ms
+      wait=$(( last + frame - BCL_NOW ))
+      (( wait < 1 )) && wait=1
+      wtimeout "$BC_STDSCR" "$wait"
+    else
+      wtimeout "$BC_STDSCR" -1
+    fi
+    if _bcl_readkey; then
+      _bcl_dispatch "$key" "$m"
+    fi
+    if (( frame )); then
+      _bcl_now_ms
+      if (( BCL_NOW - last >= frame )); then
+        declare -F on_tick >/dev/null && on_tick $(( BCL_NOW - last ))
+        last=$BCL_NOW
+      fi
+    fi
+  done
+}
+
+# bc_run [fps=N] — run the app until bc_quit.
+bc_run() {
+  local o own=0
+  for o in "$@"; do
+    case $o in
+      fps=*) BCL_FPS=${o#*=} ;;
+      *) _bcl_err "bc_run: unknown option '$o'"; return 1 ;;
+    esac
+  done
+  if (( ! BCL_STARTED )); then bc_init mouse || return 1; own=1; fi
+  BCL_QUIT=0
+  _bcl_loop ""
+  (( own )) && endwin
+  return 0
+}
+
+# bc_modal NAME — run until the float NAME is closed. Returns 0 if it was closed
+# with a result (bc_close NAME RESULT), which is left in BCL_RESULT.
+bc_modal() {
+  local a=$1 prev=$BCL_MODAL
+  [[ ${BCL_KIND[$a]:-} == float ]] || { _bcl_err "bc_modal: '$a' is not a float"; return 1; }
+  BCL_RESULT=""
+  BCL_MODAL=$a
+  _bcl_loop "$a"
+  BCL_MODAL=$prev
+  [[ -n $BCL_RESULT ]]
+}
+
+# bc_quit — leave bc_run (and any bc_modal inside it).
+bc_quit() { BCL_QUIT=1; }

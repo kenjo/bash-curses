@@ -391,5 +391,67 @@ fails "F parent"   "unknown parent 'nope'" bc_float x in=nope
 fails "F tiled"    "already a tiled area" bc_float left
 fails "F raise"    "'left' is not a float" bc_raise left
 
+
+# ======================================================= event loop (step 3b)
+# fake key source: KQ holds "key" entries; "M:y,x" injects a click there
+BCL_STARTED=1
+KQ=()
+_bcl_readkey() {
+  if (( ${#KQ[@]} == 0 )); then bc_quit; return 1; fi
+  key=${KQ[0]}; KQ=("${KQ[@]:1}")
+  if [[ $key == M:* ]]; then
+    local yx=${key#M:}
+    BC_MEVENTS+=("0 ${yx#*,} ${yx%,*} $BUTTON1_CLICKED")
+    key=$KEY_MOUSE
+  fi
+  return 0
+}
+fresh 20 60
+bc_screen "
+  top
+  body
+" rows="1 *"
+log=""
+on_key()   { log+="key:$1 "; [[ $1 == q ]] && bc_quit; }
+on_click() { log+="click:$1@$2,$3 "; }
+click_top() { log+="top@$2 "; }
+draws=0
+draw_body() { draws=$(( draws + 1 )); }
+KQ=(a M:5,7 M:0,3 q z)
+bc_run >/dev/null
+check "L keys + clicks routed" "key:a click:body@4,7 top@3 key:q " "$log"
+check "L bc_quit stops before later keys" "z" "${KQ[*]}"
+(( draws >= 1 )) && ok "L draw_body ran" || bad "L draw_body ran"
+
+# keys go to the topmost float with a handler; modal swallows the rest
+log=""
+key_pop() { log+="pop:$1 "; [[ $1 == x ]] && bc_close pop; }
+bc_float pop size=3x10
+KQ=(a x b)
+bc_run >/dev/null
+check "L float handler first, then on_key" "pop:a pop:x key:b " "$log"
+
+log=""
+dlg_keys() { log+="dlg:$1 "; case $1 in y) bc_close dlg yes ;; n) bc_close dlg ;; esac; }
+bc_float dlg size=5x20 keys=dlg_keys
+KQ=(a M:2,2 M:10,30 y after)
+BCL_QUIT=0
+if bc_modal dlg >/dev/null; then r="ok:$BCL_RESULT"; else r="cancel"; fi
+check "L modal result" "ok:yes" "$r"
+check "L modal routes keys, ignores outside clicks" "dlg:a click:dlg@3,10 dlg:y " "$log"
+check "L modal leaves later keys" "after" "${KQ[*]}"
+bc_float dlg size=5x20 keys=dlg_keys
+KQ=(n); log=""
+if bc_modal dlg >/dev/null; then r="ok"; else r="cancel"; fi
+check "L modal closed without result" "cancel" "$r"
+
+# ticks: fps with a key source that only times out
+ticks=0
+on_tick() { ticks=$(( ticks + 1 )); (( ticks >= 3 )) && bc_quit; }
+_bcl_readkey() { sleep 0.02; return 1; }
+bc_run fps=100 >/dev/null
+check "L on_tick until quit" "3" "$ticks"
+unset -f on_key on_click click_top draw_body key_pop dlg_keys on_tick
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 ))
