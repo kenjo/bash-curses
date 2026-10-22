@@ -453,6 +453,12 @@ check "keyok previous enabled"   "1"       "$(scr 'keyok 259 0; printf "%s" "$bc
 check "keyok previous disabled"  "0"       "$(scr 'keyok 259 0; keyok 259 1; printf "%s" "$bc_key"')"
 check "keyok disables lookup"    "no"      "$(scr 'seq=$(printf "\033X"); define_key "$seq" 259; keyok 259 0; _bc_ti_lookup "$seq" && echo yes || echo no')"
 check "mvderwin moves relative"  "3 4"     "$(scr 'newwin 5 5 2 3; p=$bc_win; derwin $p 2 2 1 1; c=$bc_win; mvderwin $c 1 1; getbegy $c; getbegx $c; printf "%s %s" "$BC_GBY" "$BC_GBX"')"
+# derwin + row cache: a full-width write into a derwin must land in the
+# derwin's columns (the row cache is laid out in the owner's columns)
+dsent() { local y=$1 x0=$2 n=$3 x l=""; for (( x = x0; x < x0 + n; x++ )); do l+="${BC_S[$y $x]:-_}"; done; printf '%s' "$l"; }
+check "derwin full-row write composites in place" "|wxyz|" "$(scr 'newwin 3 6 1 1; f=$bc_win; new_panel $f; mvwaddstr $f 1 0 "|"; mvwaddstr $f 1 5 "|"; derwin $f 1 4 1 1; c=$bc_win; new_panel $c; mvwaddstr $c 0 0 abcd; BC_FORCEFULL=1; doupdate >/dev/null; mvwaddstr $c 0 0 wxyz; doupdate >/dev/null; dsent 2 1 6')"
+check "derwin span onto owner cached row" "xxABxx" "$(scr 'newwin 3 6 1 1; f=$bc_win; new_panel $f; mvwaddstr $f 1 0 xxxxxx; derwin $f 1 4 1 1; c=$bc_win; new_panel $c; mvwaddstr $c 0 1 AB; doupdate >/dev/null; dsent 2 1 6')"
+check "mvwinch derwin over owner cached row" "C" "$(scr 'newwin 3 6 1 1; f=$bc_win; mvwaddstr $f 1 0 ABCDEF; derwin $f 1 4 1 1; c=$bc_win; mvwinch $c 0 1; printf %s "$wch"')"
 check "wsyncup rc"               "0"       "$(scr 'wsyncup 0; printf "%s" "$?"')"
 check "wsyncdown rc"             "0"       "$(scr 'wsyncdown 0; printf "%s" "$?"')"
 check "syncup rc"                "0"       "$(scr 'syncup; printf "%s" "$?"')"

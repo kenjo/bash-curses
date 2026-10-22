@@ -720,7 +720,8 @@ _bc_flush_row() { # w ay
   [[ -n ${BC_PUNI[$rk]+x} ]] || return 0
   local row=${BC_CROW[$rk]} pen=${BC_PUNI[$rk]}
   local a=${pen% *} p=${pen#* }
-  local wx=${BC_WX[$w]} ww=${BC_WW[$w]} i ch k
+  local o=${BC_BUF2W[$buf]:-$w}
+  local wx=${BC_WX[$o]} ww=${BC_WW[$o]} i ch k
   for (( i = 0; i < ww; i++ )); do
     ch=${row:i:1}
     k="$buf/$ay $(( wx + i ))"
@@ -824,8 +825,10 @@ _bc_emit() { # w y x text a p
     local buf=${BC_WBUF[$w]} k mk yy=$y ayoff=${BC_WY[$w]} axoff=${BC_WX[$w]} ay ax
     ay=$(( ayoff + yy ))
     local rk="$buf $ay"
-    # Full-row write: store the whole row as one char string + one pen.
-    if (( x == 0 && x + len == ww )); then
+    # Full-row write: store the whole row as one char string + one pen. The row
+    # cache is laid out in the buffer owner's columns, so only the owner may use
+    # these fast paths (a derwin sharing the buffer has different columns).
+    if [[ $buf == "$w" ]] && (( x == 0 && x + len == ww )); then
       local cs=$text
       if (( special )) && [[ $bg != ' ' ]]; then cs=${text// /$bg}; fi
       BC_CROW[$rk]=$cs; BC_PUNI[$rk]="$ra_ns $rp_ns"
@@ -834,7 +837,7 @@ _bc_emit() { # w y x text a p
       return 0
     fi
     # Partial span onto an existing uniform row with the same pen: splice it in.
-    if [[ -n ${BC_PUNI[$rk]+x} && ${BC_PUNI[$rk]} == "$ra_ns $rp_ns" ]]; then
+    if [[ $buf == "$w" && -n ${BC_PUNI[$rk]+x} && ${BC_PUNI[$rk]} == "$ra_ns $rp_ns" ]]; then
       local row=${BC_CROW[$rk]}
       BC_CROW[$rk]="${row:0:x}${text}${row:x+len}"
       [[ -z ${BC_MKR[$w/$ay]:-} ]] && { BC_MKR[$w/$ay]=1; BC_WDR[$w]+=",$ay"; }
@@ -2730,7 +2733,8 @@ mvwinch() { # win y x -> sets wch, wcha, wchp
   local ay=$(( BC_WY[$w] + $2 )) rk="$buf $(( BC_WY[$w] + $2 ))"
   if [[ -n ${BC_PUNI[$rk]+x} ]]; then
     local pen=${BC_PUNI[$rk]}
-    wch=${BC_CROW[$rk]:$3:1}
+    local o=${BC_BUF2W[$buf]:-$w}
+    wch=${BC_CROW[$rk]:$(( BC_WX[$w] + $3 - BC_WX[$o] )):1}
     wcha=${pen% *}; wchp=${pen#* }
     return 0
   fi
