@@ -151,5 +151,127 @@ bc_screen "a b"
 fails "I dup"        "area 'a' is already defined elsewhere" bc_grid b "a"
 fails "I grid none"  "unknown area 'zz'"               bc_grid zz "q"
 
+
+# ======================================================= windows (step 2)
+# headless stdscr; doupdate output goes to /dev/null, BC_S is what was "sent"
+fresh() { # lines cols
+  term "$1" "$2"
+  BC_S=(); BC_SA=(); BC_SP=(); BC_SCROW=(); BC_SPROW=(); BC_DELRECTS=""
+  _bc_init_window 0 0 0 "$1" "$2"
+}
+srow() { # y x0 n -> composited characters
+  local y=$1 x l=""
+  for (( x = $2; x < $2 + $3; x++ )); do l+="${BC_S[$y $x]:- }"; done
+  printf '%s' "$l"
+}
+wrect() { local w=${BCL_FWIN[$1]}; printf '%s %s %s %s' "${BC_WY[$w]}" "${BC_WX[$w]}" "${BC_WH[$w]}" "${BC_WW[$w]}"; }
+
+fresh 30 100
+bc_screen "
+  menu  menu
+  left  right
+  hint  hint
+  keys  keys
+" rows="1 * 0 1" cols="* *"
+bc_relayout
+check "W left window"  "1 0 28 50"  "$(wrect left)"
+check "W keys window"  "29 0 1 100" "$(wrect keys)"
+check "W hidden hint"  ""           "${BCL_WIN[hint]:-}"
+n0=$BC_WN; bc_relayout
+check "W relayout no-op creates nothing" "$n0" "$BC_WN"
+m0=${BCL_WIN[menu]} l0=${BCL_WIN[left]}
+term 31 100; bc_relayout
+check "W unchanged rect keeps window" "$m0" "${BCL_WIN[menu]}"
+[[ ${BCL_WIN[left]} != "$l0" ]] && ok "W changed rect rebuilds window" || bad "W changed rect rebuilds window"
+check "W rebuilt rect" "1 0 29 50" "$(wrect left)"
+
+# show the hidden row
+bc_screen "
+  menu  menu
+  left  right
+  hint  hint
+  keys  keys
+" rows="1 * 1 1" cols="* *"
+bc_relayout
+check "W hint appears" "29 0 1 100" "$(wrect hint)"
+check "W panel order = template order" "4" "$(( ${#BC_PSTACK[@]} - 1 ))"
+
+# border + title: content is an inset derwin; text is retained and replayed
+fresh 12 40
+bc_screen "
+  top
+  body
+" rows="1 *"
+bc_style body border title=Files
+bc_relayout
+bc_text top "Left File" align=center
+bc_text body "one
+two"
+bc_update >/dev/null
+check "W content inset" "2 1 9 38" "${BC_WY[${BCL_WIN[body]}]} ${BC_WX[${BCL_WIN[body]}]} ${BC_WH[${BCL_WIN[body]}]} ${BC_WW[${BCL_WIN[body]}]}"
+check "W centered text" "               Left File                " "$(srow 0 0 40)"
+check "W border+title"  "┌─────────────── Files ────────────────┐" "$(srow 1 0 40)"
+check "W text row 1"    "│one" "$(srow 2 0 4)"
+check "W text row 2"    "│two" "$(srow 3 0 4)"
+check "W bottom border" "└" "$(srow 11 0 1)"
+term 12 30; bc_relayout; BC_FORCEFULL=1; bc_update >/dev/null
+check "W text replayed after rebuild" "│one" "$(srow 2 0 4)"
+check "W title re-centred" "┌────────── Files ───────────┐" "$(srow 1 0 30)"
+
+# bc_print clips at the area edge (no wrap) and takes pair/attr
+fresh 5 20
+bc_screen "a b" cols="10 *"
+bc_relayout
+bc_print a 0 6 "abcdefgh" pair=3 attr=$A_BOLD
+bc_print a 0 -2 "XYZ"
+bc_update >/dev/null
+check "W print clip" "Z     abcd" "$(srow 0 0 10)"
+check "W print no spill into b" " " "$(srow 0 10 1)"
+check "W print pair" "3" "${BC_SP[0 7]}"
+check "W print attr" "$A_BOLD" "${BC_SA[0 7]}"
+
+# auto column sized by bc_text, relayout picks it up
+fresh 6 30
+bc_screen "
+  l1 f1
+  l2 f2
+" cols="auto *"
+bc_text l1 "From:"
+bc_text l2 "To:"
+bc_update >/dev/null
+check "W auto label col" "0 5 3 25" "$(wrect f1)"
+bc_text l2 "Destination:"
+bc_update >/dev/null
+check "W auto grows on new text" "0 12 3 18" "$(wrect f1)"
+
+# draw_NAME + on_draw dispatch, bc_dirty
+calls=""
+draw_f1() { calls+="f1($1) "; }
+on_draw() { calls+="all "; }
+bc_dirty f1; bc_update >/dev/null
+check "W draw dispatch" "f1(f1) all " "$calls"
+calls=""; bc_update >/dev/null
+check "W nothing pending -> no draw" "" "$calls"
+unset -f draw_f1 on_draw
+# draw_NAME starts from a cleared area
+draw_f2() { bc_print f2 0 0 "$msg"; }
+msg="long text"; bc_dirty f2; bc_update >/dev/null
+msg="hi"; bc_dirty f2; bc_update >/dev/null
+check "W draw_NAME on cleared area" "hi       " "$(srow 1 12 9)"
+unset -f draw_f2
+
+# hit testing with content-relative coordinates
+fresh 12 40
+bc_screen "
+  top
+  body
+" rows="1 *"
+bc_style body border
+bc_relayout
+bc_hit 5 10
+check "W hit body" "body 3 9" "$BCL_AREA $BCL_MY $BCL_MX"
+bc_hit 0 3
+check "W hit top" "top 0 3" "$BCL_AREA $BCL_MY $BCL_MX"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 ))
