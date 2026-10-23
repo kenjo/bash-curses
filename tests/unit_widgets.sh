@@ -101,6 +101,9 @@ select_list() { log+="sel:$1 "; }
 nrows=0; run "$KEY_END"
 check "a move that scrolls redraws all rows" "7" "$nrows"
 
+nrows=0; bc_list_redraw_sel list; bc_update >/dev/null
+check "bc_list_redraw_sel redraws one row" "1" "$nrows"
+
 # shrinking data clamps the selection; empty rows are drawn
 ITEMS=(b0 b1); bc_dirty list; bc_update >/dev/null
 bc_list_sel list; check "selection clamped to new count" "1" "$BCL_SEL"

@@ -51,6 +51,16 @@ bc_list_sel() {
   BCL_SEL=${BCW_SEL[$a]}
 }
 
+# bc_list_redraw_sel NAME — redraw just the selected row (e.g. because its
+# highlight depends on something outside the list, like which panel is active).
+bc_list_redraw_sel() {
+  local a=$1
+  [[ ${BCW_PSEQ[$a]:-} == "${BCL_DIRTYN[$a]:-}" || -z ${BCL_NEEDDRAW[$a]:-} ]] || return 0
+  [[ ${BCW_PSEQ[$a]:-} == "${BCL_DIRTYN[$a]:-}" ]] || BCW_PSEL[$a]=${BCW_SEL[$a]}
+  bc_dirty "$a"
+  BCW_PSEQ[$a]=${BCL_DIRTYN[$a]}
+}
+
 _bcw_list_count() { # name -> BCW_N
   local -n _bcw_arr=${BCW_ARR[$1]}
   BCW_N=${#_bcw_arr[@]}
@@ -88,8 +98,12 @@ _bcw_list_draw() { # name
   declare -F "$fn" >/dev/null || return 0
   if [[ $seq == "${BCL_DIRTYN[$a]:-}" && ${BCW_PTOP[$a]:-} == "$t" ]]; then
     BCL_PARTIAL=1
-    for idx in "$old" "$s"; do
-      (( idx >= t && idx < t + h )) && "$fn" "$idx" $(( idx - t )) $(( idx == s && idx < BCW_N ))
+    local prev=""
+    for idx in "$s" "$old"; do
+      (( idx >= t && idx < t + h )) || continue
+      [[ $idx == $prev ]] && continue
+      prev=$idx
+      "$fn" "$idx" $(( idx - t )) $(( idx == s && idx < BCW_N ))
     done
   else
     for (( y = 0; y < h; y++ )); do

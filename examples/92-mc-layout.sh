@@ -232,13 +232,16 @@ do_swap_panels() {
 layout_screen() {
   HINTBAR=${MC_HINTBAR:-1}
   case $HINTBAR in 0|false|no) HINTBAR=0 ;; *) HINTBAR=1 ;; esac
+  # mc.sh gives each panel COLS/2 columns, so an odd width leaves the last
+  # column blank; a "* *" grid would round the extra cell into the left panel.
+  local pw=$(( COLS / 2 )) spare=$(( COLS - 2 * (COLS / 2) ))
   bc_screen "
-    menu  menu
-    left  right
-    hint  hint
-    cmd   cmd
-    keys  keys
-  " rows="1 * $HINTBAR 1 1" cols="* *"
+    menu  menu  menu
+    left  right .
+    hint  hint  hint
+    cmd   cmd   cmd
+    keys  keys  keys
+  " rows="1 * $HINTBAR 1 1" cols="$pw $pw $spare"
   local s a
   for s in left right; do
     # a panel: frame top (path), column header, the list, separator (marked
@@ -260,6 +263,10 @@ layout_screen() {
   bc_list right.list NAMES_1
 }
 
+# the panel split is computed from COLS, so the screen template is rebuilt
+# whenever the terminal changes size
+on_resize() { layout_screen; }
+
 redraw_panel() { local s=${SIDE[$1]}; bc_dirty "$s.top" "$s.head" "$s.list" "$s.sep" "$s.stat" "$s.free"; }
 redraw_all() { bc_dirty all; }
 
@@ -273,7 +280,8 @@ activate() { # p
   CUR=$1
   bc_focus "${SIDE[$CUR]}.list"
   (( old == CUR )) && return 0
-  bc_dirty left.top right.top left.list right.list cmd
+  bc_dirty left.top right.top cmd
+  bc_list_redraw_sel left.list; bc_list_redraw_sel right.list
 }
 
 # column geometry of a panel of width w -> NAMEW SD (name width, 1st divider)
@@ -1336,8 +1344,9 @@ click_v.f() { # Quit buttons
 
 # ------------------------------------------------------------------ menus
 # while the menu bar is open the panels hide their highlights (as mc does)
-open_menu()  { MENU_OPEN=1; bc_dirty left.top right.top left.list right.list; }
-close_menu() { MENU_OPEN=0; bc_dirty left.top right.top left.list right.list; }
+open_menu()  { MENU_OPEN=1; menu_dims; }
+close_menu() { MENU_OPEN=0; menu_dims; }
+menu_dims() { bc_dirty left.top right.top; bc_list_redraw_sel left.list; bc_list_redraw_sel right.list; }
 run_menu() { bc_menubar_run menu "${1:-0}" "${2:-0}"; }
 not_impl() { message_dialog "$1" "Not implemented: $2"; }
 
