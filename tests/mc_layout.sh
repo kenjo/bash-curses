@@ -45,6 +45,15 @@ xfailed() { # test text
   return 1
 }
 
+# drop the run-specific detail from a failure message (got/want values, paths)
+strip_detail() { # text
+  local t=$1 m
+  for m in " (want" " (got" ": want" ": got" " got " ": '" " ["; do
+    [[ $t == *"$m"* ]] && t=${t%%"$m"*}
+  done
+  printf '%s' "$t"
+}
+
 npass=0 nxfail=0 nfail=0 nxpass=0
 declare -A SEEN=()
 newx=()
@@ -60,7 +69,7 @@ for t in "${TESTS[@]}"; do
         fi ;;
       'FAIL '*)
         name=${line#FAIL }
-        newx+=("$t: $name")
+        newx+=("$t: $(strip_detail "$name")")
         if xfailed "$t" "$name"; then
           nxfail=$(( nxfail + 1 ))
         else
@@ -74,7 +83,7 @@ if [[ -n ${MC_LAYOUT_UPDATE:-} ]]; then
   {
     printf '# Checks expected to fail for examples/92-mc-layout.sh (features not built\n'
     printf '# yet). Format: "<test>: <check name prefix>". See tests/mc_layout.sh.\n'
-    printf '%s\n' "${newx[@]}" | sed -E 's/ *(\(want|\(got|\[|: want|: got| got ).*$//' | sort -u
+    printf '%s\n' "${newx[@]}" | sort -u
   } > "$XFAIL"
   echo "rewrote $XFAIL ($(grep -cv '^#' "$XFAIL") entries)"
 fi
