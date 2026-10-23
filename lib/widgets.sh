@@ -389,3 +389,276 @@ _bcw_menu_click() { # area y x bstate
     return 0
   done
 }
+
+# ============================================================ dialogs
+# bc_dialog NAME TITLE HxW [style options] — a dialog: a centred float with a
+# border and title (style options as for bc_float/bc_style, e.g. margin=1
+# shadow=mc pair=N tpair=N nudge=DY,DX). Lay it out with bc_grid NAME "…",
+# fill the areas with bc_label / bc_input / bc_check / bc_button, then
+# bc_dialog_run NAME. Keys: Tab/Down next control, Up previous, Enter presses
+# the focused button or else the default (first "ok") button, Esc cancels.
+#
+# Pens (set BCW_PENS once): "FOCUS FOCUSHOT FIELD FIELDBUTTON" — the focused
+# control, its hotkey letter, input fields and their [^] button. Hotkey
+# letters of unfocused controls use the dialog's title pair.
+BCW_PENS="0 0 0 0"
+declare -A BCW_DLG=()      # dialog float -> 1
+declare -A BCW_ORDER=()    # dialog -> focus order (area names)
+declare -A BCW_KIND=()     # control area -> input | check | button | radio
+declare -A BCW_VAR=()      # input/check/radio -> variable name
+declare -A BCW_LABEL=() BCW_HOT=() BCW_STYLE=() BCW_CARET=() BCW_BTN=() BCW_VAL=()
+
+bc_dialog() { # name title HxW [options]
+  local a=$1 t=$2 sz=$3; shift 3
+  bc_float "$a" size="$sz" border title="$t" keys=_bcw_dialog_key "$@" || return 1
+  BCW_DLG[$a]=1
+  BCW_ORDER[$a]=""
+}
+
+# The dialog a control belongs to -> BCW_D
+_bcw_dialog_of() { # area
+  local p=$1
+  BCW_D=""
+  while [[ -n $p && $p != screen ]]; do
+    [[ -n ${BCW_DLG[$p]:-} ]] && { BCW_D=$p; return 0; }
+    if [[ ${BCL_KIND[$p]:-} == float ]]; then p=${BCL_FIN[$p]}; else p=${BCL_PARENT[$p]:-}; fi
+  done
+  return 1
+}
+
+# Controls of a dialog in focus order -> BCW_FO
+_bcw_focus_order() { # dialog
+  local d=$1 n
+  BCW_FO=()
+  if [[ -n ${BCW_ORDER[$d]} ]]; then read -r -a BCW_FO <<< "${BCW_ORDER[$d]}"; return; fi
+  BCL_LV=(); _bcl_order_tree "$d"
+  for n in "${BCL_LV[@]}"; do [[ -n ${BCW_KIND[$n]:-} ]] && BCW_FO+=("$n"); done
+}
+
+# Move the focus to control NAME (redrawing the old and new control).
+_bcw_focus() { # area
+  local old=$BCL_FOCUS
+  bc_cursor
+  bc_focus "$1"
+  [[ -n $old && -n ${BCW_KIND[$old]:-} ]] && bc_dirty "$old"
+  bc_dirty "$1"
+}
+
+# bc_dialog_run NAME [focus=AREA] [order="AREA …"] — run the dialog (modal).
+# Status 0 when a button other than a cancel button closed it; the button's
+# area name is in BCL_RESULT.
+bc_dialog_run() {
+  local d=$1 o f=""; shift
+  for o in "$@"; do
+    case $o in
+      focus=*) f=${o#*=} ;;
+      order=*) BCW_ORDER[$d]=${o#*=} ;;
+    esac
+  done
+  _bcw_focus_order "$d"
+  [[ -z $f ]] && f=${BCW_FO[0]:-}
+  local pf=$BCL_FOCUS
+  [[ -n $f ]] && _bcw_focus "$f"
+  bc_modal "$d"; local rc=$?
+  bc_cursor
+  bc_focus "$pf"
+  return "$rc"
+}
+
+_bcw_dialog_key() { # key  (keys the focused control did not take)
+  local k=$1 d=$BCL_MODAL i n
+  [[ -n $BCL_FOCUS ]] && _bcw_dialog_of "$BCL_FOCUS" && d=$BCW_D
+  _bcw_focus_order "$d"
+  n=${#BCW_FO[@]}
+  for (( i = 0; i < n; i++ )); do [[ ${BCW_FO[i]} == "$BCL_FOCUS" ]] && break; done
+  case $k in
+    $'\t'|"$KEY_DOWN") (( i < n - 1 )) && _bcw_focus "${BCW_FO[i+1]}" ;;
+    "$KEY_UP")         (( i > 0 && i < n )) && _bcw_focus "${BCW_FO[i-1]}" ;;
+    $'\r'|$'\n'|"$KEY_ENTER")
+      if [[ ${BCW_KIND[$BCL_FOCUS]:-} == button ]]; then _bcw_press "$BCL_FOCUS"; return; fi
+      for (( i = 0; i < n; i++ )); do
+        [[ ${BCW_KIND[${BCW_FO[i]}]} == button && ${BCW_STYLE[${BCW_FO[i]}]} == ok ]] && { _bcw_press "${BCW_FO[i]}"; return; }
+      done
+      bc_close "$d" ok ;;
+    $'\e') bc_close "$d" ;;
+    *) bc_pass ;;
+  esac
+}
+
+# Pens for a control -> BCW_P (normal) BCW_PH (hotkey) BCW_PF BCW_PFH BCW_PI BCW_PB
+_bcw_pens() { # area
+  local -a pp
+  read -r -a pp <<< "$BCW_PENS"
+  _bcl_eff "$1"; BCW_P=$BCL_EP
+  BCW_PH=$BCW_P
+  _bcw_dialog_of "$1" && BCW_PH=${BCL_TPEN[$BCW_D]:-$BCW_P}
+  BCW_PF=${pp[0]} BCW_PFH=${pp[1]} BCW_PI=${pp[2]} BCW_PB=${pp[3]}
+}
+
+# A label with an optional hotkey letter at position HOT -> drawn at y x.
+_bcw_hotlabel() { # area y x text hot pen hotpen
+  local a=$1 y=$2 x=$3 t=$4 h=$5
+  if (( h < 0 )); then bc_print "$a" "$y" "$x" "$t" pair="$6"; return; fi
+  bc_print "$a" "$y" "$x" "${t:0:h}" pair="$6"
+  bc_print "$a" "$y" $(( x + h )) "${t:h:1}" pair="$7"
+  bc_print "$a" "$y" $(( x + h + 1 )) "${t:h+1}" pair="$6"
+}
+
+# ---- label
+# bc_label NAME TEXT [align=…] [pair=N] — static text (bc_text).
+bc_label() { bc_text "$@"; }
+
+# ---- input field
+# bc_input NAME VAR [button] — a one-line text field editing the variable
+# named VAR. "button" draws mc's [^] history button at its right end.
+# Keys: printable characters, Backspace, Delete, Left, Right, Home, End;
+# M-H (KEY_ALT_SH) calls history_NAME. A click places the caret.
+bc_input() { # name var [button]
+  local a=$1
+  local -n _v=$2
+  BCW_KIND[$a]=input BCW_VAR[$a]=$2 BCW_CARET[$a]=${#_v} BCW_BTN[$a]=0
+  [[ ${3:-} == button ]] && BCW_BTN[$a]=1
+  BCL_KEYFN[$a]=_bcw_input_key BCL_CLICKFN[$a]=_bcw_input_click
+  bc_content "$a" 1 1
+  eval "draw_$a() { _bcw_input_draw \"\$1\"; }"
+  bc_dirty "$a"
+}
+
+_bcw_input_draw() { # area
+  local a=$1 s
+  local -n _v=${BCW_VAR[$a]}
+  bc_size "$a"; _bcw_pens "$a"
+  local w=$BCL_W c=${BCW_CARET[$a]} tw=$BCL_W
+  (( c > ${#_v} )) && c=${#_v}
+  (( BCW_BTN[$a] )) && tw=$(( w - 3 ))
+  printf -v s '%-*s' "$tw" "${_v:0:tw}"
+  bc_print "$a" 0 0 "$s" pair="$BCW_PI"
+  if (( BCW_BTN[$a] )); then bc_print "$a" 0 "$tw" "[^]" pair="$BCW_PB"; (( c > w - 4 )) && c=$(( w - 4 ))
+  else (( c > w - 1 )) && c=$(( w - 1 )); fi
+  (( c < 0 )) && c=0
+  [[ $BCL_FOCUS == "$a" ]] && bc_cursor "$a" 0 "$c"
+}
+
+_bcw_input_key() { # key
+  local a=$BCL_FOCUS k=$1
+  local -n _v=${BCW_VAR[$a]}
+  local c=${BCW_CARET[$a]}
+  (( c > ${#_v} )) && c=${#_v}
+  case $k in
+    "$KEY_LEFT")  (( c > 0 )) && c=$(( c - 1 )) ;;
+    "$KEY_RIGHT") (( c < ${#_v} )) && c=$(( c + 1 )) ;;
+    "$KEY_HOME")  c=0 ;;
+    "$KEY_END")   c=${#_v} ;;
+    $'\x7f'|$'\b'|"$KEY_BACKSPACE")
+      (( c > 0 )) && { _v="${_v:0:c-1}${_v:c}"; c=$(( c - 1 )); } ;;
+    "$KEY_DC") _v="${_v:0:c}${_v:c+1}" ;;
+    "$KEY_ALT_SH") declare -F "history_$a" >/dev/null && "history_$a" ;;
+    *)
+      if [[ ${#k} == 1 && $k == [[:print:]] ]]; then _v="${_v:0:c}$k${_v:c}"; c=$(( c + 1 ))
+      else bc_pass; return; fi ;;
+  esac
+  BCW_CARET[$a]=$c
+  bc_dirty "$a"
+}
+
+_bcw_input_click() { # area y x bstate
+  local a=$1 x=$3
+  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  local -n _v=${BCW_VAR[$a]}
+  bc_size "$a"
+  (( BCW_BTN[$a] && x >= BCL_W - 3 )) && return 0
+  (( x > ${#_v} )) && x=${#_v}
+  BCW_CARET[$a]=$x
+  _bcw_focus "$a"
+}
+
+# ---- checkbox
+# bc_check NAME VAR LABEL [hot=N] — "[x] LABEL" toggling VAR (0/1) with
+# Space, Left, Right or a click. hot=N highlights LABEL's N-th letter.
+bc_check() { # name var label [hot=N]
+  local a=$1 o
+  BCW_KIND[$a]=check BCW_VAR[$a]=$2 BCW_LABEL[$a]=$3 BCW_HOT[$a]=-1
+  for o in "${@:4}"; do [[ $o == hot=* ]] && BCW_HOT[$a]=${o#*=}; done
+  BCL_KEYFN[$a]=_bcw_check_key BCL_CLICKFN[$a]=_bcw_check_click
+  bc_content "$a" 1 $(( 4 + ${#3} ))
+  eval "draw_$a() { _bcw_check_draw \"\$1\"; }"
+  bc_dirty "$a"
+}
+
+_bcw_check_draw() { # area
+  local a=$1 p ph b="[ ] "
+  local -n _v=${BCW_VAR[$a]}
+  _bcw_pens "$a"
+  p=$BCW_P ph=$BCW_PH
+  [[ $BCL_FOCUS == "$a" ]] && p=$BCW_PF ph=$BCW_PFH
+  (( _v )) && b="[x] "
+  bc_print "$a" 0 0 "$b" pair="$p"
+  _bcw_hotlabel "$a" 0 4 "${BCW_LABEL[$a]}" "${BCW_HOT[$a]}" "$p" "$ph"
+}
+
+_bcw_check_toggle() { local -n _v=${BCW_VAR[$1]}; _v=$(( 1 - ${_v:-0} )); bc_dirty "$1"; }
+
+_bcw_check_key() { # key
+  case $1 in
+    ' '|"$KEY_LEFT"|"$KEY_RIGHT") _bcw_check_toggle "$BCL_FOCUS" ;;
+    *) bc_pass ;;
+  esac
+}
+
+_bcw_check_click() { # area y x bstate
+  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  _bcw_check_toggle "$1"
+  _bcw_focus "$1"
+}
+
+# ---- button
+# bc_button NAME LABEL [ok] [cancel] [hot=N] — "[ LABEL ]", or mc's default
+# button style "[< LABEL >]" with ok. Pressing it (Space, Enter, click) calls
+# press_NAME if defined, else closes the dialog with NAME as the result
+# (with no result for a cancel button).
+bc_button() { # name label [ok] [cancel] [hot=N]
+  local a=$1 o
+  BCW_KIND[$a]=button BCW_LABEL[$a]=$2 BCW_STYLE[$a]=plain BCW_HOT[$a]=0 BCW_VAL[$a]=""
+  for o in "${@:3}"; do
+    case $o in
+      ok) BCW_STYLE[$a]=ok ;;
+      cancel) BCW_VAL[$a]=cancel ;;
+      hot=*) BCW_HOT[$a]=${o#*=} ;;
+    esac
+  done
+  BCL_KEYFN[$a]=_bcw_button_key BCL_CLICKFN[$a]=_bcw_button_click
+  local w=$(( ${#2} + 4 )); [[ ${BCW_STYLE[$a]} == ok ]] && w=$(( ${#2} + 6 ))
+  bc_content "$a" 1 "$w"
+  eval "draw_$a() { _bcw_button_draw \"\$1\"; }"
+  bc_dirty "$a"
+}
+
+_bcw_button_draw() { # area
+  local a=$1 p ph l r
+  _bcw_pens "$a"
+  p=$BCW_P ph=$BCW_PH
+  [[ $BCL_FOCUS == "$a" ]] && p=$BCW_PF ph=$BCW_PFH
+  if [[ ${BCW_STYLE[$a]} == ok ]]; then l="[< " r=" >]"; else l="[ " r=" ]"; fi
+  bc_print "$a" 0 0 "$l" pair="$p"
+  _bcw_hotlabel "$a" 0 "${#l}" "${BCW_LABEL[$a]}" "${BCW_HOT[$a]}" "$p" "$ph"
+  bc_print "$a" 0 $(( ${#l} + ${#BCW_LABEL[$a]} )) "$r" pair="$p"
+}
+
+_bcw_press() { # area
+  local a=$1
+  if declare -F "press_$a" >/dev/null; then "press_$a"; return; fi
+  _bcw_dialog_of "$a" || return 0
+  if [[ ${BCW_VAL[$a]} == cancel ]]; then bc_close "$BCW_D"; else bc_close "$BCW_D" "$a"; fi
+}
+
+_bcw_button_key() { # key
+  case $1 in
+    ' '|$'\r'|$'\n'|"$KEY_ENTER") _bcw_press "$BCL_FOCUS" ;;
+    *) bc_pass ;;
+  esac
+}
+
+_bcw_button_click() { # area y x bstate
+  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  _bcw_press "$1"
+}

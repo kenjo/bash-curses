@@ -344,7 +344,7 @@ bc_relayout
 check "F center"         "11 30 7 40" "$(frect d1)"
 bc_float d1 shadow
 bc_relayout
-check "F shadow adds 1"  "11 29 8 41" "$(frect d1)"
+check "F shadow adds 1"  "11 30 8 41" "$(frect d1)"
 check "F shadow content" "7 40" "$(bc_size d1; echo "$BCL_H $BCL_W")"
 bc_float d1 size=50x200
 bc_relayout
@@ -373,14 +373,14 @@ hash10=""; for i in {1..10}; do hash10+="####################"$'\n'; done
 bc_text bg "$hash10"
 bc_float sh size=3x6 shadow
 bc_update >/dev/null
-check "F shadow corner top-right shows below"  "#" "${BC_S[3 12]}"
-check "F shadow corner bottom-left shows below" "#" "${BC_S[6 6]}"
-check "F shadow right strip"  "[ ] $A_REVERSE" "[${BC_S[4 12]}] ${BC_SA[4 12]}"
-check "F shadow bottom strip" "[ ] $A_REVERSE" "[${BC_S[6 7]}] ${BC_SA[6 7]}"
-check "F shadow box + strip"  "       #" "$(srow 5 6 8)"
+check "F shadow corner top-right shows below"  "#" "${BC_S[3 13]}"
+check "F shadow corner bottom-left shows below" "#" "${BC_S[6 7]}"
+check "F shadow right strip"  "[ ] $A_REVERSE" "[${BC_S[4 13]}] ${BC_SA[4 13]}"
+check "F shadow bottom strip" "[ ] $A_REVERSE" "[${BC_S[6 8]}] ${BC_SA[6 8]}"
+check "F shadow box + strip"  "       #" "$(srow 5 7 8)"
 bc_close sh
 bc_update >/dev/null
-check "F shadow gone after close" "#######" "$(srow 6 6 7)"
+check "F shadow gone after close" "#######" "$(srow 6 7 7)"
 fresh 30 100
 bc_screen "
   menu  menu
@@ -442,15 +442,15 @@ bc_grid copy "
 bc_text l1 "From:"
 bc_text l2 "To:"
 bc_relayout
-check "F dialog rect"      "10 29 9 41" "$(frect copy)"
-check "F dialog label"     "11 30 1 5"  "$(frect l1)"
-check "F dialog field"     "11 36 1 32" "$(frect src)"
-check "F dialog buttons"   "16 30 1 5"  "$(frect ok)"
+check "F dialog rect"      "11 30 9 41" "$(frect copy)"
+check "F dialog label"     "12 31 1 5"  "$(frect l1)"
+check "F dialog field"     "12 37 1 32" "$(frect src)"
+check "F dialog buttons"   "17 31 1 5"  "$(frect ok)"
 check "F child inherits pair" "5" "${BC_WBGP[${BCL_WIN[src]}]}"
 bc_update >/dev/null
-check "F dialog painted" "│From: " "$(srow 11 29 7)"
-check "F dialog pair on screen" "5" "${BC_SP[13 50]}"
-bc_hit 11 40
+check "F dialog painted" "│From: " "$(srow 12 30 7)"
+check "F dialog pair on screen" "5" "${BC_SP[14 51]}"
+bc_hit 12 41
 check "F hit dialog child" "src 0 4" "$BCL_AREA $BCL_MY $BCL_MX"
 bc_hit 2 2
 check "F hit tiled below" "left 1 2" "$BCL_AREA $BCL_MY $BCL_MX"
@@ -556,19 +556,19 @@ txt=""; for i in {1..20}; do txt+="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"$'\n
 bc_text bg "$txt"
 bc_float dlg size=4x10 border margin=1 shadow=mc spair=9 pair=5 title=T tpair=6 nudge=-2,0
 bc_relayout
-check "M outer rect = box + margin + shadow" "4 13 7 14" "$(frect dlg)"
+check "M outer rect = box + margin + shadow" "5 14 7 14" "$(frect dlg)"
 bc_size dlg
 check "M content inside margin+border" "2 8" "$BCL_H $BCL_W"
 bc_update >/dev/null
-check "M margin ring is background" "            " "$(srow 4 13 12)"
-check "M border inside margin" " ┌── T ───┐ " "$(srow 5 13 12)"
-check "M title pen" "6" "${BC_SP[5 18]}"
-check "M mc shadow right is see-through" "zA 9" "${BC_S[5 25]}${BC_S[5 26]} ${BC_SP[5 25]}"
-check "M top-right corner untouched" "z 0" "${BC_S[4 25]} ${BC_SP[4 25]}"
-check "M mc shadow bottom row" "p 9" "${BC_S[10 15]} ${BC_SP[10 15]}"
-check "M bottom-left corner untouched" "o 0" "${BC_S[10 14]} ${BC_SP[10 14]}"
+check "M margin ring is background" "            " "$(srow 5 14 12)"
+check "M border inside margin" " ┌── T ───┐ " "$(srow 6 14 12)"
+check "M title pen" "6" "${BC_SP[6 19]}"
+check "M mc shadow right is see-through" "AB 9" "${BC_S[6 26]}${BC_S[6 27]} ${BC_SP[6 26]}"
+check "M top-right corner untouched" "A 0" "${BC_S[5 26]} ${BC_SP[5 26]}"
+check "M mc shadow bottom row" "q 9" "${BC_S[11 16]} ${BC_SP[11 16]}"
+check "M bottom-left corner untouched" "p 0" "${BC_S[11 15]} ${BC_SP[11 15]}"
 bc_close dlg; bc_update >/dev/null
-check "M closed: shadow gone" "zA 0" "${BC_S[5 25]}${BC_S[5 26]} ${BC_SP[5 25]}"
+check "M closed: shadow gone" "AB 0" "${BC_S[6 26]}${BC_S[6 27]} ${BC_SP[6 26]}"
 
 # cursor follows an area
 bc_float inp size=1x10 at=2,3

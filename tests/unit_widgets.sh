@@ -141,5 +141,55 @@ check "outside click did not leak keys" "x" "${KQ[*]}"
 bc_update >/dev/null
 check "bar closed again" "1" "${BC_SP[0 2]}"
 
+
+# ---------------------------------------------------------------- dialogs
+fresh 16 40
+bc_screen "bg"
+BCW_PENS="29 30 25 28"
+mkdlg() {
+  NAME="ab" FLAG=0
+  bc_dialog d "Edit" 7x30 pair=23 tpair=24 margin=1
+  bc_grid d "
+    .   name  name  .
+    .   flag  flag  .
+    sep sep   sep   sep
+    .   ok    no    .
+  " rows="1 1 1 1" cols="1 auto * 1"
+  bc_input name NAME button
+  bc_check flag FLAG "Flag it" hot=0
+  bc_style sep divider
+  bc_button ok "OK" ok
+  bc_button no "Cancel" cancel
+}
+dprobe() { bc_update >/dev/null; P1="$(srow 5 7 26)|$(srow 6 7 26)|$(srow 7 5 30)|$(srow 8 7 26)|${BC_SP[5 7]} ${BC_SP[5 30]} ${BC_SP[6 7]} ${BC_SP[6 11]}|${BC_WAY[0]},${BC_WAX[0]}"; }
+_bcl_readkey() {
+  if (( ${#KQ[@]} == 0 )); then bc_quit; return 1; fi
+  key=${KQ[0]}; KQ=("${KQ[@]:1}")
+  [[ $key == PROBE ]] && { dprobe; key=$'\e'; }
+  if [[ $key == M:* ]]; then local e=${key#M:} yx b; yx=${e%%:*} b=${e#*:}; BC_MEVENTS+=("0 ${yx#*,} ${yx%,*} $b"); key=$KEY_MOUSE; fi
+  return 0
+}
+drun() { BCL_QUIT=0; KQ=("$@"); bc_dialog_run d "${DOPT[@]}" >/dev/null; RC=$?; DOPT=(); }
+DOPT=()
+mkdlg; drun x "$KEY_LEFT" "$KEY_BACKSPACE" PROBE
+check "dialog drawn, field focused with the cursor at the caret" \
+  "ax                     [^]|[ ] Flag it               |├────────────────────────────┤|[< OK >][ Cancel ]        |25 28 23 24|5,8" "$P1"
+check "Esc cancels" "1" "$RC"
+check "the field edits its variable" "ax" "$NAME"
+mkdlg; drun "$KEY_DOWN" ' ' PROBE
+P2=${P1#*|}; P2=${P2%%|*}; P3=${P1#*|*|*|*|}; P3=${P3%|*}
+check "Down focuses the checkbox, Space toggles it" "[x] Flag it               |25 28 29 30" "$P2|$P3"
+check "the checkbox toggles its variable" "1" "$FLAG"
+mkdlg; drun "$KEY_DOWN" "$KEY_DOWN" "$KEY_DOWN" ' '
+check "Space on a cancel button: no result" "1" "$RC"
+mkdlg; drun h e y $'\r'
+check "Enter in a field presses the ok button" "0 ok abhey" "$RC $BCL_RESULT $NAME"
+mkdlg; drun "M:8,9:$BUTTON1_CLICKED"
+check "click on OK" "0 ok" "$RC $BCL_RESULT"
+mkdlg; drun "M:6,8:$BUTTON1_CLICKED" "M:5,8:$BUTTON1_CLICKED" z "M:8,17:$BUTTON1_CLICKED"
+check "clicks: checkbox, caret in field, Cancel" "1 1 azb" "$RC $FLAG $NAME"
+mkdlg; DOPT=(focus=no order="no flag name"); drun "$KEY_DOWN" ' ' $'\e'
+check "focus= and order=" "1" "$FLAG"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 ))

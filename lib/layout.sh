@@ -74,7 +74,7 @@ _bcl_forget() { # name
   declare -F _bcl_unbind >/dev/null && _bcl_unbind "$a"
   for k in KIND PARENT R0 R1 C0 C1 RY RX RH RW TPL KIDS ROWSPEC COLSPEC NR NC GAP BORDER CELLS \
            CH CW PAIR ATTR FRAME TITLE SHADOW BPAIR TEXT TPAIR TATTR TALIGN NEEDDRAW \
-           FIN FAT FSIZE FRND FKEYS FWITHIN FNUDGE MARGIN SPAIR TPEN KEYFN CLICKFN; do
+           FIN FAT FSIZE FRND FKEYS FWITHIN FNUDGE MARGIN SPAIR TPEN KEYFN CLICKFN DIVIDER; do
     unset "BCL_$k[$a]"
   done
 }
@@ -410,6 +410,7 @@ declare -A BCL_NEEDDRAW=()
 # style
 declare -A BCL_PAIR=() BCL_ATTR=() BCL_FRAME=() BCL_TITLE=() BCL_SHADOW=() BCL_BPAIR=()
 declare -A BCL_MARGIN=()  # name -> cells of background around the border
+declare -A BCL_DIVIDER=() # name -> 1: a horizontal rule joined to the enclosing border
 declare -A BCL_SPAIR=()   # name -> shadow colour pair (default BCL_SHADOW_PAIR)
 declare -A BCL_TPEN=()    # name -> title colour pair (default: border pair)
 declare -A BCL_KEYFN=()   # name -> key handler (widgets register here)
@@ -512,6 +513,13 @@ _bcl_paint_frame() { # name
     fi
     wattrset "$f" "$at" "$p"
   fi
+  if [[ -n ${BCL_DIVIDER[$a]:-} ]] && (( bw >= 2 )); then
+    local dl
+    printf -v dl '%*s' $(( bw - 2 )) ''; dl=${dl// /$ACS_HLINE}
+    wattrset "$f" "$at" "${BCL_BPAIR[$a]:-$p}"
+    mvwaddstr "$f" 0 0 "$ACS_LTEE$dl$ACS_RTEE"
+    wattrset "$f" "$at" "$p"
+  fi
   local sp=${BCL_SPAIR[$a]:-${BCL_SHADOW_PAIR:-0}} sa=0
   (( sp )) || sa=$A_REVERSE
   for sw in ${BCL_SWINS[$a]:-}; do
@@ -603,10 +611,15 @@ bc_relayout() {
   local a key
   for a in "${BCL_LV[@]}"; do
     key="${BCL_RY[$a]} ${BCL_RX[$a]} ${BCL_RH[$a]} ${BCL_RW[$a]}"
+    [[ -n ${BCL_DIVIDER[$a]:-} ]] && key="${BCL_RY[$a]} $(( BCL_RX[$a] - 1 )) 1 $(( BCL_RW[$a] + 2 ))"
     [[ ${BCL_WRECT[$a]:-} == "$key" ]] && continue
     _bcl_unbind "$a"
     (( BCL_RH[$a] > 0 && BCL_RW[$a] > 0 )) || continue
-    _bcl_bind "$a" "${BCL_RY[$a]}" "${BCL_RX[$a]}" "${BCL_RH[$a]}" "${BCL_RW[$a]}"
+    if [[ -n ${BCL_DIVIDER[$a]:-} ]]; then   # reaches into the border on both sides
+      _bcl_bind "$a" "${BCL_RY[$a]}" $(( BCL_RX[$a] - 1 )) 1 $(( BCL_RW[$a] + 2 ))
+    else
+      _bcl_bind "$a" "${BCL_RY[$a]}" "${BCL_RX[$a]}" "${BCL_RH[$a]}" "${BCL_RW[$a]}"
+    fi
   done
   _bcl_restack
   return 0
@@ -617,6 +630,7 @@ bc_relayout() {
 #              [tpair=N] [margin=N] [shadow|shadow=mc|shadow=0] [spair=N]
 #   margin: rows/columns of background between the window edge and the border
 #   shadow=mc: Midnight Commander's see-through shadow (2 columns, 1 row)
+#   divider: the (one-row) area is a rule ├───┤ joined to the enclosing border
 # "screen" styles the background (stdscr).
 bc_style() {
   local a=$1 o; shift
@@ -636,6 +650,7 @@ bc_style() {
       spair=*)  BCL_SPAIR[$a]=${o#*=} ;;
       tpair=*)  BCL_TPEN[$a]=${o#*=} ;;
       margin=*) BCL_MARGIN[$a]=${o#*=}; geom=1 ;;
+      divider)  BCL_DIVIDER[$a]=1; geom=1 ;;
       *) _bcl_err "bc_style: unknown option '$o'"; return 1 ;;
     esac
   done
@@ -667,6 +682,7 @@ bc_style() {
     # a container that just became visible needs a window
     _bcl_bindable "$a" && [[ -z ${BCL_FWIN[$a]:-} ]] && BCL_LAYOUT_DIRTY=1
   fi
+  return 0
 }
 
 # ------------------------------------------------------------ drawing
@@ -861,6 +877,17 @@ bc_text() {
     _bcl_content_sized "$a" && BCL_LAYOUT_DIRTY=1
   fi
   BCL_NEEDDRAW[$a]=1
+}
+
+# bc_content NAME H W — tell the layout how big NAME's content is (for auto
+# tracks and auto-sized floats); widgets use it.
+bc_content() {
+  local a=$1
+  if [[ ${BCL_CH[$a]:-} != "$2" || ${BCL_CW[$a]:-} != "$3" ]]; then
+    BCL_CH[$a]=$2 BCL_CW[$a]=$3
+    _bcl_content_sized "$a" && BCL_LAYOUT_DIRTY=1
+  fi
+  return 0
 }
 
 # Can NAME's content size change the layout? True when it (or an enclosing
@@ -1172,7 +1199,9 @@ _bcl_place_floats() {
     (( ch == 0 )) && h=0
     (( cw == 0 )) && w=0
     at=${BCL_FAT[$a]}
-    y=$(( py + (ph - h) / 2 )) x=$(( px + (pw - w) / 2 ))
+    # centring centres the box: a shadow hangs off it
+    _bcl_shadow_size "$a"
+    y=$(( py + (ph - h + BCL_SH) / 2 )) x=$(( px + (pw - w + BCL_SW) / 2 ))
     case $at in
       top|topleft|topright)          y=$py ;;&
       bottom|bottomleft|bottomright) y=$(( py + ph - h )) ;;&
