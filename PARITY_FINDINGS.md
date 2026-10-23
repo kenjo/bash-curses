@@ -3694,3 +3694,384 @@ the right panel's columns so its far-right peek (cols 96-99) shows different
 content. The clone keeps the normal two-panel layout. Matching this requires
 replicating mc's panel-stack full-width-active-panel behavior, which is out of
 scope for the dialog itself.
+
+## Additional run
+
+
+### initial
+
+- keys/menu: `(none)`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/01.initial.plain`, `tmp/p/mc/01.initial.sgr`
+- clone capture: `tmp/p/clone/01.initial.plain`, `tmp/p/clone/01.initial.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_down
+
+- keys/menu: `Down`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/02.nav_down.plain`, `tmp/p/mc/02.nav_down.sgr`
+- clone capture: `tmp/p/clone/02.nav_down.plain`, `tmp/p/clone/02.nav_down.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_up
+
+- keys/menu: `Down Up`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/03.nav_up.plain`, `tmp/p/mc/03.nav_up.sgr`
+- clone capture: `tmp/p/clone/03.nav_up.plain`, `tmp/p/clone/03.nav_up.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_left
+
+- keys/menu: `Left`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/04.nav_left.plain`, `tmp/p/mc/04.nav_left.sgr`
+- clone capture: `tmp/p/clone/04.nav_left.plain`, `tmp/p/clone/04.nav_left.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_right
+
+- keys/menu: `Right`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/05.nav_right.plain`, `tmp/p/mc/05.nav_right.sgr`
+- clone capture: `tmp/p/clone/05.nav_right.plain`, `tmp/p/clone/05.nav_right.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_tab
+
+- keys/menu: `Tab`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/06.nav_tab.plain`, `tmp/p/mc/06.nav_tab.sgr`
+- clone capture: `tmp/p/clone/06.nav_tab.plain`, `tmp/p/clone/06.nav_tab.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+## Additional run
+
+
+### initial
+
+- keys/menu: `(none)`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/01.initial.plain`, `tmp/p/mc/01.initial.sgr`
+- clone capture: `tmp/p/clone/01.initial.plain`, `tmp/p/clone/01.initial.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_down
+
+- keys/menu: `Down`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/02.nav_down.plain`, `tmp/p/mc/02.nav_down.sgr`
+- clone capture: `tmp/p/clone/02.nav_down.plain`, `tmp/p/clone/02.nav_down.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_up
+
+- keys/menu: `Down Up`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/03.nav_up.plain`, `tmp/p/mc/03.nav_up.sgr`
+- clone capture: `tmp/p/clone/03.nav_up.plain`, `tmp/p/clone/03.nav_up.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_left
+
+- keys/menu: `Left`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/04.nav_left.plain`, `tmp/p/mc/04.nav_left.sgr`
+- clone capture: `tmp/p/clone/04.nav_left.plain`, `tmp/p/clone/04.nav_left.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_right
+
+- keys/menu: `Right`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/05.nav_right.plain`, `tmp/p/mc/05.nav_right.sgr`
+- clone capture: `tmp/p/clone/05.nav_right.plain`, `tmp/p/clone/05.nav_right.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+### nav_tab
+
+- keys/menu: `Tab`
+- plain: differs
+- sgr: differs
+- filesystem: identical
+- mc capture: `tmp/p/mc/06.nav_tab.plain`, `tmp/p/mc/06.nav_tab.sgr`
+- clone capture: `tmp/p/clone/06.nav_tab.plain`, `tmp/p/clone/06.nav_tab.sgr`
+
+plain diff (mc < vs clone >)
+```text
+29c29
+< kenjo@brix:TREE$
+---
+> kenjo@brix:TREE$                                           [^]
+```
+
+per-cell SGR diff (mc < vs clone >)
+```text
+2860,2862c2860,2862
+< 28	59	 	d	d	
+< 28	60	 	d	d	
+< 28	61	 	d	d	
+---
+> 28	59	[	16:7	16:4	
+> 28	60	^	16:7	16:4	
+> 28	61	]	16:7	16:4	
+6 differing cells (of 3000)
+```
+
+## lay92 run (examples/92-mc-layout.sh, MC_TAG=lay92) — artifact, not a clone defect
+
+`MC_SCRIPT=examples/92-mc-layout.sh MC_TAG=lay92 bash tests/parity_probe.sh
+initial nav_down nav_up nav_left nav_right nav_tab` reported 6 FAILs, but every
+one is the *same* single cause: real `mc` did not draw the `[^]` command-line
+marker in that run, while the clone always does. `filesystem: identical` in all
+six; the SGR diffs are only the 3 marker cells on row 28.
+
+Reproduced directly: with the probe's env (`HOME`/`MC_CONFIG_DIR` fresh, full
+path in the prompt), `mc` shows `[^]` in `tmp/p/t0` but not in
+`tmp/lay92p/t0` — the marker's presence depends on the prompt length, i.e. on
+the probe's own tree path, not on the clone. The canonical `MC_TAG=` run
+(`tmp/p`) matches the clone exactly on these steps. Treat the lay92 FAILs as a
+probe-environment artifact.
