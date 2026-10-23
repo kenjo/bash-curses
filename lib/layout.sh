@@ -74,7 +74,7 @@ _bcl_forget() { # name
   declare -F _bcl_unbind >/dev/null && _bcl_unbind "$a"
   for k in KIND PARENT R0 R1 C0 C1 RY RX RH RW TPL KIDS ROWSPEC COLSPEC NR NC GAP BORDER CELLS \
            CH CW PAIR ATTR FRAME TITLE SHADOW BPAIR TEXT TPAIR TATTR TALIGN NEEDDRAW \
-           FIN FAT FSIZE FRND FKEYS FWITHIN FNUDGE MARGIN SPAIR TPEN KEYFN CLICKFN DIVIDER; do
+           FIN FAT FSIZE FRND FKEYS FWITHIN FNUDGE MARGIN SPAIR TPEN KEYFN CLICKFN DIVIDER TLEFT; do
     unset "BCL_$k[$a]"
   done
 }
@@ -411,6 +411,7 @@ declare -A BCL_NEEDDRAW=()
 declare -A BCL_PAIR=() BCL_ATTR=() BCL_FRAME=() BCL_TITLE=() BCL_SHADOW=() BCL_BPAIR=()
 declare -A BCL_MARGIN=()  # name -> cells of background around the border
 declare -A BCL_DIVIDER=() # name -> 1: a horizontal rule joined to the enclosing border
+declare -A BCL_TLEFT=()   # name -> 1: title at the left of the border, not centred
 declare -A BCL_SPAIR=()   # name -> shadow colour pair (default BCL_SHADOW_PAIR)
 declare -A BCL_TPEN=()    # name -> title colour pair (default: border pair)
 declare -A BCL_KEYFN=()   # name -> key handler (widgets register here)
@@ -509,7 +510,8 @@ _bcl_paint_frame() { # name
       # too long: keep the end (paths read best from the right)
       (( ${#t} > bw2 - 2 )) && t=" …${t:${#t}-(bw2-5)}"
       wattrset "$f" "$at" "${BCL_TPEN[$a]:-$bp}"
-      mvwaddstr "$f" "$y0" $(( x0 + (bw2 - ${#t}) / 2 )) "$t"
+      if [[ -n ${BCL_TLEFT[$a]:-} ]]; then mvwaddstr "$f" "$y0" $(( x0 + 1 )) "$t"
+      else mvwaddstr "$f" "$y0" $(( x0 + (bw2 - ${#t}) / 2 )) "$t"; fi
     fi
     wattrset "$f" "$at" "$p"
   fi
@@ -631,6 +633,7 @@ bc_relayout() {
 #   margin: rows/columns of background between the window edge and the border
 #   shadow=mc: Midnight Commander's see-through shadow (2 columns, 1 row)
 #   divider: the (one-row) area is a rule ├───┤ joined to the enclosing border
+#   tleft: the title sits at the left of the border instead of the middle
 # "screen" styles the background (stdscr).
 bc_style() {
   local a=$1 o; shift
@@ -651,6 +654,7 @@ bc_style() {
       tpair=*)  BCL_TPEN[$a]=${o#*=} ;;
       margin=*) BCL_MARGIN[$a]=${o#*=}; geom=1 ;;
       divider)  BCL_DIVIDER[$a]=1; geom=1 ;;
+      tleft)    BCL_TLEFT[$a]=1 ;;
       *) _bcl_err "bc_style: unknown option '$o'"; return 1 ;;
     esac
   done

@@ -394,9 +394,11 @@ _bcw_menu_click() { # area y x bstate
 # bc_dialog NAME TITLE HxW [style options] — a dialog: a centred float with a
 # border and title (style options as for bc_float/bc_style, e.g. margin=1
 # shadow=mc pair=N tpair=N nudge=DY,DX). Lay it out with bc_grid NAME "…",
-# fill the areas with bc_label / bc_input / bc_check / bc_button, then
-# bc_dialog_run NAME. Keys: Tab/Down next control, Up previous, Enter presses
-# the focused button or else the default (first "ok") button, Esc cancels.
+# fill the areas with bc_label / bc_input / bc_check / bc_cycle / bc_button,
+# then bc_dialog_run NAME. Keys: Tab next control (wrapping), Down/Up next and
+# previous, Enter presses the focused button or else the default (first
+# "ok") button, Esc cancels. A keys=FN option replaces the key handler; FN
+# can call _bcw_dialog_key for the default behaviour.
 #
 # Pens (set BCW_PENS once): "FOCUS FOCUSHOT FIELD FIELDBUTTON" — the focused
 # control, its hotkey letter, input fields and their [^] button. Hotkey
@@ -444,7 +446,8 @@ _bcw_focus() { # area
   bc_dirty "$1"
 }
 
-# bc_dialog_run NAME [focus=AREA] [order="AREA …"] — run the dialog (modal).
+# bc_dialog_run NAME [focus=AREA|-] [order="AREA …"] — run the dialog (modal).
+# focus=- starts with no control focused.
 # Status 0 when a button other than a cancel button closed it; the button's
 # area name is in BCL_RESULT.
 bc_dialog_run() {
@@ -458,7 +461,7 @@ bc_dialog_run() {
   _bcw_focus_order "$d"
   [[ -z $f ]] && f=${BCW_FO[0]:-}
   local pf=$BCL_FOCUS
-  [[ -n $f ]] && _bcw_focus "$f"
+  if [[ $f == - ]]; then bc_focus ""; elif [[ -n $f ]]; then _bcw_focus "$f"; fi
   bc_modal "$d"; local rc=$?
   bc_cursor
   bc_focus "$pf"
@@ -472,7 +475,8 @@ _bcw_dialog_key() { # key  (keys the focused control did not take)
   n=${#BCW_FO[@]}
   for (( i = 0; i < n; i++ )); do [[ ${BCW_FO[i]} == "$BCL_FOCUS" ]] && break; done
   case $k in
-    $'\t'|"$KEY_DOWN") (( i < n - 1 )) && _bcw_focus "${BCW_FO[i+1]}" ;;
+    $'\t')       (( n )) && _bcw_focus "${BCW_FO[(i + 1) % n]}" ;;
+    "$KEY_DOWN") (( i < n - 1 )) && _bcw_focus "${BCW_FO[i+1]}" ;;
     "$KEY_UP")         (( i > 0 && i < n )) && _bcw_focus "${BCW_FO[i-1]}" ;;
     $'\r'|$'\n'|"$KEY_ENTER")
       if [[ ${BCW_KIND[$BCL_FOCUS]:-} == button ]]; then _bcw_press "$BCL_FOCUS"; return; fi
@@ -661,4 +665,45 @@ _bcw_button_key() { # key
 _bcw_button_click() { # area y x bstate
   (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
   _bcw_press "$1"
+}
+
+# ---- cycling value
+# bc_cycle NAME VAR PREFIX VALUE… — "PREFIX value" that steps VAR through the
+# values with Space, Enter, Left, Right or a click.
+bc_cycle() { # name var prefix values...
+  local a=$1
+  BCW_KIND[$a]=cycle BCW_VAR[$a]=$2 BCW_LABEL[$a]=$3 BCW_VAL[$a]="${*:4}"
+  BCL_KEYFN[$a]=_bcw_cycle_key BCL_CLICKFN[$a]=_bcw_cycle_click
+  eval "draw_$a() { _bcw_cycle_draw \"\$1\"; }"
+  bc_dirty "$a"
+}
+
+_bcw_cycle_draw() { # area
+  local a=$1 p
+  local -n _v=${BCW_VAR[$a]}
+  _bcw_pens "$a"; p=$BCW_P
+  [[ $BCL_FOCUS == "$a" ]] && p=$BCW_PF
+  bc_print "$a" 0 0 "${BCW_LABEL[$a]}$_v" pair="$p"
+}
+
+_bcw_cycle_step() { # area
+  local a=$1 i
+  local -n _v=${BCW_VAR[$a]}
+  local -a vs
+  read -r -a vs <<< "${BCW_VAL[$a]}"
+  for (( i = 0; i < ${#vs[@]}; i++ )); do [[ ${vs[i]} == "$_v" ]] && break; done
+  _v=${vs[(i + 1) % ${#vs[@]}]}
+  bc_dirty "$a"
+}
+
+_bcw_cycle_key() { # key
+  case $1 in
+    ' '|$'\r'|"$KEY_LEFT"|"$KEY_RIGHT") _bcw_cycle_step "$BCL_FOCUS" ;;
+    *) bc_pass ;;
+  esac
+}
+
+_bcw_cycle_click() { # area y x bstate
+  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  _bcw_cycle_step "$1"; _bcw_focus "$1"
 }
