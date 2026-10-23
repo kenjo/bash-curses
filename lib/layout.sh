@@ -578,7 +578,7 @@ _bcl_bind() { # name y x h w
   wattrset "$c" "$BCL_EA" "$BCL_EP"
   _bcl_paint_frame "$a"
   BCL_WRECT[$a]="$y $x $h $w"
-  BCL_NEEDDRAW[$a]=1
+  _bcl_need "$a"
 }
 
 # Put the layout's panels in order: tiled areas at the bottom, panels created
@@ -681,7 +681,7 @@ bc_style() {
       wattrset "${BCL_WIN[$n]}" "$BCL_EA" "$BCL_EP"
       _bcl_paint_frame "$n"
       _bcl_forget_text "$n" "${BC_WH[${BCL_WIN[$n]}]}"
-      BCL_NEEDDRAW[$n]=1
+      _bcl_need "$n"
     done
     # a container that just became visible needs a window
     _bcl_bindable "$a" && [[ -z ${BCL_FWIN[$a]:-} ]] && BCL_LAYOUT_DIRTY=1
@@ -804,11 +804,13 @@ _bcl_draw_area() { # name
     werase "$c"; _bcl_forget_text "$a" "$h"
   fi
   local prev=$BCL_DRAWING
-  BCL_DRAWING=$a
+  BCL_DRAWING=$a BCL_PARTIAL=0
   for (( r = 0; r < h; r++ )); do BCL_SPAN[$a/$r]=""; done
   [[ -n ${BCL_TEXT[$a]+set} ]] && _bcl_draw_text "$a"
   declare -F "draw_$a" >/dev/null && "draw_$a" "$a"
   BCL_DRAWING=$prev
+  # a partial redraw (BCL_PARTIAL=1, set by the draw function) only redrew
+  # some rows: leave the others alone
   # blank the cells that held text before and were not written now
   _bcl_eff "$a"
   local ea=$BCL_EA ep=$BCL_EP e x0 x1 pos end blank
@@ -816,6 +818,7 @@ _bcl_draw_area() { # name
   for (( r = 0; r < h; r++ )); do
     e=${BCL_EXT[$a/$r]:-0}
     (( e )) || continue
+    (( BCL_PARTIAL )) && [[ -z ${BCL_SPAN[$a/$r]} ]] && continue
     read -r -a sp <<< "${BCL_SPAN[$a/$r]}"
     # spans in write order; sort them by start (few per row)
     local -a st=() en=()
@@ -880,7 +883,7 @@ bc_text() {
     BCL_CH[$a]=$n BCL_CW[$a]=$mw
     _bcl_content_sized "$a" && BCL_LAYOUT_DIRTY=1
   fi
-  BCL_NEEDDRAW[$a]=1
+  _bcl_need "$a"
 }
 
 # bc_content NAME H W — tell the layout how big NAME's content is (for auto
@@ -934,16 +937,21 @@ _bcl_draw_text() { # name
   _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
 }
 
+# Mark NAME for redrawing. BCL_DIRTYN counts the requests, so a widget can
+# tell whether anyone but itself asked for a redraw (see bc_list).
+declare -A BCL_DIRTYN=()
+_bcl_need() { BCL_NEEDDRAW[$1]=1; BCL_DIRTYN[$1]=$(( ${BCL_DIRTYN[$1]:-0} + 1 )); }
+
 # bc_dirty NAME... — ask for NAME to be redrawn (draw_NAME / on_draw) before
 # the next screen update. "all" marks every bound area.
 bc_dirty() {
   local a
   for a in "$@"; do
     if [[ $a == all ]]; then
-      for a in "${!BCL_WIN[@]}"; do BCL_NEEDDRAW[$a]=1; done
+      for a in "${!BCL_WIN[@]}"; do _bcl_need "$a"; done
       return 0
     fi
-    BCL_NEEDDRAW[$a]=1
+    _bcl_need "$a"
   done
 }
 

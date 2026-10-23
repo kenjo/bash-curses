@@ -87,8 +87,8 @@ has "C dialog From"      4  "│From: beta.sh"
 has "C dialog To"        6  "│To:   $TREE/R/"
 has "C dialog buttons"   10 "[ OK ]  [ Cancel ]"
 grid 80 16
-[[ $(bg 4 69) == 16:0 && $(bg 12 10) == 16:0 ]] && ok "C shadow strips" || bad "C shadow strips: $(bg 4 69) $(bg 12 10)"
-[[ $(bg 3 69) == 16:4 && $(bg 12 8) == 16:4 ]] && ok "C shadow corners show the panel" || bad "C shadow corners: $(bg 3 69) $(bg 12 8)"
+[[ $(bg 4 70) == 16:0 && $(bg 12 11) == 16:0 ]] && ok "C shadow strips" || bad "C shadow strips: $(bg 4 70) $(bg 12 11)"
+[[ $(bg 3 70) == 16:4 && $(bg 12 9) == 16:4 ]] && ok "C shadow corners show the panel" || bad "C shadow corners: $(bg 3 70) $(bg 12 9)"
 keys Down; sleep 0.6
 has "C modal swallows keys" 14 " beta.sh"
 keys Enter; sleep 1

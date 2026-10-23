@@ -85,6 +85,22 @@ clicked=""; click_list() { clicked="$1,$2"; }
 run "M:7,5:$BUTTON1_CLICKED"
 check "click is passed on to click_NAME" "6,5" "$clicked"
 
+# a selection move redraws only the two rows involved (unless more is dirty)
+nrows=0
+row_list() { nrows=$(( nrows + 1 ))
+  local t=""; (( $1 < ${#ITEMS[@]} )) && t=${ITEMS[$1]}
+  (( $3 )) && t=">$t" || t=" $t"; printf -v t '%-20s' "$t"; bc_print list "$2" 0 "$t"; }
+bc_list_sel list 1; bc_update >/dev/null
+nrows=0; run "$KEY_DOWN"
+check "Down redraws two rows" "2" "$nrows"
+check "  old row unselected, new selected, others kept" " a1|>a2| a0| a6" "$(srow 2 0 3)|$(srow 3 0 3)|$(srow 1 0 3)|$(srow 7 0 3)"
+select_list() { log+="sel:$1 "; bc_dirty list; }
+nrows=0; run "$KEY_DOWN"
+check "a move plus another bc_dirty redraws all rows" "7" "$nrows"
+select_list() { log+="sel:$1 "; }
+nrows=0; run "$KEY_END"
+check "a move that scrolls redraws all rows" "7" "$nrows"
+
 # shrinking data clamps the selection; empty rows are drawn
 ITEMS=(b0 b1); bc_dirty list; bc_update >/dev/null
 bc_list_sel list; check "selection clamped to new count" "1" "$BCL_SEL"

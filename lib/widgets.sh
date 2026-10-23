@@ -27,6 +27,7 @@ BCW_LOADED=1
 # Keys: Up Down Home End PgUp PgDn; others are passed on.
 # Mouse: click selects, double click enters, wheel moves, press-drag selects.
 declare -A BCW_SEL=() BCW_TOP=() BCW_ARR=() BCW_DRAG=()
+declare -A BCW_PSEL=() BCW_PSEQ=() BCW_PTOP=()   # pending selection-only redraw
 
 bc_list() { # name array
   local a=$1
@@ -73,6 +74,8 @@ _bcw_list_scroll() { # name rows
   BCW_TOP[$a]=$t
 }
 
+# If only the selection moved (nobody else asked for a redraw since) and the
+# list did not scroll, only the old and the new selected rows are redrawn.
 _bcw_list_draw() { # name
   local a=$1 y idx
   bc_size "$a"
@@ -80,11 +83,21 @@ _bcw_list_draw() { # name
   _bcw_list_clamp "$a"
   _bcw_list_scroll "$a" "$h"
   local s=${BCW_SEL[$a]} t=${BCW_TOP[$a]} fn="row_$a"
+  local seq=${BCW_PSEQ[$a]:-} old=${BCW_PSEL[$a]:-}
+  unset "BCW_PSEQ[$a]"
   declare -F "$fn" >/dev/null || return 0
-  for (( y = 0; y < h; y++ )); do
-    idx=$(( t + y ))
-    "$fn" "$idx" "$y" $(( idx == s && idx < BCW_N ))
-  done
+  if [[ $seq == "${BCL_DIRTYN[$a]:-}" && ${BCW_PTOP[$a]:-} == "$t" ]]; then
+    BCL_PARTIAL=1
+    for idx in "$old" "$s"; do
+      (( idx >= t && idx < t + h )) && "$fn" "$idx" $(( idx - t )) $(( idx == s && idx < BCW_N ))
+    done
+  else
+    for (( y = 0; y < h; y++ )); do
+      idx=$(( t + y ))
+      "$fn" "$idx" "$y" $(( idx == s && idx < BCW_N ))
+    done
+  fi
+  BCW_PTOP[$a]=$t
 }
 
 # Move the selection; notify the app if it changed.
@@ -93,7 +106,11 @@ _bcw_list_move() { # name newsel
   BCW_SEL[$a]=$2
   _bcw_list_clamp "$a"
   (( BCW_SEL[$a] == old )) && return 0
+  # selection-only redraw unless something else is pending already
+  [[ ${BCW_PSEQ[$a]:-} == "${BCL_DIRTYN[$a]:-}" ]] || BCW_PSEL[$a]=$old
+  [[ -n ${BCL_NEEDDRAW[$a]:-} && ${BCW_PSEQ[$a]:-} != "${BCL_DIRTYN[$a]:-}" ]] && unset "BCW_PSEL[$a]"
   bc_dirty "$a"
+  [[ -n ${BCW_PSEL[$a]:-} ]] && BCW_PSEQ[$a]=${BCL_DIRTYN[$a]}
   declare -F "select_$a" >/dev/null && "select_$a" "${BCW_SEL[$a]}"
   return 0
 }
