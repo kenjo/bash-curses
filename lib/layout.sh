@@ -1316,8 +1316,10 @@ _bcl_dispatch() { # key (modal float or "")
   fi
   if [[ $k == "$KEY_MOUSE" ]]; then
     while getmouse; do
-      bc_hit "$BC_ME_Y" "$BC_ME_X" || continue
-      [[ -n $m ]] && ! _bcl_inside "$BCL_AREA" "$m" && continue
+      if ! bc_hit "$BC_ME_Y" "$BC_ME_X" || { [[ -n $m ]] && ! _bcl_inside "$BCL_AREA" "$m"; }; then
+        [[ -n $m ]] && declare -F "outclick_$m" >/dev/null && "outclick_$m" "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"
+        continue
+      fi
       BCL_MB=$BC_ME_BSTATE
       _bcl_click "$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB" "$m"
     done
@@ -1359,7 +1361,7 @@ _bcl_loop() { # modal-float or ""
   (( frame < 1 && ${BCL_FPS:-0} > 0 )) && frame=1
   _bcl_now_ms; last=$BCL_NOW
   while (( ! BCL_QUIT )); do
-    [[ -n $m && ${BCL_KIND[$m]:-} != float ]] && break
+    [[ -n $m ]] && { (( BCL_MODAL_END )) || [[ -z ${BCL_KIND[$m]:-} ]]; } && break
     bc_update
     if (( frame )); then
       _bcl_now_ms
@@ -1398,19 +1400,26 @@ bc_run() {
   return 0
 }
 
-# bc_modal NAME — run until the float NAME is closed. Returns 0 if it was closed
-# with a result (bc_close NAME RESULT), which is left in BCL_RESULT.
+# bc_modal NAME — only NAME (and what is inside it: its grid, floats placed in
+# it) sees keys and clicks until NAME is closed (bc_close NAME [RESULT], for a
+# float) or bc_modal_done [RESULT] is called (any area). A click outside goes
+# to outclick_NAME Y X BSTATE (screen coordinates) if defined, else nowhere.
+# Returns 0 if it ended with a result, which is left in BCL_RESULT.
+BCL_MODAL_END=0
 bc_modal() {
   local a=$1 prev=$BCL_MODAL
-  [[ ${BCL_KIND[$a]:-} == float ]] || { _bcl_err "bc_modal: '$a' is not a float"; return 1; }
+  [[ -n ${BCL_KIND[$a]:-} ]] || { _bcl_err "bc_modal: unknown area '$a'"; return 1; }
   local pfocus=$BCL_FOCUS
   BCL_RESULT=""
-  BCL_MODAL=$a
+  BCL_MODAL=$a BCL_MODAL_END=0
   _bcl_loop "$a"
-  BCL_MODAL=$prev
+  BCL_MODAL=$prev BCL_MODAL_END=0
   BCL_FOCUS=$pfocus
   [[ -n $BCL_RESULT ]]
 }
+
+# bc_modal_done [RESULT] — end the innermost bc_modal.
+bc_modal_done() { BCL_RESULT=${1:-} BCL_MODAL_END=1; }
 
 # bc_quit — leave bc_run (and any bc_modal inside it).
 bc_quit() { BCL_QUIT=1; }

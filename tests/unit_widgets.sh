@@ -92,5 +92,54 @@ check "rows below the items are empty" "                    " "$(srow 4 0 20)"
 bc_list_sel list 0; bc_update >/dev/null
 check "bc_list_sel sets it" ">b0" "$(srow 1 0 3)"
 
+
+# ---------------------------------------------------------------- bc_menubar
+fresh 12 40
+bc_screen "
+  bar
+  body
+" rows="1 *"
+MENU_File=("Open|F3|O" "Save||S" "---" "Quit|F10|Q")
+MENU_Edit=("Copy|C-c|C" "Paste||P:2")
+bc_menubar bar "File:2 Edit:9" pairs="1 2 3 4 5" reserve=1
+log=""
+open_bar()  { log+="open "; }
+close_bar() { log+="close "; }
+pick_bar()  { log+="pick:$1/$2 "; }
+bc_focus ""; BCL_QUIT=0
+bc_update >/dev/null
+check "menubar closed" "  File   Edit" "$(srow 0 0 13)"
+check "menubar closed pair" "1" "${BC_SP[0 2]}"
+# open on File, Down opens the drop-down, Down Down skips the separator
+KQ=("$KEY_DOWN" "$KEY_DOWN"); _bcl_readkey_orig=1
+probe() { bc_update >/dev/null; P1="$(srow 1 0 16)|$(srow 2 0 16)|$(srow 4 0 16)|${BC_SP[0 1]}${BC_SP[0 2]}${BC_SP[0 3]}|${BC_SP[2 2]}${BC_SP[2 3]}|${BC_SP[3 2]}"; }
+_bcl_readkey() {
+  if (( ${#KQ[@]} == 0 )); then probe; bc_modal_done; return 1; fi
+  key=${KQ[0]}; KQ=("${KQ[@]:1}")
+  if [[ $key == M:* ]]; then local e=${key#M:} yx b; yx=${e%%:*} b=${e#*:}; BC_MEVENTS+=("0 ${yx#*,} ${yx%,*} $b"); key=$KEY_MOUSE; fi
+  return 0
+}
+bc_menubar_run bar 0 >/dev/null
+check "drop-down drawn, 2nd item selected" "┌──────────┐    |│ Open  F3 │    |├──────────┤    |454|32|5" "$P1"
+check "Esc-less end: open/close callbacks" "open close " "$log"
+log=""; KQ=("$KEY_DOWN" "$KEY_DOWN" $'\r'); bc_menubar_run bar 0 >/dev/null
+check "Enter picks the selected item" "open close pick:File/Save " "$log"
+log=""; KQ=("$KEY_RIGHT" "$KEY_DOWN" p $'\r'); bc_menubar_run bar 0 >/dev/null
+check "Right + letter jumps to an item" "open close pick:Edit/Paste " "$log"
+log=""; KQ=(e $'\r' $'\r'); bc_menubar_run bar 0 >/dev/null
+check "letter on the bar picks a menu" "open close pick:Edit/Copy " "$log"
+log=""; KQ=("$KEY_DOWN" "$KEY_UP" $'\e'); bc_menubar_run bar 0 >/dev/null
+check "Up on the first item closes the drop-down, Esc the menu" "open close " "$log"
+check "drop-down float is gone" "" "${BCL_KIND[bar.dd]:-}"
+log=""; KQ=("M:5,5:$BUTTON1_CLICKED"); bc_menubar_run bar 0 1 >/dev/null
+check "click on an item picks it" "open close pick:File/Quit " "$log"
+log=""; KQ=("M:0,10:$BUTTON1_CLICKED" "M:2,10:$BUTTON1_CLICKED"); bc_menubar_run bar 0 >/dev/null
+check "click on a title opens it" "open close pick:Edit/Copy " "$log"
+log=""; KQ=("M:8,30:$BUTTON1_CLICKED" x); bc_menubar_run bar 0 1 >/dev/null
+check "click outside closes" "open close " "$log"
+check "outside click did not leak keys" "x" "${KQ[*]}"
+bc_update >/dev/null
+check "bar closed again" "1" "${BC_SP[0 2]}"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 ))

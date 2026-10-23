@@ -10,6 +10,7 @@
 #   bash tests/mc_layout.sh [mc_nav ...]      (default: all)
 #   MC_LAYOUT_UPDATE=1 bash tests/mc_layout.sh  rewrite the xfail list from
 #                                              this run's failures (review it!)
+#   MC_LAYOUT_NORUN=1 ...                      judge the last run's logs again
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 XFAIL="$REPO/tests/mc_layout.xfail"
 LOG="$REPO/tmp/logs/mc_layout"
@@ -27,7 +28,8 @@ if [[ -f $XFAIL ]]; then
 fi
 
 pids=()
-for t in "${TESTS[@]}"; do
+[[ -n ${MC_LAYOUT_NORUN:-} ]] && TORUN=() || TORUN=("${TESTS[@]}")   # NORUN: re-judge old logs
+for t in "${TORUN[@]}"; do
   MC_SCRIPT="$REPO/examples/92-mc-layout.sh" MC_TAG="lay_" \
     timeout 600 bash "$REPO/tests/$t.sh" > "$LOG/$t.log" 2>&1 &
   pids+=("$!")
@@ -36,11 +38,12 @@ done
 wait
 
 # is "<test>: <text>" covered by an xfail entry (prefix match on the text)?
+declare -A USED=()
 xfailed() { # test text
   local k
   for k in "${!XF[@]}"; do
     [[ ${k%%: *} == "$1" ]] || continue
-    [[ $2 == "${k#*: }"* ]] && return 0
+    [[ $2 == "${k#*: }"* ]] && { USED[$k]=1; return 0; }
   done
   return 1
 }
@@ -60,13 +63,7 @@ newx=()
 for t in "${TESTS[@]}"; do
   while IFS= read -r line; do
     case $line in
-      'ok   '*)
-        name=${line#ok   }
-        if xfailed "$t" "$name"; then
-          printf 'XPASS %s: %s   (remove it from tests/mc_layout.xfail)\n' "$t" "$name"; nxpass=$(( nxpass + 1 ))
-        else
-          npass=$(( npass + 1 ))
-        fi ;;
+      'ok   '*) npass=$(( npass + 1 )) ;;
       'FAIL '*)
         name=${line#FAIL }
         newx+=("$t: $(strip_detail "$name")")
@@ -77,6 +74,15 @@ for t in "${TESTS[@]}"; do
         fi ;;
     esac
   done < "$LOG/$t.log"
+done
+
+# an expected failure that did not fail this time is fixed: the list must shrink
+declare -A RAN=()
+for t in "${TESTS[@]}"; do RAN[$t]=1; done
+for k in "${!XF[@]}"; do
+  [[ -n ${RAN[${k%%: *}]:-} && -z ${USED[$k]:-} ]] || continue
+  printf 'XPASS %s   (no longer fails: remove it from tests/mc_layout.xfail)\n' "$k"
+  nxpass=$(( nxpass + 1 ))
 done
 
 if [[ -n ${MC_LAYOUT_UPDATE:-} ]]; then

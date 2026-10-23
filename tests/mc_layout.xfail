@@ -4,43 +4,30 @@ mc_actions: Command history did not insert the chosen command
 mc_actions: Command history did not list the previous command
 mc_actions: Delete did not refresh both panels or move to the next entry
 mc_actions: Filter... did not hide beta.txt in the active panel
+mc_actions: Filter... with '*' did not restore the active listing
 mc_actions: Mkdir did not refresh both panels or select the new directory
-mc_actions: Unselect group left selected entries highlighted
+mc_actions: Select group did not mark matching entries
 mc_actions: View file... did not open the typed file
 mc_dialog: Down did not focus Follow links
 mc_dialog: F5 did not open Copy dialog
 mc_dialog: focus did not move from Follow links to Preserve attributes
 mc_dialog: Left did not toggle focused Follow links
-mc_menu: Down did not open Left dropdown
-mc_menu: F9 did not highlight first item
-mc_menu: File dropdown wrong items
 mc_mouse: Copy click opens dialog
-mc_mouse: dropdown click changes sort header
 mc_mouse: Help click opens help
-mc_mouse: menu bar click opens dropdown
 mc_mouse: Menu click opens user menu
-mc_mouse: PullDn click opens menu
 mc_mouse: View click opens viewer
 mc_mouse: viewer starts at top
 mc_parity: '+' opens the Select dialog
-mc_parity: dropdown has a black right shadow
-mc_parity: dropdown row for 'Edit extension file' is present
-mc_parity: dropdown row for 'Show directory sizes' is present
-mc_parity: dropdown row for 'Viewed/edited files history' is present
-mc_parity: entering a directory shows the VFS hint
 mc_parity: Help dialog has a gray-on-black shadow
 mc_parity: History dialog has a blue-on-white title
 mc_parity: History dialog has a gray-on-black shadow
 mc_parity: History dialog lists the previous command
-mc_parity: Options dropdown has the correct width
-mc_parity: panel selection highlight is suppressed while the menu bar is open
 mc_parity: Quick cd dialog has a blue-on-white title
 mc_parity: Quick cd dialog has a gray-on-black shadow
 mc_parity: Select dialog completer button is white on blue
 mc_parity: Select dialog has a black bottom shadow
 mc_parity: Select dialog has a black right shadow
 mc_parity: Select dialog has a white top shadow
-mc_parity: selected menu item has a black leading space
 mc_parity: User menu dialog has a gray-on-black shadow
 mc_view: Down did not scroll viewer
 mc_view: End did not change offset

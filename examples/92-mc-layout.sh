@@ -26,6 +26,46 @@ DIRHIST=() CMDHIST=() FILEHIST=()
 SIZEW=7 TIMEW=12
 MO=(jan feb mars apr maj juni juli aug sep okt nov dec)
 BUTTONS=(Help Menu View Edit Copy RenMov Mkdir Delete PullDn Quit)
+
+# menus: "LABEL|SHORTCUT|HOTKEY" (HOTKEY "x:N" highlights label position N)
+MENU_Left=(
+  "File listing||g" "Quick view|C-x q|Q" "Info|C-x i|I" "Tree||T"
+  "---"
+  "Listing format...||L" "Sort order...||S" "Filter...||F" "Encoding...|M-e|E"
+  "---"
+  "FTP link...||P" "Shell link...||h" "SFTP link...||n" "Panelize||z"
+  "---"
+  "Rescan|C-r|R"
+)
+MENU_Right=("${MENU_Left[@]}")
+MENU_File=(
+  "View|F3|V" "View file...||w" "Filtered view|M-!|F" "Edit|F4|E" "Copy|F5|C"
+  "Chmod|C-x c|h" "Link|C-x l|L" "Symlink|C-x s|S" "Relative symlink|C-x v|k"
+  "Edit symlink|C-x C-s|y" "Chown|C-x o|o" "Advanced chown||A" "Chattr|C-x e|t"
+  "Rename/Move|F6|R" "Mkdir|F7|M" "Delete|F8|D" "Quick cd|M-c|Q"
+  "---"
+  "Select group|+|g" "Unselect group|-|n" "Invert selection|*|I"
+  "---"
+  "Exit|F10|x"
+)
+MENU_Command=(
+  "User menu|F2|U" "Directory tree||D" "Find file|M-?|F" "Swap panels|C-u|w"
+  "Switch panels on/off|C-o|p" "Compare directories|C-x d|C" "Compare files|C-x C-d|o"
+  "External panelize|C-x !|x" "Show directory sizes|C-Space|i:16"
+  "---"
+  "Command history|M-h|h" "Viewed/edited files history|M-E|s:22" 'Directory hotlist|C-\|r'
+  "Active VFS list|C-x a|A" "Background jobs|C-x j|B" 'Screen list|M-`|t'
+  "---"
+  "Undelete files (ext2fs only)||U"
+  "---"
+  "Edit extension file||e:5" "Edit menu file||m" "Edit highlighting group file||g"
+)
+MENU_Options=(
+  "Configuration...||C" "Layout...||L" "Panel options...||P" "Confirmation...||o"
+  "Appearance...||A" "Display bits...||D" "Learn keys...||k" "Virtual FS...||V"
+  "---"
+  "Save setup||S"
+)
 PREFIX=""             # pending C-x prefix
 
 # ------------------------------------------------------------------ data
@@ -214,6 +254,7 @@ layout_screen() {
     for a in top head list sep stat free; do bc_style "$s.$a" pair=7; done
   done
   bc_style menu pair=22
+  bc_menubar menu "Left:2 File:11 Command:20 Options:32 Right:44" pairs="22 16 17 18 19" reserve=3
   bc_style cmd pair=40
   bc_list left.list NAMES_0
   bc_list right.list NAMES_1
@@ -384,13 +425,6 @@ list_enter() { # p
 }
 
 # ---- bottom rows
-draw_menu() { # closed menu bar (the menu widget draws the open one)
-  local i x=(2 11 20 32 44) names=(Left File Command Options Right) s
-  printf -v s '%*s' "$COLS" ''
-  bc_print menu 0 0 "$s"
-  for i in "${!names[@]}"; do bc_print menu 0 "${x[i]}" "${names[i]}"; done
-}
-
 draw_hint() {
   local hint s
   if [[ -n $CMD_LINE ]]; then hint="To change directory halfway through typing a command, use M-c."
@@ -527,12 +561,108 @@ cmd_edit() { # key -> 0 if it was a command-line edit
 }
 
 # ------------------------------------------------------------------ not yet
-for _f in message_dialog view_file do_compare_dirs do_background_jobs do_vfs_list \
+for _f in do_info do_tree do_filter do_view_file do_chmod do_link do_symlink \
+  do_relative_symlink do_edit_symlink do_chown do_advanced_chown do_chattr \
+  do_find_file do_compare_files do_show_sizes do_file_history do_hotlist \
+  do_edit_file_kind do_panel_options \
+  message_dialog view_file do_compare_dirs do_background_jobs do_vfs_list \
   quick_cd_dialog do_command_history do_filtered_view do_encoding do_screen_list \
-  fkey_help user_menu do_view do_edit do_copy do_move do_mkdir do_delete run_menu \
-  do_select_group do_unselect_group menu_click; do
+  fkey_help user_menu do_view do_edit do_copy do_move do_mkdir do_delete \
+  do_select_group do_unselect_group; do
   eval "$_f() { :; }"
 done; unset _f
+
+# ------------------------------------------------------------------ menus
+# while the menu bar is open the panels hide their highlights (as mc does)
+open_menu()  { MENU_OPEN=1; bc_dirty left.top right.top left.list right.list; }
+close_menu() { MENU_OPEN=0; bc_dirty left.top right.top left.list right.list; }
+run_menu() { bc_menubar_run menu "${1:-0}" "${2:-0}"; }
+not_impl() { message_dialog "$1" "Not implemented: $2"; }
+
+pick_menu() { # title label
+  local m=$1 l=$2
+  case $m in
+    Left|Right)
+      case $l in
+        "File listing") : ;;
+        "Quick view")    do_view ;;
+        "Info")          do_info ;;
+        "Tree")          do_tree ;;
+        "Sort order...") do_sort_cycle ;;
+        "Filter...")     do_filter ;;
+        "Rescan")        do_rescan ;;
+        *)               not_impl "$m" "$l" ;;
+      esac ;;
+    File)
+      case $l in
+        "View")             do_view ;;
+        "View file...")     do_view_file ;;
+        "Filtered view")    do_filtered_view ;;
+        "Edit")             do_edit ;;
+        "Copy")             do_copy ;;
+        "Chmod")            do_chmod ;;
+        "Link")             do_link ;;
+        "Symlink")          do_symlink ;;
+        "Relative symlink") do_relative_symlink ;;
+        "Edit symlink")     do_edit_symlink ;;
+        "Chown")            do_chown ;;
+        "Advanced chown")   do_advanced_chown ;;
+        "Chattr")           do_chattr ;;
+        "Rename/Move")      do_move ;;
+        "Mkdir")            do_mkdir ;;
+        "Delete")           do_delete ;;
+        "Quick cd")         focus_cmdline ;;
+        "Select group")     do_select_group ;;
+        "Unselect group")   do_unselect_group ;;
+        "Invert selection") do_invert_selection ;;
+        "Exit")             bc_quit ;;
+      esac ;;
+    Command)
+      case $l in
+        "User menu")            user_menu ;;
+        "Directory tree")       do_tree ;;
+        "Find file")            do_find_file ;;
+        "Swap panels")          do_swap_panels ;;
+        "Switch panels on/off") message_dialog "$l" "Panel visibility is not implemented." ;;
+        "Compare directories")  do_compare_dirs ;;
+        "Compare files")        do_compare_files ;;
+        "External panelize")    message_dialog "$l" "External panelize is not implemented." ;;
+        "Show directory sizes") do_show_sizes ;;
+        "Command history")      do_command_history ;;
+        "Viewed/edited files history") do_file_history ;;
+        "Directory hotlist")    do_hotlist ;;
+        "Active VFS list")      do_vfs_list ;;
+        "Background jobs")      do_background_jobs ;;
+        "Screen list")          do_screen_list ;;
+        "Undelete files (ext2fs only)") message_dialog "Undelete files" "Undelete is only available on ext2fs filesystems." ;;
+        "Edit extension file")  do_edit_file_kind "$l" mc.ext ;;
+        "Edit menu file")       do_edit_file_kind "$l" mc.menu ;;
+        "Edit highlighting group file") do_edit_file_kind "$l" mc.hint ;;
+      esac ;;
+    Options)
+      case $l in
+        "Configuration...")
+          message_dialog Configuration "Sort order: ${SORT[$CUR]}" "Reverse sort: $(( REV[$CUR] ))" \
+            "Show hidden files: $(( HIDE[$CUR] ))" "Show extension: $(( SHOWEXT[$CUR] ))" \
+            "Panel filter: ${FILTERS[$CUR]:-none}" ;;
+        "Layout...")        message_dialog Layout "Layout changes are not implemented." ;;
+        "Panel options...") do_panel_options ;;
+        "Confirmation...")  message_dialog Confirmation "Confirmation settings are not implemented." ;;
+        "Appearance...")    message_dialog Appearance "Appearance settings are not implemented." ;;
+        "Display bits...")  message_dialog "Display bits" "Display bits settings are not implemented." ;;
+        "Learn keys...")    message_dialog "Learn keys" "Key learning is not implemented." ;;
+        "Virtual FS...")    message_dialog "Virtual FS" "Virtual FS settings are not implemented." ;;
+        "Save setup")       message_dialog "Save setup" "Saving setup is not implemented." ;;
+      esac ;;
+  esac
+}
+
+focus_cmdline() { CMD_LINE="" CMD_CARET=0; cmd_changed; }
+
+do_sort_cycle() {
+  case ${SORT[$CUR]} in name) SORT[$CUR]=size ;; size) SORT[$CUR]=date ;; *) SORT[$CUR]=name ;; esac
+  list_dir "$CUR"
+}
 
 # ------------------------------------------------------------------ input
 on_key() {
@@ -597,7 +727,6 @@ on_click() { # area y x bstate
       (( CMD_CARET < 0 )) && CMD_CARET=0
       (( CMD_CARET > ${#CMD_LINE} )) && CMD_CARET=${#CMD_LINE}
       bc_dirty cmd ;;
-    menu) menu_click "$x" ;;
   esac
 }
 
