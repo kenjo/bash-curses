@@ -113,7 +113,10 @@ bc_run
 
 `examples/90-layout.sh` is an mc-like file manager with a modal Copy dialog;
 `examples/91-shining-layout.sh` redoes `shining.sh` with floats in 53 lines
-of code instead of 131. See DESIGN.md "Layout layer" for the internals.
+of code instead of 131; `examples/92-mc-layout.sh` redoes the full `mc` clone
+(`examples/mc.sh`, 3829 lines) in 1526 lines on top of `lib/layout.sh` +
+`lib/widgets.sh`, and `tests/mc_layout.sh` runs the whole `mc_*` regression
+suite against it. See DESIGN.md "Layout layer" for the internals.
 
 ## Mouse
 
@@ -201,6 +204,8 @@ bash tests/run.sh
 - `tests/unit_layout.sh` — headless: `lib/layout.sh` template parsing and
   errors, track sizing, window binding/rebuilds, floats, and the event loop
   (with a fake key source).
+- `tests/unit_widgets.sh` — headless: `lib/widgets.sh` lists (partial redraw,
+  selection hooks, clamping), menubar, and dialog widgets.
 - `tests/layout_demo.sh`, `tests/layout_shining.sh` — tmux-driven: the two
   layout examples, incl. dialogs, shadows, clicks and resizes.
   (`tests/bench_layout.sh` is a benchmark, not part of `run.sh`.)
@@ -211,12 +216,15 @@ bash tests/run.sh
   tty, feeds keys (including raw SGR mouse bytes), and requires clean exits.
 - `tests/mc_*.sh` — tmux-driven regression tests for the `mc` clone: navigation,
   menus, viewer, resize, dialogs, actions, and MC-vs-clone parity checks.
+  `tests/mc_layout.sh` runs the same suite against `examples/92-mc-layout.sh`
+  (known diffs listed in `tests/mc_layout.xfail`).
 
 ## Layout
 
 ```
 lib/bc.sh        the library (source it)
 lib/layout.sh    optional layout layer: templates, floats, draw by name, bc_run
+lib/widgets.sh   optional widgets on top of layout: lists, menubar, dialogs
 examples/        ports of ncurses test-suite demos (smoke tests)
 tests/           run.sh, unit.sh, unit_screen.sh, integration.sh, mc_* tests
 references/      read-only vendored ncurses corpus (do not edit)

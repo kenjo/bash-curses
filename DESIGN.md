@@ -343,6 +343,24 @@ at ~3.9 frames/s (`shining.sh`: ~1.5 s, ~1.1 frames/s); a Down in
 times must be measured in a real terminal (tmux + `BC_TEST_DIR` frame
 counter); headless runs that send `doupdate` to /dev/null hide its cost.
 
+**Widgets and the `92` case study.** `lib/widgets.sh` builds named widgets on
+top of the layout layer: `bc_list` (with `row_`/`select_`/`enter_NAME` hooks),
+`bc_menubar`, `bc_dialog`/`bc_input`/`bc_check`/`bc_button`/`bc_cycle`/
+`bc_label`. A list's draw is itself partial: `_bcw_list_draw` redraws only the
+old and new selected rows when the scroll top is unchanged (`BCW_PSEL`/
+`BCW_PSEQ`/`BCW_PTOP`), and `bc_list_redraw_sel NAME` redraws just the selected
+row when the highlight depends on state outside the list (which panel is
+active, whether the menu bar is open) — so a Tab or an F9 dirties two rows
+instead of two whole panels. `examples/92-mc-layout.sh` rewrites the full `mc`
+clone (3829 lines) as 1526 lines of template + draw callbacks + widgets, and
+`tests/mc_layout.sh` runs the entire `mc_*` regression suite against it.
+Two lessons from matching `mc.sh` cell-for-cell at odd widths: a `"* *"` grid
+rounds the extra column into the first track, so the panel split must be
+`cols="$((COLS/2)) $((COLS/2)) $((COLS-2*(COLS/2)))"` with a `"."` filler
+column (and `on_resize` rebuilds the template, since the tracks are fixed);
+and `_bcl_put` treats `pair=0` as "no pair", so `mc.sh`'s `wattrset 0 0 0`
+full-row repaints cannot be expressed through the layout layer (ANOMALIES O4).
+
 `bc.sh` fixes found while building it: the uniform row cache is only used by
 the window that owns the buffer (a derwin's full-width rows were replayed from
 the owner's left edge, over its border); `delwin` of a derwin no longer
