@@ -168,6 +168,33 @@ depends on redraw timing). E.g. after `open_alpha` / `viewer_txt`:
 mode.", the clone shows "Tab changes your current panel." The rotation *style*
 matches `mc` (R4); the exact per-step text does not.
 
+### O3. Full-screen SGR parity at 191x74 (odd width)
+`tmp/lat/parity191.sh` drives both apps through the same 21-key sequence at
+191x74 and diffs every step per cell. At 100x30 all 22 steps match; at 191x74
+seven steps differ, in two unrelated ways:
+
+- **hint/keys row padding** (steps 0, 20, 21): `mc.sh` repaints the whole hint
+  and button-bar rows with pair 0 (white on black) before drawing the text, so
+  the trailing blanks carry explicit `(7,0)` cells; the clone leaves them at the
+  window background, which tmux reports as default. Visually identical, and
+  invisible at 100x30 because tmux strips the trailing run either way.
+- **active-panel state** (steps 5, 7, 9, 10): the two apps agree through step 8
+  (both have the right panel active after the `Right`/`Left` arrows), but the
+  `Tab` at step 9 switches the clone back to the left panel while `mc.sh` keeps
+  the right one active; the inverted path line and the selection highlight then
+  differ from step 9 on. The menu dropdown is not involved: F9 opens no menu in
+  either app in this sequence. Root cause not yet identified.
+- **menu-bar title colours** (steps 5, 7): with the bar active but no dropdown
+  open, `mc.sh` draws every title in pair 22 (black on cyan) while the clone
+  draws them in `(11,6)`/`(11,0)`; the title columns (2/11/20/32/44) match. Only
+  at 191 wide — at 100x30 the bar matches exactly.
+
+### O4. `bc_print pair=0` cannot request pair 0
+`_bcl_put` does `(( rp )) || rp=${BC_WBGP[$c]}`, so `pair=0` is indistinguishable
+from "no pair" and falls back to the window background. `mc.sh` uses `wattrset 0
+0 0` (pair 0 = white on black) for the hint/button-bar rows; the clone cannot
+express that through the layout layer.
+
 ---
 
 ## No divergence (verified matching, full screen)
