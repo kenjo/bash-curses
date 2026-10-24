@@ -58,6 +58,7 @@ terminal is restored even if the script dies.
 | Widgets | `lib/widgets.sh` | lists, menu bars, dialogs, input fields, buttons |
 | Layout | `lib/layout.sh` | named screen areas, floats/dialogs, event loop |
 | Core | `lib/bc.sh` | ncurses-style API: windows, attributes, keys, mouse |
+| Builder | `tools/bcbuild.sh` | interactive layout designer → [docs/builder.md](docs/builder.md) |
 
 Source the topmost layer you need; each sources the layers below it. The
 layout layer turns a template of area names into windows, keeps them laid out
@@ -86,7 +87,7 @@ bc_run
 
 → Tutorials and full references: [docs/dialog.md](docs/dialog.md),
 [docs/layout.md](docs/layout.md), [docs/widgets.md](docs/widgets.md),
-[docs/bc.md](docs/bc.md).
+[docs/bc.md](docs/bc.md), [docs/builder.md](docs/builder.md).
 
 ## Examples
 
@@ -156,6 +157,11 @@ bash tests/run.sh
   selection hooks, clamping), menubar, and dialog widgets.
 - `tests/unit_dialog.sh` — headless: `lib/dialog.sh` text prep/wrapping and
   button sizing.
+- `tests/unit_builder.sh` — headless: `tools/bcbuild.sh` model operations
+  (split, delete/collapse, rename, styles, tags, floats, serialise
+  round-trip, undo/redo, export).
+- `tests/builder.sh` — tmux-driven: drives the builder UI, saves a project
+  and exports a runnable app.
 - `tests/dialog_app.sh` — tmux-driven: drives the ported
   `/home/kenjo/proj/ai/start_local_ai_bc.sh` with fake tools (skipped if the
   app is absent).

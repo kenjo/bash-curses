@@ -36,6 +36,11 @@ source lib/dialog.sh   # pulls in widgets.sh, layout.sh and bc.sh
   working subset of ncurses, not a 1:1 port — read the deviations section.
   → **[docs/bc.md](bc.md)**
 
+- **`tools/bcbuild.sh`** is not a layer but a tool: an interactive designer
+  for layout files. Draw the grid/float/style skeleton with mouse and keys,
+  save it as a replayable `.bcl` project, or export a runnable app skeleton.
+  → **[docs/builder.md](builder.md)**
+
 ## Examples
 
 - `examples/newdemo.sh` — core layer, frame-diffed against the C reference.
