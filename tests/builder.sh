@@ -53,6 +53,10 @@ slow_click() { # x y — press and release farther apart than BC_MAXCLICK (166ms
 if wait_for "canvas"; then ok "builder renders"; else
   bad "builder renders"; cap; tmux -S "$sock" kill-session -t "$sess" 2>/dev/null; rm -f "$sock"; exit 1
 fi
+# the app must enable mouse reporting itself (regression: bc_init once
+# swallowed the enable sequence with mousemask ... >/dev/null)
+[[ "$(tmux -S "$sock" display-message -p -t "$sess" '#{mouse_any_flag}')" == 1 ]] \
+  && ok "app enables mouse mode" || bad "app enables mouse mode"
 grep -q "Areas" <<<"$(cap)" && ok "tree panel present" || bad "tree panel present"
 grep -q "name:    main" <<<"$(cap)" && ok "properties show main" || bad "properties show main"
 grep -q "Split-H" <<<"$(cap)" && ok "toolbar present" || bad "toolbar present"

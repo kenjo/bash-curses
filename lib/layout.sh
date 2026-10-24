@@ -1053,7 +1053,7 @@ bc_init() {
       init_pair "$BCL_SHADOW_PAIR" 0 0
     fi
   fi
-  (( mouse )) && mousemask "$mmask" >/dev/null
+  (( mouse )) && mousemask "$mmask"
   trap 'endwin' EXIT
   trap 'exit 130' INT TERM
   trap 'BC_WINCH=1' WINCH
