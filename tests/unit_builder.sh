@@ -28,6 +28,9 @@ bb_select main.1
 bb_split v
 [[ ${BB_TPL[main.1]} == "main.1.0|main.1.1" && ${BB_ROWSPEC[main.1]} == "* *" ]] \
   && ok "split v: nested grid" || bad "split v: nested grid"
+[[ "$(_bb_tpl_e main.1)" == "c.main.1.0
+c.main.1.1" ]] && ok "engine template: rows on separate lines" \
+  || bad "engine template: rows on separate lines (got '$(_bb_tpl_e main.1)')"
 
 bb_select main.0
 bb_grow 0 1

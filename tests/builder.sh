@@ -24,24 +24,45 @@ wait_for() { # needle
   return 1
 }
 cap() { tmux -S "$sock" capture-pane -t "$sess" -p; }
+hexstr() {
+  local s=$1 out="" i b
+  for (( i = 0; i < ${#s}; i++ )); do
+    printf -v b '%02x' "'${s:i:1}"
+    out+="$b "
+  done
+  printf '%s' "${out% }"
+}
+click() { # x y (1-based screen coords)
+  local sx sy
+  sx=$(hexstr "$1"); sy=$(hexstr "$2")
+  tmux -S "$sock" send-keys -H -t "$sess" 1b 5b 3c 30 3b $sx 3b $sy 4d
+  sleep 0.1
+  tmux -S "$sock" send-keys -H -t "$sess" 1b 5b 3c 30 3b $sx 3b $sy 6d
+  sleep 0.3
+}
 
 if wait_for "canvas"; then ok "builder renders"; else
   bad "builder renders"; cap; tmux -S "$sock" kill-session -t "$sess" 2>/dev/null; rm -f "$sock"; exit 1
 fi
 grep -q "Areas" <<<"$(cap)" && ok "tree panel present" || bad "tree panel present"
 grep -q "name:    main" <<<"$(cap)" && ok "properties show main" || bad "properties show main"
+grep -q "Split-H" <<<"$(cap)" && ok "toolbar present" || bad "toolbar present"
 
-tmux -S "$sock" send-keys -t "$sess" h
-if wait_for "name:    main.0"; then ok "split h selects main.0"; else bad "split h selects main.0"; cap; fi
+# mouse: toolbar buttons
+click 5 2
+if wait_for "name:    main.0"; then ok "click Split-H selects main.0"; else bad "click Split-H selects main.0"; cap; fi
+click 17 2
+if wait_for "name:    main.0.0"; then ok "click Split-V selects main.0.0"; else bad "click Split-V selects main.0.0"; cap; fi
 
-tmux -S "$sock" send-keys -t "$sess" v
-if wait_for "name:    main.0.0"; then ok "split v selects main.0.0"; else bad "split v selects main.0.0"; cap; fi
+# mouse: clickable property rows
+click 93 10
+if wait_for "border:  on"; then ok "click border row toggles border"; else bad "click border row toggles border"; cap; fi
 
 # title through the prompt dialog
 tmux -S "$sock" send-keys -t "$sess" t
 if wait_for "Title"; then ok "title prompt opens"; else bad "title prompt opens"; cap; fi
 tmux -S "$sock" send-keys -t "$sess" "Hi" Enter
-if wait_for 'title="Hi"'; then ok "title applied"; else bad "title applied"; cap; fi
+if wait_for 'title:   Hi'; then ok "title applied"; else bad "title applied"; cap; fi
 
 # save (Save as prompt: clear the default name first)
 tmux -S "$sock" send-keys -t "$sess" C-s

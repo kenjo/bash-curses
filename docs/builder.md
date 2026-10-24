@@ -16,9 +16,10 @@ It needs a terminal of at least **110x32**.
 ```text
 +---------------------------+--------------------------------+----------------+
 | menu bar (F9)             |                                |                |
-| Areas          tree       |   canvas (live design)         | Properties     |
-|  main                     |                                |  name/rect/    |
-|   main.0                  |                                |  tracks/style  |
+| [Split-H][Split-V][Del]…  |   canvas (live design)         | Properties     |
+| Areas          tree       |                                |  name/rect/    |
+|  main                     |                                |  tracks/[-][+] |
+|   main.0                  |                                |  style rows    |
 |  [dlg]                    |                                |                |
 | status / key help         |                                |                |
 +---------------------------+--------------------------------+----------------+
@@ -26,10 +27,14 @@ It needs a terminal of at least **110x32**.
 
 - **Areas** — the design tree; floats are listed with `*`. Click a row (or the
   canvas) to select. `Tab` cycles the selection.
+- **Toolbar** — a row of buttons under the menu bar: `Split-H`, `Split-V`,
+  `Delete`, `Float`, `Undo`, `Redo`, `Save`, `Export`. Click to press.
 - **Canvas** — the design rendered live, exactly as the layout engine will
   lay it out. The selected area gets a highlighted border.
-- **Properties** — name, kind, parent, current rect, track specs, floats,
-  style and tag of the selection.
+- **Properties** — name, kind, parent, current rect, tracks, style and tag of
+  the selection. Most rows are clickable: click `border`, `divider`, `t-left`
+  to toggle them, `pair`, `shadow`, `margin`, `tag` to cycle them, `title` to
+  edit it, and the `[-]`/`[+]` buttons on the track and gap rows to resize.
 
 ## Editing
 
@@ -56,9 +61,10 @@ It needs a terminal of at least **110x32**.
 | `?` | key help |
 | `q` | quit (asks if there are unsaved changes) |
 
-Mouse: click selects; **drag a track boundary** between two areas to resize
-the two tracks; **drag a float** to move it, drag its bottom-right corner to
-resize. The menu bar (`F9`) mirrors all of the above.
+Mouse: click selects; click the toolbar buttons or the property rows (see
+above) to act; **drag a track boundary** between two areas to resize the two
+tracks; **drag a float** to move it, drag its bottom-right corner to resize.
+The menu bar (`F9`) mirrors all of the above.
 
 ## Project files
 

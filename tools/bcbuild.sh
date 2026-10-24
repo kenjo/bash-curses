@@ -570,7 +570,7 @@ _bb_tpl_e() { # grid -> template with engine-prefixed tokens
     for n in "${!toks[@]}"; do [[ ${toks[n]} != . ]] && toks[n]=$BCB_E${toks[n]}; done
     out+=("${toks[*]}")
   done
-  local IFS='|'
+  local IFS=$'\n'
   printf '%s' "${out[*]}"
 }
 
@@ -696,8 +696,23 @@ select_pal() { # idx
   bc_dirty prop st
 }
 
+declare -A BCB_PROW=()  # prop content row -> click action
+declare -A BCB_PBTN=()  # prop content row -> "x1 x2 act1 x3 x4 act2"
+
+_bb_prop_row() { # y text action
+  bc_print prop "$1" 1 "$2"
+  [[ -n $3 ]] && BCB_PROW[$1]=$3
+}
+
+_bb_prop_btn() { # y text act-minus act-plus
+  bc_print prop "$1" 1 "$2"
+  bc_print prop "$1" 21 "[-] [+]"
+  BCB_PBTN[$1]="21 23 $3 25 27 $4"
+}
+
 draw_prop() {
   local a=$BCB_SEL y=0 g e
+  BCB_PROW=() BCB_PBTN=()
   if [[ -z $a ]]; then
     bc_print prop 0 1 "no selection"
     return
@@ -713,27 +728,62 @@ draw_prop() {
   if [[ -n ${BB_TPL[$a]+set} ]]; then
     bc_print prop $(( y++ )) 1 "rows:    ${BB_ROWSPEC[$a]}"
     bc_print prop $(( y++ )) 1 "cols:    ${BB_COLSPEC[$a]}"
-    bc_print prop $(( y++ )) 1 "gap:     ${BB_GAP[$a]:-0}"
+    _bb_prop_btn $(( y++ )) "gap:     ${BB_GAP[$a]:-0}" "gap-" "gap+"
   elif [[ -n $g ]]; then
     local -a rs cs
     read -r -a rs <<< "${BB_ROWSPEC[$g]}"; read -r -a cs <<< "${BB_COLSPEC[$g]}"
-    bc_print prop $(( y++ )) 1 "row trk: ${rs[${BB_R0[$a]}]}"
-    bc_print prop $(( y++ )) 1 "col trk: ${cs[${BB_C0[$a]}]}"
+    _bb_prop_btn $(( y++ )) "row trk: ${rs[${BB_R0[$a]}]}" "trk-" "trk+"
+    _bb_prop_btn $(( y++ )) "col trk: ${cs[${BB_C0[$a]}]}" "ctrk-" "ctrk+"
   fi
   if [[ ${BB_KIND[$a]} == float ]]; then
     bc_print prop $(( y++ )) 1 "at:      ${BB_FAT[$a]}"
     bc_print prop $(( y++ )) 1 "size:    ${BB_FSIZE[$a]}"
   fi
-  local s=""
-  [[ -n ${BB_FRAME[$a]:-} ]] && s+="border "
-  [[ -n ${BB_TITLE[$a]:-} ]] && s+="title=\"${BB_TITLE[$a]}\" "
-  [[ -n ${BB_PAIR[$a]:-} ]] && s+="pair=${BB_PAIR[$a]} "
-  [[ -n ${BB_BPAIR[$a]:-} ]] && s+="bpair=${BB_BPAIR[$a]} "
-  [[ -n ${BB_SHADOW[$a]:-} ]] && s+="shadow=${BB_SHADOW[$a]} "
-  [[ -n ${BB_MARGIN[$a]:-} ]] && s+="margin=${BB_MARGIN[$a]} "
-  [[ -n ${BB_DIVIDER[$a]:-} ]] && s+="divider "
-  bc_print prop $(( y++ )) 1 "style:   ${s:-none}"
-  bc_print prop $(( y++ )) 1 "tag:     ${BB_TAG[$a]:-none}"
+  _bb_prop_row $(( y++ )) "border:  $([[ -n ${BB_FRAME[$a]:-} ]] && echo on || echo off)" "tog border"
+  _bb_prop_row $(( y++ )) "title:   ${BB_TITLE[$a]:-}" "prompt title"
+  _bb_prop_row $(( y++ )) "pair:    ${BB_PAIR[$a]:-0}" "cyc pair"
+  _bb_prop_row $(( y++ )) "shadow:  ${BB_SHADOW[$a]:-off}" "cyc shadow"
+  _bb_prop_row $(( y++ )) "margin:  ${BB_MARGIN[$a]:-0}" "cyc margin"
+  _bb_prop_row $(( y++ )) "divider: $([[ -n ${BB_DIVIDER[$a]:-} ]] && echo on || echo off)" "tog divider"
+  _bb_prop_row $(( y++ )) "t-left:  $([[ -n ${BB_TLEFT[$a]:-} ]] && echo on || echo off)" "tog tleft"
+  _bb_prop_row $(( y++ )) "tag:     ${BB_TAG[$a]:-none}" "cyc tag"
+}
+
+click_prop() { # y x bstate
+  local y=$1 x=$2 b=$3 act
+  (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED) )) || return 0
+  [[ -n $BCB_SEL ]] || return 0
+  if [[ -n ${BCB_PBTN[$y]:-} ]]; then
+    local -a z
+    read -r -a z <<< "${BCB_PBTN[$y]}"
+    if (( x >= z[0] && x <= z[1] )); then _bb_prop_act "${z[2]}"; return 0; fi
+    if (( x >= z[3] && x <= z[4] )); then _bb_prop_act "${z[5]}"; return 0; fi
+  fi
+  act=${BCB_PROW[$y]:-}
+  [[ -n $act ]] && _bb_prop_act "$act"
+  return 0
+}
+
+_bb_prop_act() { # action
+  local a=$BCB_SEL
+  case $1 in
+    'tog border')  bb_set_style border "$([[ -n ${BB_FRAME[$a]:-} ]] && echo '' || echo 1)" ;;
+    'tog divider') bb_set_style divider "$([[ -n ${BB_DIVIDER[$a]:-} ]] && echo '' || echo 1)" ;;
+    'tog tleft')   bb_set_style tleft "$([[ -n ${BB_TLEFT[$a]:-} ]] && echo '' || echo 1)" ;;
+    'cyc pair')    bb_cycle_pair PAIR ;;
+    'cyc shadow')  bb_cycle_shadow ;;
+    'cyc margin')  bb_cycle_margin ;;
+    'cyc tag')     bb_cycle_tag ;;
+    'prompt title') if bb_prompt "Title" "title text" "${BB_TITLE[$a]:-}"; then bb_set_style title "$REPLY"; fi ;;
+    'trk-')  bb_grow 0 -1 ;;
+    'trk+')  bb_grow 0 1 ;;
+    'ctrk-') bb_grow 1 -1 ;;
+    'ctrk+') bb_grow 1 1 ;;
+    'gap-')  bb_gap -1 ;;
+    'gap+')  bb_gap 1 ;;
+    *) return 0 ;;
+  esac
+  bb_after
 }
 
 draw_st() {
@@ -746,8 +796,9 @@ draw_st() {
     bc_print st 0 1 "! $BCB_ERR" pair=$BCB_MSGP
     return
   fi
-  bc_print st 0 1 "h/v split  d del  r rename  t title  b border  p pair  s shadow  w tag  f float"
-  bc_print st 1 1 "+/- < > size  a auto  [] gap  u undo  ? help  q quit  ^S save  ^O open  ^E export"
+  bc_print st 0 1 "click: select · toolbar buttons · prop rows/[-][+] · drag edges & floats"
+  bc_print st 1 1 "h/v split  d del  r rename  t title  b border  p pair  s shadow  w tag  f float"
+  bc_print st 2 1 "+/- < > size  a auto  [] gap  u undo  ? help  q quit  ^S save  ^O open  ^E export"
 }
 
 # ------------------------------------------------------- modal prompts
@@ -875,7 +926,7 @@ _bb_float_of() { # name
 on_click() { # NAME Y X BSTATE — NAME is an engine area name
   local a=$1 b=$4 sy=$BC_ME_Y sx=$BC_ME_X
   case $a in
-    tb|prop|st|pal) return 0 ;;
+    tb|bar|bar.*|prop|st|pal) return 0 ;;
   esac
   local n=${a#"$BCB_E"}
 
@@ -1083,6 +1134,16 @@ pick_tb() { # TITLE LABEL
   esac
 }
 
+# toolbar buttons (clicks land here via bc_button's press_NAME)
+press_bar.sh()  { bb_split h; bb_after; }
+press_bar.sv()  { bb_split v; bb_after; }
+press_bar.del() { bb_delete; bb_after; }
+press_bar.fl()  { bb_add_float; bb_after; }
+press_bar.un()  { bb_undo; bb_after; }
+press_bar.rd()  { bb_redo; bb_after; }
+press_bar.sav() { if [[ -n $BCB_FILE ]]; then bb_save; else bb_saveas; fi; bc_dirty st; }
+press_bar.exp() { bb_exportas; bc_dirty st; }
+
 on_resize() { bb_render; bc_dirty pal prop st; }
 
 # ------------------------------------------------------------------ main
@@ -1114,11 +1175,13 @@ main() {
 
   bc_screen "
     tb   tb   tb
+    bar  bar  bar
     pal  cvs  prop
     st   st   st
-  " rows="1 * 2" cols="24 * 30"
+  " rows="1 1 * 3" cols="24 * 30"
 
   bc_style tb pair=$BCB_TBP
+  bc_style bar pair=$BCB_TBP
   bc_style pal border title="Areas" tleft
   bc_style cvs border title="canvas"
   bc_style prop border title="Properties" tleft
@@ -1134,6 +1197,19 @@ main() {
   MENU_Style=("Border||b" "Pair||p" "Shadow||s" "Title left||l" "Divider||D" "Margin||m" "Gap +||+" "Gap -||-")
   MENU_Help=("Keys||?")
   bc_menubar tb "File:1 Edit:6 Insert:12 Style:19 Help:25" pairs="$BCB_TBP $BCB_SELP 1 $BCB_SELP 1"
+
+  bc_grid bar "
+    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill
+  " rows="1" cols="auto auto auto auto auto auto auto auto *"
+  bc_button bar.sh "Split-H"
+  bc_button bar.sv "Split-V"
+  bc_button bar.del "Delete"
+  bc_button bar.fl "Float"
+  bc_button bar.un "Undo"
+  bc_button bar.rd "Redo"
+  bc_button bar.sav "Save"
+  bc_button bar.exp "Export"
+  bc_content bar.fill 1 1
 
   bb_render
   bc_dirty pal prop st
