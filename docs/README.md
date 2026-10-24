@@ -44,6 +44,18 @@ Run any of them in a terminal:
 bash examples/90-layout.sh
 ```
 
+## Distributing your app
+
+Bundle the libraries into your script for a single-file release, and split it
+back out again later:
+
+```sh
+bash lib/bc.sh bundle myapp.sh -o myapp      # one self-contained file
+bash lib/bc.sh unbundle myapp -o outdir/     # script + lib files again
+```
+
+→ **[docs/distributing.md](distributing.md)**
+
 ## Related documents
 
 - `MOUSE.md` — mouse semantics, ground truth, and the bstate table.

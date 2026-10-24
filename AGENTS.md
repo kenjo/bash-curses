@@ -30,7 +30,8 @@ run. ALWAYS:
 - `bash tests/run.sh` — full suite: headless unit tests, then tmux integration.
   This is what you run after changes. Individual files can be run directly.
 - Headless (no tmux, fast): `tests/unit.sh` (library behaviour), `tests/unit_screen.sh`
-  (the SGR parser, per-cell grid model, and the raw cursor tracker).
+  (the SGR parser, per-cell grid model, and the raw cursor tracker),
+  `tests/unit_bundle.sh` (the bundle/unbundle CLI in `lib/bc.sh`).
 - tmux (need a real tty): `tests/integration.sh`, `tests/mc_nav.sh`,
   `tests/mc_menu.sh`, `tests/mc_view.sh`, `tests/mc_resize.sh`,
   `tests/mc_dialog.sh`, `tests/mc_actions.sh`, `tests/mc_parity.sh`,

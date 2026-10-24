@@ -5222,4 +5222,139 @@ delay_output() { # ms
   return 0
 }
 
+# --------------------------------------------------------------- bundling CLI
+# Run this file directly (bash lib/bc.sh bundle|unbundle ...) to embed the
+# libraries into one distributable script, or to split such a script back out.
+# Sourcing the library never enters this block; neither does the copy of this
+# file inside a bundle (BC_BUNDLED is set there).
+
+bc_bundle_usage() {
+  cat <<'EOF'
+usage: bash lib/bc.sh bundle   APP.sh -o OUT    embed the libraries in APP.sh
+       bash lib/bc.sh unbundle BUNDLE -o DIR    split BUNDLE into script + libs
+EOF
+}
+
+bc_bundle_libs_for() { # toplib -> library files to embed, in load order
+  case $1 in
+    bc.sh) printf 'bc.sh\n' ;;
+    layout.sh) printf 'bc.sh\nlayout.sh\n' ;;
+    widgets.sh) printf 'bc.sh\nlayout.sh\nwidgets.sh\n' ;;
+  esac
+}
+
+bc_bundle_find_src() { # file -> "lineno<TAB>toplib" for the library source line
+  local f=$1 n=0 line re
+  re='^[[:space:]]*(source|\.)[[:space:]]+[^;]*(bc|layout|widgets)\.sh"?[[:space:]]*$'
+  while IFS= read -r line || [[ -n $line ]]; do
+    (( n++ ))
+    if [[ $line =~ $re ]]; then
+      printf '%s\t%s.sh\n' "$n" "${BASH_REMATCH[2]}"
+      return 0
+    fi
+  done < "$f"
+  return 1
+}
+
+bc_bundle_cmd() { # app out
+  local app=$1 out=$2
+  if [[ ! -f $app ]]; then
+    printf 'bc-bundle: no such file: %s\n' "$app" >&2
+    return 2
+  fi
+  if grep -q '^# >>> bc-bundle begin' "$app"; then
+    printf 'bc-bundle: %s is already bundled\n' "$app" >&2
+    return 2
+  fi
+  local hits
+  if ! hits=$(bc_bundle_find_src "$app"); then
+    printf 'bc-bundle: %s has no library source line\n' "$app" >&2
+    return 2
+  fi
+  if [[ $hits == *$'\n'* ]]; then
+    printf 'bc-bundle: %s sources more than one library; keep it to one line\n' "$app" >&2
+    return 2
+  fi
+  local lineno toplib
+  IFS=$'\t' read -r lineno toplib <<< "$hits"
+  local libdir=${BASH_SOURCE[0]%/*}
+  local lib libs
+  libs=$(bc_bundle_libs_for "$toplib")
+  while IFS= read -r lib; do
+    if [[ ! -f $libdir/$lib ]]; then
+      printf 'bc-bundle: missing library: %s/%s\n' "$libdir" "$lib" >&2
+      return 2
+    fi
+  done <<< "$libs"
+  {
+    head -n "$(( lineno - 1 ))" "$app"
+    printf '# >>> bc-bundle begin v1 src: %s\n' "$(sed -n "${lineno}p" "$app")"
+    printf 'BC_BUNDLED=1\n'
+    while IFS= read -r lib; do
+      printf '# >>> bc-bundle lib %s\n' "$lib"
+      cat "$libdir/$lib"
+      printf '# <<< bc-bundle lib %s\n' "$lib"
+    done <<< "$libs"
+    printf '# <<< bc-bundle end\n'
+    tail -n +"$(( lineno + 1 ))" "$app"
+  } > "$out" || return 2
+  [[ -x $app ]] && chmod +x "$out"
+  return 0
+}
+
+bc_unbundle_cmd() { # bundle outdir
+  local bundle=$1 outdir=$2
+  if [[ ! -f $bundle ]]; then
+    printf 'bc-bundle: no such file: %s\n' "$bundle" >&2
+    return 2
+  fi
+  local begin end
+  begin=$(grep -n '^# >>> bc-bundle begin' "$bundle" | head -1 | cut -d: -f1)
+  end=$(grep -n '^# <<< bc-bundle end$' "$bundle" | head -1 | cut -d: -f1)
+  if [[ -z $begin || -z $end ]] || (( end <= begin )); then
+    printf 'bc-bundle: %s is not a bundle (missing markers)\n' "$bundle" >&2
+    return 2
+  fi
+  mkdir -p "$outdir"
+  awk -v outdir="$outdir" '
+    /^# >>> bc-bundle lib / { f = outdir "/" substr($0, 21); inlib = 1; next }
+    /^# <<< bc-bundle lib / { inlib = 0; next }
+    inlib { print > f; next }
+  ' "$bundle"
+  local srcline toplib
+  srcline=$(sed -n "${begin}p" "$bundle" | sed 's/^# >>> bc-bundle begin v1 src: //')
+  if [[ $srcline =~ (bc|layout|widgets)\.sh ]]; then
+    toplib=${BASH_REMATCH[0]}
+  else
+    toplib=bc.sh
+  fi
+  {
+    head -n "$(( begin - 1 ))" "$bundle"
+    printf 'source "${BASH_SOURCE[0]%%/*}/%s"\n' "$toplib"
+    tail -n +"$(( end + 1 ))" "$bundle"
+  } > "$outdir/${bundle##*/}" || return 2
+  [[ -x $bundle ]] && chmod +x "$outdir/${bundle##*/}"
+  return 0
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" && -z ${BC_BUNDLED:-} ]]; then
+  case ${1:-} in
+    bundle)
+      app=${2:-}; out=${4:-}
+      [[ $3 == -o && -n $out ]] || { bc_bundle_usage; exit 2; }
+      bc_bundle_cmd "$app" "$out"
+      exit $?
+      ;;
+    unbundle)
+      bundle=${2:-}; outdir=${4:-}
+      [[ $3 == -o && -n $outdir ]] || { bc_bundle_usage; exit 2; }
+      bc_unbundle_cmd "$bundle" "$outdir"
+      exit $?
+      ;;
+    *)
+      bc_bundle_usage
+      exit 2
+      ;;
+  esac
+fi
 

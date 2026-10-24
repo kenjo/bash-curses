@@ -9,6 +9,11 @@ Requires bash ≥ 4.3, `stty` and `tput`.
 source lib/bc.sh
 ```
 
+Run the file directly instead of sourcing it and it acts as the bundling CLI
+(`bash lib/bc.sh bundle|unbundle`), which embeds the libraries into an app
+script for single-file distribution — see
+[distributing.md](distributing.md).
+
 It is a working subset of ncurses, not a 1:1 port. The
 [deviations](#deviations-and-gaps) section lists every place where behaviour
 differs. For the higher layers see [layout.md](layout.md) and

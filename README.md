@@ -123,6 +123,18 @@ use command substitution for library calls. The full list — including
 return, and what is not implemented — is in
 [docs/bc.md](docs/bc.md#deviations-and-gaps).
 
+## Distributing your app
+
+Ship a single self-contained script by embedding the libraries into it, and
+split it back apart whenever you want:
+
+```sh
+bash lib/bc.sh bundle myapp.sh -o myapp      # one file to distribute
+bash lib/bc.sh unbundle myapp -o outdir/     # script + lib files again
+```
+
+Details: [docs/distributing.md](docs/distributing.md).
+
 ## Testing
 
 ```sh
