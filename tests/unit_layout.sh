@@ -230,6 +230,17 @@ check "W print no spill into b" " " "$(srow 0 10 1)"
 check "W print pair" "3" "${BC_SP[0 7]}"
 check "W print attr" "$A_BOLD" "${BC_SA[0 7]}"
 
+# pair=0 is a real pair, not "unset": it must override the area background
+fresh 5 20
+bc_screen "a b" cols="10 *"
+bc_style a pair=4
+bc_relayout
+bc_print a 0 0 "x" pair=0
+bc_print a 1 0 "y"
+bc_update >/dev/null
+check "W explicit pair 0" "0" "${BC_SP[0 0]}"
+check "W inherited pair" "4" "${BC_SP[1 0]}"
+
 # auto column sized by bc_text, relayout picks it up
 fresh 6 30
 bc_screen "

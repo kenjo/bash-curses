@@ -426,7 +426,7 @@ _bc_init_window() { # w y x h
   BC_WAX[$w]=0
   BC_WAY[$w]=0
   BC_WCURA[$w]=0
-  BC_WCURP[$w]=0
+  BC_WCURP[$w]=""
   BC_WDELAY[$w]=0
   if (( BC_HALFTENTHS )); then
     BC_WTIMEOUT[$w]=$(( BC_HALFTENTHS * 100 ))
@@ -759,10 +759,10 @@ _bc_render() { # w ch a p -> BC_RCH BC_RA BC_RP
   local w=$1
   local wa=${BC_WCURA[$w]} wp=${BC_WCURP[$w]}
   local ba=${BC_WBGA[$w]} bp=${BC_WBGP[$w]}
-  if [[ ${2:- } == ' ' && ${3:-0} -eq ${wa} && ${4:-0} -eq ${wp} ]]; then
+  if [[ ${2:- } == ' ' && ${3:-0} -eq ${wa} && ${4:-0} -eq ${wp:-0} ]]; then
     BC_RCH=${BC_WBG[$w]}
     BC_RA=$(( wa | ba ))
-    if (( wp )); then
+    if [[ -n $wp ]]; then
       BC_RP=$wp
     else
       BC_RP=$bp
@@ -770,9 +770,9 @@ _bc_render() { # w ch a p -> BC_RCH BC_RA BC_RP
   else
     BC_RCH=$2
     BC_RA=$(( ${3:-0} | wa | ba ))
-    if (( ${4:-0} )); then
+    if [[ -n ${4-} && ${4-0} != 0 ]]; then
       BC_RP=$4
-    elif (( wp )); then
+    elif [[ -n $wp ]]; then
       BC_RP=$wp
     else
       BC_RP=$bp
@@ -816,11 +816,11 @@ _bc_emit() { # w y x text a p
      [[ $text != *$'\n'* && $text != *$'\r'* && $text != *$'\b'* ]]; then
     local wa=${BC_WCURA[$w]} wp=${BC_WCURP[$w]} ba=${BC_WBGA[$w]} bp=${BC_WBGP[$w]} bg=${BC_WBG[$w]}
     local ra_ns=$(( ${a:-0} | wa | ba )) rp_ns
-    if (( ${p:-0} )); then rp_ns=$p; elif (( wp )); then rp_ns=$wp; else rp_ns=$bp; fi
+    if [[ -n ${p-} && ${p-0} != 0 ]]; then rp_ns=$p; elif [[ -n $wp ]]; then rp_ns=$wp; else rp_ns=$bp; fi
     local special=0 ra_sp=0 rp_sp=$rp_sp
-    if (( ${a:-0} == wa && ${p:-0} == wp )); then
+    if (( ${a:-0} == wa )) && [[ ${p:-0} == "${wp:-0}" ]]; then
       special=1; ra_sp=$(( wa | ba ))
-      if (( wp )); then rp_sp=$wp; else rp_sp=$bp; fi
+      if [[ -n $wp ]]; then rp_sp=$wp; else rp_sp=$bp; fi
     fi
     local buf=${BC_WBUF[$w]} k mk yy=$y ayoff=${BC_WY[$w]} axoff=${BC_WX[$w]} ay ax
     ay=$(( ayoff + yy ))
@@ -1128,7 +1128,7 @@ _bc_scroll_window_cells() { # w top bottom n
   local x0=${BC_WX[$w]} ww=${BC_WW[$w]}
   local h=$(( bottom - top + 1 ))
   local y src ax srck dstk
-  _bc_render "$w" ' ' 0 0
+  _bc_render "$w" ' ' 0 ""
   local bch=$BC_RCH ba=$BC_RA bp=$BC_RP
 
   if (( n > 0 )); then
@@ -3190,7 +3190,7 @@ wbkgd() { # win ch a p
   if (( newp )); then
     BC_WCURP[$w]=$newp
   elif (( oldp )); then
-    BC_WCURP[$w]=0
+    BC_WCURP[$w]=""
   fi
   BC_WBG[$w]=$newc
   BC_WBGA[$w]=$newa
@@ -3225,7 +3225,7 @@ wbkgdset() { # win ch a p
   BC_WBGA[$w]=${3:-0}
   BC_WBGP[$w]=${4:-0}
   BC_WCURA[$w]=${3:-0}
-  if (( ${4:-0} )); then
+  if [[ -n ${4-} ]]; then
     BC_WCURP[$w]=${4}
   fi
   return 0
@@ -5089,7 +5089,7 @@ vw_scanw() { wscanw "$@"; }
 wattrset() { # win a p
   local w=${1:-$BC_CURR}
   BC_WCURA[$w]=$2
-  BC_WCURP[$w]=${3:-0}
+  BC_WCURP[$w]=${3-}
   return 0
 }
 
@@ -5121,7 +5121,7 @@ wattr_get() { # win -> BC_AG BC_AP
 wattr_set() { # win a p
   local w=${1:-$BC_CURR}
   BC_WCURA[$w]=${2:-0}
-  BC_WCURP[$w]=${3:-0}
+  BC_WCURP[$w]=${3-}
   return 0
 }
 

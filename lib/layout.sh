@@ -472,7 +472,7 @@ _bcl_eff() { # name -> BCL_EP BCL_EA
     [[ -z $BCL_EA && -n ${BCL_ATTR[$a]:-} ]] && BCL_EA=${BCL_ATTR[$a]}
     a=${BCL_PARENT[$a]:-}
   done
-  BCL_EP=${BCL_EP:-0} BCL_EA=${BCL_EA:-0}
+  BCL_EA=${BCL_EA:-0}
 }
 
 _bcl_unbind() { # name
@@ -488,7 +488,7 @@ _bcl_unbind() { # name
 _bcl_paint_frame() { # name
   local a=$1 f=${BCL_FWIN[$1]} sw
   _bcl_eff "$a"
-  local bh=${BC_WH[$f]} bw=${BC_WW[$f]} p=$BCL_EP at=$BCL_EA
+  local bh=${BC_WH[$f]} bw=${BC_WW[$f]} p=${BCL_EP:-0} at=$BCL_EA
   # set the background and paint every cell once (wbkgd would repaint all
   # cells itself, and the content derwin shares these cells)
   wbkgdset "$f" ' ' "$at" "$p"
@@ -574,8 +574,8 @@ _bcl_bind() { # name y x h w
   BCL_PANS[$a]=$pans BCL_WINS[$a]=$wins
   local c=${BCL_WIN[$a]}
   _bcl_eff "$a"
-  wbkgdset "$c" ' ' "$BCL_EA" "$BCL_EP"
-  wattrset "$c" "$BCL_EA" "$BCL_EP"
+  wbkgdset "$c" ' ' "$BCL_EA" "${BCL_EP:-0}"
+  wattrset "$c" "$BCL_EA" "${BCL_EP:-0}"
   _bcl_paint_frame "$a"
   BCL_WRECT[$a]="$y $x $h $w"
   _bcl_need "$a"
@@ -677,8 +677,8 @@ bc_style() {
       while [[ -n $p && $p != "$a" ]]; do p=${BCL_PARENT[$p]:-}; done
       [[ $p == "$a" && -n ${BCL_FWIN[$n]:-} ]] || continue
       _bcl_eff "$n"
-      wbkgdset "${BCL_WIN[$n]}" ' ' "$BCL_EA" "$BCL_EP"
-      wattrset "${BCL_WIN[$n]}" "$BCL_EA" "$BCL_EP"
+      wbkgdset "${BCL_WIN[$n]}" ' ' "$BCL_EA" "${BCL_EP:-0}"
+      wattrset "${BCL_WIN[$n]}" "$BCL_EA" "${BCL_EP:-0}"
       _bcl_paint_frame "$n"
       _bcl_forget_text "$n" "${BC_WH[${BCL_WIN[$n]}]}"
       _bcl_need "$n"
@@ -753,7 +753,7 @@ _bcl_put() { # name y x str attr pair
   # rendered form of what mvwaddstr would store (see _bc_emit / _bc_render)
   local buf=${BC_WBUF[$c]} bg=${BC_WBG[$c]}
   local ra=$(( $5 | BC_WBGA[$c] )) rp=$6
-  (( rp )) || rp=${BC_WBGP[$c]}
+  [[ -n $rp ]] || rp=${BC_WBGP[$c]}
   local want=$s
   [[ $bg != ' ' ]] && want=${s// /$bg}
   # same text, pen and column as the last write to this row: nothing to do
@@ -781,7 +781,7 @@ _bcl_put() { # name y x str attr pair
     done
     s=${s:i:j-i+1}; x=$(( x + i ))
   fi
-  wattrset "$c" "$5" "$6"
+  wattrset "$c" "$5" "$rp"
   mvwaddstr "$c" "$y" "$x" "$s"
 }
 
@@ -813,7 +813,7 @@ _bcl_draw_area() { # name
   # some rows: leave the others alone
   # blank the cells that held text before and were not written now
   _bcl_eff "$a"
-  local ea=$BCL_EA ep=$BCL_EP e x0 x1 pos end blank
+  local ea=$BCL_EA ep=${BCL_EP:-0} e x0 x1 pos end blank
   local -a sp
   for (( r = 0; r < h; r++ )); do
     e=${BCL_EXT[$a/$r]:-0}
@@ -854,7 +854,7 @@ bc_print() {
   [[ -n $c ]] || return 0
   _bcl_pen "$a" "$@" || return 1
   _bcl_put "$a" "$y" "$x" "$s" "$BCL_PA" "$BCL_PP"
-  _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
+  _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "${BCL_EP:-0}"
 }
 
 # bc_clear NAME — erase the content to the area background.
@@ -934,7 +934,7 @@ _bcl_draw_text() { # name
     _bcl_put "$a" "$r" "$x" "$line" "${BCL_TATTR[$a]}" "${BCL_TPAIR[$a]}"
     r=$(( r + 1 ))
   done <<< "${BCL_TEXT[$a]}"
-  _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "$BCL_EP"
+  _bcl_eff "$a"; wattrset "$c" "$BCL_EA" "${BCL_EP:-0}"
 }
 
 # Mark NAME for redrawing. BCL_DIRTYN counts the requests, so a widget can
