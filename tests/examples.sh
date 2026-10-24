@@ -97,6 +97,7 @@ start_example() {
 }
 
 for ex in \
+  12-mouse.sh \
   13-screen-dump.sh \
   15-window-dump.sh \
   18-pads.sh \
@@ -165,6 +166,10 @@ for ex in \
   81-sudoku.sh
 do
   case $ex in
+    12-mouse.sh)
+      # click "Choice 2" (fixed 80x24 layout: screen col 28, row 11, 1-based)
+      start_example "$ex" "raw:1b 5b 3c 30 3b 32 38 3b 31 31 4d 1b 5b 3c 30 3b 32 38 3b 31 31 6d"
+      ;;
     13-screen-dump.sh)
       start_example "$ex" r
       ;;

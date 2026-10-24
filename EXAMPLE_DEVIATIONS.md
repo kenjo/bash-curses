@@ -8,7 +8,12 @@ SGR/color captures with `--strict`.
 ## Skipped examples
 
 - `08-attributes-main`: requires a C source file argument.
-- `12-mouse`: requires mouse click coordinates.
+- `12-mouse`: the C demo only reacts to `BUTTON1_PRESSED`, which xterm-style
+  terminals never deliver on their own (press+release arrive merged as
+  `BUTTON1_CLICKED`), so the C binary ignores clicks in tmux. The bash port
+  reacts to `BUTTON1_PRESSED | BUTTON1_CLICKED` and adds `q` to quit, so the
+  two diverge as soon as a click is sent; parity stays skipped. Click
+  behaviour is covered instead by `tests/mouse_click.sh`.
 - `14-leave-ncurses`: spawns an interactive shell.
 
 ## Path normalization

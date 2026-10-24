@@ -52,7 +52,7 @@ main() {
   noecho
   cbreak
   attrset 0 "$A_REVERSE"
-  mvprintw 23 1 "Click on Exit to quit (Works best in a virtual console)"
+  mvprintw 23 1 "Click on Exit or press q to quit"
   refresh
   attrset 0 0
   newwin "$HEIGHT" "$WIDTH" "$starty" "$startx"
@@ -63,9 +63,14 @@ main() {
   while :; do
     wgetch "$menu_win"
     key=$key
+    if [[ $key == q ]]; then
+      break
+    fi
     if (( key == KEY_MOUSE )); then
       if getmouse; then
-        if (( BC_ME_BSTATE & BUTTON1_PRESSED )); then
+        # xterm-style terminals report press+release merged as CLICKED;
+        # a Linux console (GPM) reports PRESSED.
+        if (( BC_ME_BSTATE & (BUTTON1_PRESSED | BUTTON1_CLICKED) )); then
           report_choice $(( BC_ME_X + 1 )) $(( BC_ME_Y + 1 ))
           choice=$choice_out
           if (( choice == -1 )); then

@@ -250,7 +250,7 @@ example_skip() {
       printf '%s\n' 'requires a C source file argument'
       ;;
     12-mouse)
-      printf '%s\n' 'requires mouse click coordinates'
+      printf '%s\n' 'bash port reacts to CLICKED and adds q; C demo ignores xterm clicks (see EXAMPLE_DEVIATIONS.md)'
       ;;
     14-leave-ncurses)
       printf '%s\n' 'spawns an interactive shell'

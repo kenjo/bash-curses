@@ -33,7 +33,8 @@ run. ALWAYS:
   (the SGR parser, per-cell grid model, and the raw cursor tracker).
 - tmux (need a real tty): `tests/integration.sh`, `tests/mc_nav.sh`,
   `tests/mc_menu.sh`, `tests/mc_view.sh`, `tests/mc_resize.sh`,
-  `tests/mc_dialog.sh`, `tests/mc_actions.sh`, `tests/mc_parity.sh`.
+  `tests/mc_dialog.sh`, `tests/mc_actions.sh`, `tests/mc_parity.sh`,
+  `tests/mc_mouse.sh`, `tests/mouse_click.sh`.
 
 ### Per-cell screen model — `tests/lib/screen.sh`
 Source it to parse `tmux capture-pane -e` (SGR) captures into a per-cell grid
