@@ -146,6 +146,16 @@ an empty pen pair). A literal `0` passed as a *character* pair still means
 "use the window pair", so existing callers are unaffected. `92`'s `draw_hint`
 now paints its full row with pair 0 like `mc.sh`.
 
+### R17. The 191x74 parity diffs were harness timing, not app behaviour — was O3
+With a fixed 0.55s key spacing, `mc.sh` and `92` at 191x74 had not finished
+processing a key before the next capture, so steps 5/7/9/10 showed phantom
+menu-bar and active-panel divergences. `tmp/lat/parity191.sh` now waits for
+quiescence (1.2s, then two consecutive equal `capture-pane -e` md5s). All 22
+steps then match except the hint/keys trailing-padding cells, which are a
+`tmux capture-pane -e` artifact: the raw PTY streams are byte-identical in
+shape (full-width `(37,40)` padding + `39;49m`), but tmux strips the clone's
+trailing run and keeps `mc.sh`'s. Behavioural parity at 191x74 is clean.
+
 ---
 
 ## Open
@@ -179,28 +189,7 @@ depends on redraw timing). E.g. after `open_alpha` / `viewer_txt`:
 mode.", the clone shows "Tab changes your current panel." The rotation *style*
 matches `mc` (R4); the exact per-step text does not.
 
-### O3. Full-screen SGR parity at 191x74 (odd width)
-`tmp/lat/parity191.sh` drives both apps through the same 21-key sequence at
-191x74 and diffs every step per cell. At 100x30 all 22 steps match; at 191x74
-seven steps differ, in two unrelated ways:
-
-- **hint/keys row padding** (steps 0, 20, 21): `mc.sh` repaints the whole hint
-  and button-bar rows with pair 0 (white on black) before drawing the text, so
-  the trailing blanks carry explicit `(7,0)` cells; the clone leaves them at the
-  window background, which tmux reports as default. Captures-only: raw PTY
-  streams (`script`) show both apps emitting the identical full-width `(37,40)`
-  padding run followed by `39;49m` — `tmux capture-pane -e` strips the clone's
-  trailing run but keeps `mc.sh`'s. Visually identical.
-- **active-panel state** (steps 5, 7, 9, 10): the two apps agree through step 8
-  (both have the right panel active after the `Right`/`Left` arrows), but the
-  `Tab` at step 9 switches the clone back to the left panel while `mc.sh` keeps
-  the right one active; the inverted path line and the selection highlight then
-  differ from step 9 on. The menu dropdown is not involved: F9 opens no menu in
-  either app in this sequence. Root cause not yet identified.
-- **menu-bar title colours** (steps 5, 7): with the bar active but no dropdown
-  open, `mc.sh` draws every title in pair 22 (black on cyan) while the clone
-  draws them in `(11,6)`/`(11,0)`; the title columns (2/11/20/32/44) match. Only
-  at 191 wide — at 100x30 the bar matches exactly.
+### O3. Full-screen SGR parity at 191x74 (odd width) — RESOLVED, see R17
 
 ### O4. `bc_print pair=0` cannot request pair 0 — RESOLVED, see R16
 
