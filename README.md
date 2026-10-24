@@ -2,14 +2,19 @@
 
 An ncurses-flavoured TUI library written in pure bash. Source `lib/bc.sh`,
 then write terminal apps with the familiar `initscr` / `waddstr` / `wgetch` /
-`wrefresh` API.
+`wrefresh` API. On top of it sit two optional layers — `lib/layout.sh`
+(describe the screen in a template, draw by area name) and `lib/widgets.sh`
+(lists, menu bars, dialogs) — so most apps never compute coordinates.
 
 It is not a 1:1 reimplementation: it covers the parts of the ncurses API the
 reference corpora actually exercise (see `references/API-MATRIX.md`), includes
 thin single-cell wide-character wrappers but excludes the terminfo API, and
-makes a small number of deliberate API deviations (below — read them before
-porting C code). `DESIGN.md` has the full architecture and `MOUSE.md` the mouse
-semantics.
+makes a small number of deliberate API deviations (see
+[docs/bc.md](docs/bc.md#deviations-and-gaps) — read them before porting C
+code).
+
+**Documentation lives in [`docs/`](docs/README.md)**: a tutorial and full API
+reference for each layer.
 
 ## Requirements
 
@@ -44,27 +49,17 @@ endwin
 Run it with `bash quickstart.sh`. `endwin` also runs from an EXIT trap, so the
 terminal is restored even if the script dies.
 
-## Examples
+## The three layers
 
-`examples/` holds ports of ncurses test-suite demos. `tests/examples.sh`
-smoke-tests them in tmux. The current example set also exercises every public
-wrapper in `lib/bc.sh` at least once. `examples/newdemo.sh` was frame-diffed
-against the C reference: 0 differing cells of 672 written (see DESIGN.md
-"Verification").
+| Layer | File | What it gives you |
+|---|---|---|
+| Widgets | `lib/widgets.sh` | lists, menu bars, dialogs, input fields, buttons |
+| Layout | `lib/layout.sh` | named screen areas, floats/dialogs, event loop |
+| Core | `lib/bc.sh` | ncurses-style API: windows, attributes, keys, mouse |
 
-```sh
-tmux new-session -d -s bc -x 100 -y 30 bash examples/newdemo.sh
-tmux capture-pane -t bc -p      # rendered screen as text
-tmux send-keys -t bc q          # feed a key
-tmux kill-session -t bc
-```
-
-## Layout layer (`lib/layout.sh`)
-
-An optional layer on top of `lib/bc.sh` for apps that would rather describe
-the screen than compute coordinates. The screen is a template of area names;
-the library turns it into windows, keeps them laid out across resizes, and
-the app draws by area name:
+Source the topmost layer you need; each sources the layers below it. The
+layout layer turns a template of area names into windows, keeps them laid out
+across resizes, and redraws only what changed:
 
 ```bash
 source lib/layout.sh
@@ -87,108 +82,47 @@ on_key()    { [[ $1 == q ]] && bc_quit; }
 bc_run
 ```
 
-- **Templates** name areas; a name repeated across cells spans them, `.` is
-  empty. Track sizes: `N` fixed, `*`/`N*` share of the rest, `auto` fit the
-  content, `0` hidden. `bc_grid AREA "…"` nests a template in an area;
-  `bc_cells AREA N` splits an area into N cells shaped by its aspect ratio.
-- **Floats** are windows on top (dialogs, popups, overlapping windows):
-  `bc_float NAME in=AREA at=center|below:X|random|Y,X|… size=HxW` with sizes
-  `N`, `N%`, `auto`, `A..B` (random, chosen once); `within=AREA` clamps to a
-  larger area; `border title=… shadow pair=…`. A float can hold a grid, which
-  makes a dialog. `bc_raise`, `bc_close NAME [RESULT]`.
-- **Drawing**: `bc_print NAME y x text [pair=] [attr=]` (clipped),
-  `bc_text NAME text [align=]` (retained, redrawn on rebuild, measured for
-  `auto`), `bc_clear`, `bc_size` → `BCL_H BCL_W`, `bc_win NAME` → `bc_win`
-  for any `bc.sh` call, `bc_style`, `bc_dirty NAME…`.
-- **Redraws are cheap**: a `draw_NAME` describes the area's whole content as
-  if on a cleared area, but the layer only writes cells that actually change
-  (and blanks text left over from the previous draw), so redrawing a whole
-  panel on every keystroke costs about what changed. Areas drawn with raw
-  `bc.sh` calls (after `bc_win NAME`) are fully cleared before each redraw.
-- **Loop**: either `bc_run [fps=N]`, which calls `draw_NAME`/`on_draw`,
-  `on_key`, `key_FLOAT`, `click_NAME`/`on_click`, `on_tick MS`, `on_resize`,
-  plus `bc_modal NAME` for a dialog that returns its result; or your own loop
-  with `bc_getkey` (flushes drawing, handles resize, maps clicks to
-  `BCL_AREA BCL_MY BCL_MX`).
+→ Tutorials and full references: [docs/layout.md](docs/layout.md),
+[docs/widgets.md](docs/widgets.md), [docs/bc.md](docs/bc.md).
 
-`examples/90-layout.sh` is an mc-like file manager with a modal Copy dialog;
-`examples/91-shining-layout.sh` redoes `shining.sh` with floats in 53 lines
-of code instead of 131; `examples/92-mc-layout.sh` redoes the full `mc` clone
-(`examples/mc.sh`, 3829 lines) in 1526 lines on top of `lib/layout.sh` +
-`lib/widgets.sh`, and `tests/mc_layout.sh` runs the whole `mc_*` regression
-suite against it. See DESIGN.md "Layout layer" for the internals.
+## Examples
+
+`examples/` holds ports of ncurses test-suite demos. `tests/examples.sh`
+smoke-tests them in tmux. The current example set also exercises every public
+wrapper in `lib/bc.sh` at least once. `examples/newdemo.sh` was frame-diffed
+against the C reference: 0 differing cells of 672 written (see DESIGN.md
+"Verification").
+
+```sh
+tmux new-session -d -s bc -x 100 -y 30 bash examples/newdemo.sh
+tmux capture-pane -t bc -p      # rendered screen as text
+tmux send-keys -t bc q          # feed a key
+tmux kill-session -t bc
+```
+
+Layout-layer examples: `examples/90-layout.sh` (mc-like file manager with a
+modal Copy dialog), `examples/91-shining-layout.sh` (`shining.sh` redone with
+floats), `examples/92-mc-layout.sh` (the full `mc` clone rebuilt on
+`lib/layout.sh` + `lib/widgets.sh`).
 
 ## Mouse
 
-```bash
-mousemask $(( ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION )) oldmask
-while wgetch; do
-  if (( key == KEY_MOUSE )); then
-    while getmouse; do
-      # $BC_ME_X $BC_ME_Y $BC_ME_BSTATE
-    done
-  fi
-done
-```
-
-`wgetch` intercepts SGR 1006 and X10 mouse reports, consumes a whole run of
-consecutive reports (quiet period 166 ms), merges press+release into CLICK and
-CLICK runs into DOUBLE/TRIPLE, filters by the mask, and returns `KEY_MOUSE`;
-`getmouse` then drains the queue into `BC_ME_ID`/`BC_ME_X`/`BC_ME_Y`/
-`BC_ME_BSTATE`. `bstate` uses the ncurses mouse-version-2 encoding
-(`MASK(button, m) = m << ((button-1)*5)`); wheel up/down are buttons 4/5.
-Full semantics, ground-truth evidence, and the bstate table: `MOUSE.md`.
+`wgetch` intercepts SGR 1006 and X10 mouse reports, merges press+release into
+CLICK and CLICK runs into DOUBLE/TRIPLE, filters by the `mousemask`, and
+returns `KEY_MOUSE`; `getmouse` then drains the queue into
+`BC_ME_ID`/`BC_ME_X`/`BC_ME_Y`/`BC_ME_BSTATE`. `bstate` uses the ncurses
+mouse-version-2 encoding; wheel up/down are buttons 4/5. Full semantics,
+ground-truth evidence, and the bstate table: `MOUSE.md`.
 
 ## API deviations from ncurses (must-read)
 
-Bash has no return values, pointers, or out-parameters, so:
-
-- `wgetch [win]` returns status 0/1 and puts the character or `KEY_*` in the
-  global `key`.
-- Window handles are integers (`stdscr` = `BC_STDSCR` = 0). `newwin`, `newpad`,
-  `derwin`/`subwin` store the new handle in the global `bc_win` — capture it
-  with `win=$bc_win`. Never use command substitution (`win=$(newwin ...)`):
-  the function would run in a subshell and all library state would be lost.
-- `wattrset win attr pair` — the color pair is a separate 3rd argument
-  (ncurses packs it into the chtype). Same for `wbkgd win ch attr pair`.
-  `COLOR_PAIR(n)` just prints `n`.
-- `getmaxyx win` sets globals `BC_GMY` (height) and `BC_GMX` (width);
-  `getbegyx win` sets `BC_GBY`, `BC_GBX`.
-- `mvwinch win y x` sets globals `wch`, `wcha`, `wchp` (char, attr, pair).
-- `getmouse` puts the event in `BC_ME_*`; `BC_ME_ID` is always 0.
-- `mousemask`/`mouseinterval` always return 0; the previous value goes to the
-  optional `oldvar` argument / `BC_OLD_MAXCLICK`.
-- `ACS_*` are single Unicode box-drawing characters, not alt-charset escapes.
-- Key decoding is terminfo-driven via `infocmp` keycaps, so which sequences
-  decode to which `KEY_*` depends on `$TERM` (exactly as in C ncurses).
-
-Not implemented (out of scope or not feasible in bash): full wide-character
-semantics (the `*_wch*` wrappers treat each argument as one cell), terminfo API,
-`use_screen`, `slk_wset`.
-
-## API overview
-
-| Group | Functions |
-|---|---|
-| Init/teardown | `initscr`, `endwin`, `curs_set`, `delay_output`, `flushinp` |
-| Windows | `newwin`, `newpad`, `derwin`/`subwin`, `delwin`, `move`/`wmove`/`mvcur`, `getmaxyx`, `getbegyx`, `werase`/`wclear`/`clear` |
-| Output | `waddch`/`waddstr`/`waddnstr` (+ `mvw*`/`mv*`/plain variants), `mvwinch`, `wborder`/`box`/`hline`/`vline`, `wbkgd`/`bkgd`/`wbkgset`/`bkgdset`, `winsn` |
-| Refresh | `wrefresh`/`wnoutrefresh`/`refresh`/`doupdate` |
-| Attributes | `wattrset`/`attrset`, `wattron`/`attron`, `wattroff`/`attroff`, `standout`/`standend` |
-| Color | `start_color`, `has_colors`, `init_pair`, `init_color`, `use_default_colors`, `COLOR_PAIR`, `PAIR_NUMBER` |
-| Input | `wgetch`/`getch`/`getkey`/`echochar`, `ungetch`, `nodelay`, `halfdelay`, `cbreak`, `raw`/`noraw`, `noecho`, `beep`, `flash` |
-| Mouse | `mousemask`/`mouse_set`, `mouseinterval`, `getmouse`, `ungetmouse`, `has_mouse` |
-| Screen save | `scr_init`/`scr_init_sp`, `scr_dump`, `scr_set`/`scr_set_sp`, `scr_restore`/`scr_restore_sp` |
-| SLK | `slk_init`, `slk_set`, `slk_label`, `slk_refresh`, `slk_noutrefresh`, `slk_clear`, `slk_restore`, `slk_touch`, `slk_color`, `slk_attr*` family |
-| Misc | `vidattr`/`vidputs` (and `vid_attr`/`vid_puts`) |
-| Wide chars | `wadd_wch`, `wget_wch`, `win_wch`, `wins_wch`, `setcchar`, `getcchar`, `wcwidth` (single-cell wrappers) |
-
-Constants match ncurses and are checked against `/usr/include/ncurses.h` by the
-unit tests: all `KEY_*` (KEY_F1=265 … KEY_MOUSE=409, KEY_MAX=511), `A_BOLD`=1 …
-`A_PROTECT`=64, `COLOR_*`, `COLOR_PAIRS`, screen macros `COLS`/`LINES`/
-`COLORS` (and `BC_*` variants), `ESCDELAY`, and the mouse bstate/mask constants
-(`BUTTON1_PRESSED`=1 … `BUTTON5_TRIPLE_CLICKED`), `ALL_MOUSE_EVENTS`,
-`REPORT_MOUSE_POSITION`.
+Bash has no return values, pointers, or out-parameters, so results come back
+in globals (`wgetch` → `key`, `newwin` → `bc_win`, `getmaxyx` → `BC_GMY`/
+`BC_GMX`, …) and the pair is a separate argument to `wattrset`/`wbkgd`. Never
+use command substitution for library calls. The full list — including
+`mousemask`'s old-mask argument, pair 0 being a real pair, `wcwidth`'s status
+return, and what is not implemented — is in
+[docs/bc.md](docs/bc.md#deviations-and-gaps).
 
 ## Testing
 
@@ -225,6 +159,7 @@ bash tests/run.sh
 lib/bc.sh        the library (source it)
 lib/layout.sh    optional layout layer: templates, floats, draw by name, bc_run
 lib/widgets.sh   optional widgets on top of layout: lists, menubar, dialogs
+docs/            tutorials + API reference for each layer (start at docs/README.md)
 examples/        ports of ncurses test-suite demos (smoke tests)
 tests/           run.sh, unit.sh, unit_screen.sh, integration.sh, mc_* tests
 references/      read-only vendored ncurses corpus (do not edit)
