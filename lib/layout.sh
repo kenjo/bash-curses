@@ -1358,6 +1358,7 @@ _bcl_dispatch() { # key (modal float or "")
     return 0
   fi
   if [[ $k == "$KEY_MOUSE" ]]; then
+    _bc_mouse_log "dispatch KEY_MOUSE x=$BC_ME_X y=$BC_ME_Y bstate=$BC_ME_BSTATE"
     while getmouse; do
       if ! bc_hit "$BC_ME_Y" "$BC_ME_X" || { [[ -n $m ]] && ! _bcl_inside "$BCL_AREA" "$m"; }; then
         [[ -n $m ]] && declare -F "outclick_$m" >/dev/null && "outclick_$m" "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE"

@@ -1494,7 +1494,10 @@ mouse_trafo() { # y x toscreen -> BC_MT_Y BC_MT_X; 0 ok, 1 outside
 # BC_MOUSE_DEBUG=/path/to/log: append every mouse wire event (decoded or
 # rejected) to the file, for diagnosing terminals that "send no mouse".
 _bc_mouse_log() { # msg
-  [[ -n ${BC_MOUSE_DEBUG:-} ]] && printf '%s\n' "$1" >> "$BC_MOUSE_DEBUG"
+  if [[ -n ${BC_MOUSE_DEBUG:-} ]]; then
+    local t=${EPOCHREALTIME/./}
+    printf '%s %s\n' "${t:0:-3}" "$1" >> "$BC_MOUSE_DEBUG"
+  fi
   return 0
 }
 
@@ -1741,7 +1744,10 @@ _bc_mouse_filter() {
 _bc_mouse_run() {
   _bc_mouse_push_event
   local t c s s2
-  printf -v t '%d.%03d' $(( BC_MAXCLICK / 1000 )) $(( BC_MAXCLICK % 1000 ))
+  # Only peek briefly for a follow-up event: handlers act on the press, so
+  # blocking for the whole BC_MAXCLICK merge window would add that latency to
+  # every click. Bytes already in the buffer still merge into a CLICKED.
+  t=0.03
   while :; do
     c=""
     IFS= read -rsn1 -t "$t" c || break
