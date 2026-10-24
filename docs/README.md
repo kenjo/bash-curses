@@ -1,10 +1,11 @@
 # Using the libraries
 
-`lib/` holds three layers. Each builds on the one below it; you can use any of
+`lib/` holds four layers. Each builds on the one below it; you can use any of
 them directly, but most apps should start at the top.
 
 | Layer | File | What it gives you | Start here if |
 |---|---|---|---|
+| Dialog | `lib/dialog.sh` | `dialog`-style msgbox / yesno / menu prompts | you just want a quick interactive prompt |
 | Widgets | `lib/widgets.sh` | lists, menu bars, dialogs, input fields, buttons | you want interactive building blocks |
 | Layout | `lib/layout.sh` | named screen areas, floats/dialogs, event loop | you want to describe the screen, not compute coordinates |
 | Core | `lib/bc.sh` | ncurses-style API: windows, attributes, keys, mouse | you want full control, or are porting C ncurses code |
@@ -13,10 +14,16 @@ Source the topmost layer you need — each one sources the layers below it
 automatically:
 
 ```bash
-source lib/widgets.sh   # pulls in layout.sh and bc.sh
+source lib/dialog.sh   # pulls in widgets.sh, layout.sh and bc.sh
 ```
 
 ## Which layer?
+
+- **`lib/dialog.sh`** is the quickest way in: `bc_msgbox`, `bc_yesno` and
+  `bc_menu` give you `dialog`-style prompts that take over the terminal, run,
+  and hand it back — so you can interleave normal shell commands between them.
+  It's also the drop-in path for porting an existing `dialog`/`whiptail` script.
+  → **[docs/dialog.md](dialog.md)**
 
 - **`lib/layout.sh` (+ `lib/widgets.sh`)** is the recommended way in. You name
   the areas of your screen in a template, the library sizes them, keeps them

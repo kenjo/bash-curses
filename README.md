@@ -2,9 +2,10 @@
 
 An ncurses-flavoured TUI library written in pure bash. Source `lib/bc.sh`,
 then write terminal apps with the familiar `initscr` / `waddstr` / `wgetch` /
-`wrefresh` API. On top of it sit two optional layers — `lib/layout.sh`
-(describe the screen in a template, draw by area name) and `lib/widgets.sh`
-(lists, menu bars, dialogs) — so most apps never compute coordinates.
+`wrefresh` API. On top of it sit three optional layers — `lib/layout.sh`
+(describe the screen in a template, draw by area name), `lib/widgets.sh`
+(lists, menu bars, dialogs) and `lib/dialog.sh` (`dialog`-style msgbox / yesno
+/ menu prompts) — so most apps never compute coordinates.
 
 It is not a 1:1 reimplementation: it covers the parts of the ncurses API the
 reference corpora actually exercise (see `references/API-MATRIX.md`), includes
@@ -53,6 +54,7 @@ terminal is restored even if the script dies.
 
 | Layer | File | What it gives you |
 |---|---|---|
+| Dialog | `lib/dialog.sh` | `dialog`-style msgbox / yesno / menu prompts |
 | Widgets | `lib/widgets.sh` | lists, menu bars, dialogs, input fields, buttons |
 | Layout | `lib/layout.sh` | named screen areas, floats/dialogs, event loop |
 | Core | `lib/bc.sh` | ncurses-style API: windows, attributes, keys, mouse |
@@ -82,8 +84,9 @@ on_key()    { [[ $1 == q ]] && bc_quit; }
 bc_run
 ```
 
-→ Tutorials and full references: [docs/layout.md](docs/layout.md),
-[docs/widgets.md](docs/widgets.md), [docs/bc.md](docs/bc.md).
+→ Tutorials and full references: [docs/dialog.md](docs/dialog.md),
+[docs/layout.md](docs/layout.md), [docs/widgets.md](docs/widgets.md),
+[docs/bc.md](docs/bc.md).
 
 ## Examples
 
@@ -151,6 +154,11 @@ bash tests/run.sh
   (with a fake key source).
 - `tests/unit_widgets.sh` — headless: `lib/widgets.sh` lists (partial redraw,
   selection hooks, clamping), menubar, and dialog widgets.
+- `tests/unit_dialog.sh` — headless: `lib/dialog.sh` text prep/wrapping and
+  button sizing.
+- `tests/dialog_app.sh` — tmux-driven: drives the ported
+  `/home/kenjo/proj/ai/start_local_ai_bc.sh` with fake tools (skipped if the
+  app is absent).
 - `tests/layout_demo.sh`, `tests/layout_shining.sh` — tmux-driven: the two
   layout examples, incl. dialogs, shadows, clicks and resizes.
   (`tests/bench_layout.sh` is a benchmark, not part of `run.sh`.)
@@ -170,6 +178,7 @@ bash tests/run.sh
 lib/bc.sh        the library (source it)
 lib/layout.sh    optional layout layer: templates, floats, draw by name, bc_run
 lib/widgets.sh   optional widgets on top of layout: lists, menubar, dialogs
+lib/dialog.sh    optional dialog layer on top of widgets: msgbox, yesno, menu
 docs/            tutorials + API reference for each layer (start at docs/README.md)
 examples/        ports of ncurses test-suite demos (smoke tests)
 tests/           run.sh, unit.sh, unit_screen.sh, integration.sh, mc_* tests

@@ -817,7 +817,7 @@ _bc_emit() { # w y x text a p
     local wa=${BC_WCURA[$w]} wp=${BC_WCURP[$w]} ba=${BC_WBGA[$w]} bp=${BC_WBGP[$w]} bg=${BC_WBG[$w]}
     local ra_ns=$(( ${a:-0} | wa | ba )) rp_ns
     if [[ -n ${p-} && ${p-0} != 0 ]]; then rp_ns=$p; elif [[ -n $wp ]]; then rp_ns=$wp; else rp_ns=$bp; fi
-    local special=0 ra_sp=0 rp_sp=$rp_sp
+    local special=0 ra_sp=0 rp_sp=$rp_ns
     if (( ${a:-0} == wa )) && [[ ${p:-0} == "${wp:-0}" ]]; then
       special=1; ra_sp=$(( wa | ba ))
       if [[ -n $wp ]]; then rp_sp=$wp; else rp_sp=$bp; fi
@@ -1099,7 +1099,7 @@ _bc_unmark_region() { # w ay ax h ww
   done
   local -a keep=()
   local IFS=','
-  for k in ${BC_WD[$w]}; do
+  for k in ${BC_WD[$w]:-}; do
     [[ -z $k ]] && continue
     ky=${k%% *}
     kx=${k##* }
@@ -2469,7 +2469,7 @@ delwin() {
   fi
   if [[ -n ${BC_WDR[$w]:-} ]]; then
     local IFS=','
-    for k in ${BC_WDR[$w]}; do [[ -n $k ]] && unset "BC_MKR[$w/$k]"; done
+    for k in ${BC_WDR[$w]:-}; do [[ -n $k ]] && unset "BC_MKR[$w/$k]"; done
     unset IFS
   fi
   unset "BC_WDR[$w]"
@@ -3549,7 +3549,7 @@ wrefresh() { # win
     BC_INITPAINT=0
     local -A real=()
     local IFS=','
-    for k in ${BC_WD[$w]}; do [[ -n $k ]] && real["$k"]=1; done
+    for k in ${BC_WD[$w]:-}; do [[ -n $k ]] && real["$k"]=1; done
     local w2 yy xx wy wx wh ww
     for w2 in "${!BC_WY[@]}"; do
       [[ $w2 == "$BC_STDSCR" ]] && continue
@@ -3571,7 +3571,7 @@ wrefresh() { # win
   fi
   if [[ -n ${BC_WD[$w]:-} ]]; then
     local IFS=','
-    for k in ${BC_WD[$w]}; do
+    for k in ${BC_WD[$w]:-}; do
       [[ -n $k ]] && keys+=("$k")
     done
     _bc_clear_marks "$w"
@@ -3668,7 +3668,7 @@ is_linetouched() { # win line
   [[ -n ${BC_WY[$w]:-} ]] || return 1
   local ay=$(( BC_WY[$w] + line )) k ky
   local IFS=','
-  for k in ${BC_WD[$w]}; do
+  for k in ${BC_WD[$w]:-}; do
     ky=${k%% *}
     if (( ky == ay )); then
       return 0
@@ -3896,7 +3896,7 @@ doupdate() {
       local isowner=0; [[ -n $owbuf && ${BC_WBUF[$w]} == "$owbuf" ]] && isowner=1
       if [[ -n ${BC_WDR[$w]:-} ]]; then
         local IFS=',' ay0
-        for ay0 in ${BC_WDR[$w]}; do
+        for ay0 in ${BC_WDR[$w]:-}; do
           [[ -n $ay0 ]] || continue
           if (( isowner )) && [[ -n ${BC_PUNI["$owbuf $ay0"]+x} ]]; then
             ROWDIRTY[$ay0]=1
@@ -3913,7 +3913,7 @@ doupdate() {
     for w in "${wins[@]}"; do
       if [[ -n ${BC_WD[$w]:-} ]]; then
         local IFS=',' k0
-        for k0 in ${BC_WD[$w]}; do
+        for k0 in ${BC_WD[$w]:-}; do
           [[ -n $k0 ]] || continue
           [[ -n ${ROWDIRTY[${k0%% *}]+x} ]] && continue
           RC[$k0]=1
@@ -3941,7 +3941,7 @@ doupdate() {
     local wxo=${BC_WX[$ownerw]} rk cs pen pa pp2
     for (( ay = bminy; ay <= bmaxy; ay++ )); do
       [[ -n ${ROWDIRTY[$ay]+x} ]] || continue
-      rk="$topbuf $ay"; cs=${BC_CROW[$rk]}; pen=${BC_PUNI[$rk]}
+      rk="$topbuf $ay"; cs=${BC_CROW[$rk]:-}; pen=${BC_PUNI[$rk]:-}
       [[ ${BC_SCROW[$ay]:-} == "$cs" && ${BC_SPROW[$ay]:-} == "$pen" ]] && continue
       pa=${pen% *}; pp2=${pen#* }
       _bc_sgr "$pa" "$pp2"
@@ -4014,13 +4014,13 @@ doupdate() {
   for w in "${wins[@]}"; do
     if [[ -n ${BC_WD[$w]:-} ]]; then
       local IFS=','
-      for k in ${BC_WD[$w]}; do [[ -n $k ]] && unset "BC_MK[$w/$k]"; done
+      for k in ${BC_WD[$w]:-}; do [[ -n $k ]] && unset "BC_MK[$w/$k]"; done
       unset IFS
       unset "BC_WD[$w]"
     fi
     if [[ -n ${BC_WDR[$w]:-} ]]; then
       local IFS=','
-      for k in ${BC_WDR[$w]}; do [[ -n $k ]] && unset "BC_MKR[$w/$k]"; done
+      for k in ${BC_WDR[$w]:-}; do [[ -n $k ]] && unset "BC_MKR[$w/$k]"; done
       unset IFS
       unset "BC_WDR[$w]"
     fi
@@ -5240,12 +5240,13 @@ bc_bundle_libs_for() { # toplib -> library files to embed, in load order
     bc.sh) printf 'bc.sh\n' ;;
     layout.sh) printf 'bc.sh\nlayout.sh\n' ;;
     widgets.sh) printf 'bc.sh\nlayout.sh\nwidgets.sh\n' ;;
+    dialog.sh) printf 'bc.sh\nlayout.sh\nwidgets.sh\ndialog.sh\n' ;;
   esac
 }
 
 bc_bundle_find_src() { # file -> "lineno<TAB>toplib" for the library source line
   local f=$1 n=0 line re
-  re='^[[:space:]]*(source|\.)[[:space:]]+[^;]*(bc|layout|widgets)\.sh"?[[:space:]]*$'
+  re='^[[:space:]]*(source|\.)[[:space:]]+[^;]*(bc|layout|widgets|dialog)\.sh"?[[:space:]]*$'
   while IFS= read -r line || [[ -n $line ]]; do
     (( n++ ))
     if [[ $line =~ $re ]]; then
@@ -5323,7 +5324,7 @@ bc_unbundle_cmd() { # bundle outdir
   ' "$bundle"
   local srcline toplib
   srcline=$(sed -n "${begin}p" "$bundle" | sed 's/^# >>> bc-bundle begin v1 src: //')
-  if [[ $srcline =~ (bc|layout|widgets)\.sh ]]; then
+  if [[ $srcline =~ (bc|layout|widgets|dialog)\.sh ]]; then
     toplib=${BASH_REMATCH[0]}
   else
     toplib=bc.sh

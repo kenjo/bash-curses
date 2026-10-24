@@ -33,8 +33,8 @@ check_roundtrip() { # example-base (uses its real source line)
     cmp -s "$T/$base.out/$lib" "$REPO/lib/$lib" || badlib=1
   done
   if (( badlib )); then bad "$base: unbundled libs differ from lib/"; else ok "$base: unbundled libs identical"; fi
-  if diff -q <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets)\.sh"?[[:space:]]*$' "$REPO/examples/$base.sh") \
-             <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets)\.sh"?[[:space:]]*$' "$T/$base.out/$base.bundled") >/dev/null; then
+  if diff -q <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets|dialog).sh"?[[:space:]]*$' "$REPO/examples/$base.sh") \
+             <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets|dialog).sh"?[[:space:]]*$' "$T/$base.out/$base.bundled") >/dev/null; then
     ok "$base: script body identical after round-trip"
   else
     bad "$base: script body identical after round-trip"
@@ -53,6 +53,30 @@ check_roundtrip() { # example-base (uses its real source line)
 check_roundtrip 12-mouse
 check_roundtrip 90-layout
 check_roundtrip 92-mc-layout
+
+# dialog.sh as a fourth layer
+printf '#!/bin/bash\nsource "%s/lib/dialog.sh"\nbc_menu "T" "M" a "A"\n' "$REPO" > "$T/dlg.sh"
+bash "$BC" bundle "$T/dlg.sh" -o "$T/dlg.bundled" >/dev/null 2>"$T/dlg.err"
+if [[ $? == 0 && -f "$T/dlg.bundled" ]]; then
+  ok "bundle an app that sources dialog.sh"
+else
+  bad "bundle an app that sources dialog.sh"
+fi
+bash "$BC" unbundle "$T/dlg.bundled" -o "$T/dlg.out" >/dev/null 2>>"$T/dlg.err"
+if [[ $? != 0 ]]; then
+  bad "dialog: unbundle failed"
+else
+  badlib=0
+  for lib in bc.sh layout.sh widgets.sh dialog.sh; do
+    cmp -s "$T/dlg.out/$lib" "$REPO/lib/$lib" || badlib=1
+  done
+  if (( badlib )); then bad "dialog: unbundled libs differ from lib/"; else ok "dialog: unbundled libs identical"; fi
+  if grep -q '}/dialog.sh"' "$T/dlg.out/dlg.bundled"; then
+    ok "dialog: unbundle restores the dialog.sh source line"
+  else
+    bad "dialog: unbundle restores the dialog.sh source line"
+  fi
+fi
 
 # error: bundling an already bundled file
 bash "$BC" bundle "$T/12-mouse.bundled" -o "$T/again" >"$T/e1.out" 2>&1
