@@ -760,7 +760,7 @@ bb_prompt() { # title label default -> REPLY
   bc_grid bcprompt "
     bcprompt.lbl  bcprompt.fld
     bcprompt.ok   bcprompt.cancel
-  " rows="auto auto" cols="auto *"
+  " rows="auto auto" cols="auto *" gap=1
   bc_label bcprompt.lbl "$label"
   bc_input bcprompt.fld BB_PROMPT_VAL
   bc_button bcprompt.ok "OK" ok
