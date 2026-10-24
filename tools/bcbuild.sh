@@ -19,6 +19,7 @@ BCB_E='c.'           # engine-name prefix for every design area
 BCB_ROOT='@'         # model key of the root grid
 BCB_ERR=""
 BCB_MSG=""
+BCB_MOUSE=""
 BCB_SEL=""
 BCB_FILE=""
 BCB_DIRTY=0
@@ -751,7 +752,7 @@ draw_prop() {
 
 click_prop() { # y x bstate
   local y=$1 x=$2 b=$3 act
-  (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED) )) || return 0
+  (( b & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED) )) || return 0
   [[ -n $BCB_SEL ]] || return 0
   if [[ -n ${BCB_PBTN[$y]:-} ]]; then
     local -a z
@@ -794,6 +795,14 @@ draw_st() {
   fi
   if [[ -n $BCB_ERR ]]; then
     bc_print st 0 1 "! $BCB_ERR" pair=$BCB_MSGP
+    return
+  fi
+  if (( BC_MOUSE_SEEN == 0 )); then
+    bc_print st 0 1 "no mouse events yet - click anywhere to test (inside tmux: set -g mouse on)"
+    return
+  fi
+  if [[ -n $BCB_MOUSE ]]; then
+    bc_print st 0 1 "$BCB_MOUSE"
     return
   fi
   bc_print st 0 1 "click: select · toolbar buttons · prop rows/[-][+] · drag edges & floats"
@@ -921,6 +930,19 @@ _bb_float_of() { # name
     p=${BB_FIN[$p]:-${BB_PARENT[$p]:-}}
   done
   return 1
+}
+
+on_mouse() { # Y X BSTATE AREA — status-line echo of every mouse event
+  local y=$1 x=$2 b=$3 a=$4 what
+  if (( b & BUTTON1_PRESSED )); then what=press
+  elif (( b & BUTTON1_RELEASED )); then what=release
+  elif (( b & BUTTON1_CLICKED )); then what=click
+  elif (( b & REPORT_MOUSE_POSITION )); then what=move
+  elif (( b & BUTTON4_PRESSED )); then what=wheel-up
+  elif (( b & BUTTON5_PRESSED )); then what=wheel-down
+  else what="b=$b"; fi
+  BCB_MOUSE="mouse: $y,$x $what ${a:-none}"
+  bc_dirty st
 }
 
 on_click() { # NAME Y X BSTATE — NAME is an engine area name

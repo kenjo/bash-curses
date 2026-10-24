@@ -157,15 +157,14 @@ _bcw_list_click() { # name y x bstate
     _bcw_list_move "$a" $(( BCW_SEL[$a] - 1 ))
   elif (( b & (BUTTON5_PRESSED | BUTTON5_CLICKED) )); then
     _bcw_list_move "$a" $(( BCW_SEL[$a] + 1 ))
-  elif (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
+  elif (( b & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
     if (( y >= 0 && idx < BCW_N )); then
       _bcw_list_move "$a" "$idx"
       if (( b & (BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )); then
         declare -F "enter_$a" >/dev/null && "enter_$a" "$idx"
       fi
     fi
-  elif (( b & BUTTON1_PRESSED )); then
-    BCW_DRAG[$a]=1
+    (( b & BUTTON1_PRESSED )) && BCW_DRAG[$a]=1
   elif (( b & BUTTON1_RELEASED )); then
     BCW_DRAG[$a]=0
   elif (( (b & REPORT_MOUSE_POSITION) && ${BCW_DRAG[$a]:-0} )); then
@@ -397,7 +396,7 @@ _bcw_menu_key() { # key
 
 _bcw_menu_click() { # area y x bstate
   local d=$1 y=$2 x=$3 b=$4 a i n
-  (( b & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  (( b & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
   a=${d%.dd}
   if [[ $d == *.dd ]]; then            # an item in the open drop-down
     _bcw_menu_items "$a"
@@ -598,7 +597,7 @@ _bcw_input_key() { # key
 
 _bcw_input_click() { # area y x bstate
   local a=$1 x=$3
-  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  (( $4 & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
   local -n _v=${BCW_VAR[$a]}
   bc_size "$a"
   (( BCW_BTN[$a] && x >= BCL_W - 3 )) && return 0
@@ -641,7 +640,7 @@ _bcw_check_key() { # key
 }
 
 _bcw_check_click() { # area y x bstate
-  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  (( $4 & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
   _bcw_check_toggle "$1"
   _bcw_focus "$1"
 }
@@ -694,7 +693,7 @@ _bcw_button_key() { # key
 }
 
 _bcw_button_click() { # area y x bstate
-  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  (( $4 & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
   _bcw_press "$1"
 }
 
@@ -735,6 +734,6 @@ _bcw_cycle_key() { # key
 }
 
 _bcw_cycle_click() { # area y x bstate
-  (( $4 & (BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
+  (( $4 & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED | BUTTON1_TRIPLE_CLICKED) )) || return 0
   _bcw_cycle_step "$1"; _bcw_focus "$1"
 }

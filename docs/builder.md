@@ -66,6 +66,11 @@ above) to act; **drag a track boundary** between two areas to resize the two
 tracks; **drag a float** to move it, drag its bottom-right corner to resize.
 The menu bar (`F9`) mirrors all of the above.
 
+Handlers act on the button **press**, so click speed does not matter. The
+status line echoes the last mouse event (`mouse: y,x press area`); if it says
+`no mouse events yet`, your terminal is not reporting the mouse to the app —
+inside tmux enable it with `set -g mouse on`.
+
 ## Project files
 
 A `.bcl` file is plain replayable bash — the same calls the layout layer

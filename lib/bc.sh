@@ -232,6 +232,8 @@ BC_ME_X=0
 BC_ME_Y=0
 BC_ME_BSTATE=0
 BC_MOUSE_PRESSED=0        # buttons currently tracked as pressed (_mouse_bstate)
+BC_MOUSE_SEEN=0           # count of decoded mouse events (apps use it to tell
+                          # "terminal reports mouse" from "no events at all")
 BC_MAXCLICK=166           # max interval (ms) to compose click gestures
                           # (ncurses DEFAULT_MAXCLICK)
 BC_OLD_MAXCLICK=0         # previous maxclick (mouseinterval)
@@ -1361,13 +1363,19 @@ _bc_mouse_mask2() { # $1 mask -> BC_MOUSE_MASK2 (click implies press|release, ..
   BC_MOUSE_MASK2=$m
 }
 
-_bc_mouse_enable() { # $1 1|0
+_bc_mouse_enable() { # $1 1|0  [$2 mask while enabling (default BC_MOUSE_MASK)]
+  local m=${2-$BC_MOUSE_MASK}
   if (( $1 )); then
-    printf '\e[?1006;1000h'
+    # separate sequences: some terminals only honour the first private-mode
+    # parameter of a combined "\e[?1006;1000h"
+    printf '\e[?1000h\e[?1006h'
+    # button-event tracking so drags report motion while a button is held
+    (( m & REPORT_MOUSE_POSITION )) && printf '\e[?1002h'
     BC_MOUSE_ENABLED=1
     BC_MOUSE_TYPE=1
   else
-    printf '\e[?1006;1000l'
+    (( BC_MOUSE_MASK & REPORT_MOUSE_POSITION )) && printf '\e[?1002l'
+    printf '\e[?1006l\e[?1000l'
     BC_MOUSE_ENABLED=0
   fi
 }
@@ -1384,7 +1392,7 @@ mousemask() { # $1 newmask [ $2 var_to_receive_oldmask ]
   fi
   if (( BC_STARTED )); then
     if (( BC_MOUSE_MASK == 0 && newmask != 0 )); then
-      _bc_mouse_enable 1
+      _bc_mouse_enable 1 "$newmask"
     elif (( BC_MOUSE_MASK != 0 && newmask == 0 )); then
       _bc_mouse_enable 0
     fi
@@ -1629,6 +1637,7 @@ _bc_mouse_decode_x10() {
 _bc_mouse_push_event() {
   local bstate=$_BC_EVT_BSTATE x=$_BC_EVT_X y=$_BC_EVT_Y
   local n off i _ps _rs lid lx ly lbstate
+  BC_MOUSE_SEEN=$(( BC_MOUSE_SEEN + 1 ))
   i=$(( ${#BC_MEVENTS[@]} - 1 ))
   if (( i >= 0 )); then
     read -r lid lx ly lbstate <<< "${BC_MEVENTS[$i]}"

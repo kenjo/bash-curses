@@ -1362,6 +1362,7 @@ _bcl_dispatch() { # key (modal float or "")
         continue
       fi
       BCL_MB=$BC_ME_BSTATE
+      declare -F on_mouse >/dev/null && on_mouse "$BC_ME_Y" "$BC_ME_X" "$BC_ME_BSTATE" "$BCL_AREA"
       _bcl_click "$BCL_AREA" "$BCL_MY" "$BCL_MX" "$BCL_MB" "$m"
     done
     return 0

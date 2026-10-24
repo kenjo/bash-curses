@@ -75,6 +75,19 @@ check "mask2 DCLK1"    "15"        "$( ( _bc_mouse_mask2 8;           printf '%d
 check "mask2 TCLK1"    "31"        "$( ( _bc_mouse_mask2 16;          printf '%d' "$BC_MOUSE_MASK2" ) )"
 check "mask2 REPORT"   "268435456" "$( ( _bc_mouse_mask2 268435456;   printf '%d' "$BC_MOUSE_MASK2" ) )"
 
+# --- B2. mouse enable sequences (separate params; 1002 only with motion) ---
+has() { [[ $1 == *"$2"* ]] && echo yes || echo no; }
+en_on()  { ( _bc_mouse_enable 1 "$1" ); }
+en_off() { ( BC_MOUSE_MASK=$1 _bc_mouse_enable 0 ); }
+_e_all=$(en_on 268435455)
+_e_mot=$(en_on $(( 268435455 + 268435456 )))
+check "enable 1000h"     "yes" "$(has "$_e_all" $'\e[?1000h')"
+check "enable 1006h"     "yes" "$(has "$_e_all" $'\e[?1006h')"
+check "enable no 1002h"  "no"  "$(has "$_e_all" $'\e[?1002h')"
+check "enable 1002h mot" "yes" "$(has "$_e_mot" $'\e[?1002h')"
+check "disable 1006l"    "yes" "$(has "$(en_off 268435455)" $'\e[?1006l')"
+check "disable 1000l"    "yes" "$(has "$(en_off 268435455)" $'\e[?1000l')"
+
 # --- C. SGR 1006 decode ---
 sgr() { ( _BC_SGR_B=$1 _BC_SGR_X=$2 _BC_SGR_Y=$3 _BC_SGR_FINAL=$4 _bc_mouse_decode_sgr
           printf '%s %s %s' "$_BC_EVT_BSTATE" "$_BC_EVT_X" "$_BC_EVT_Y" ); }

@@ -40,6 +40,15 @@ click() { # x y (1-based screen coords)
   tmux -S "$sock" send-keys -H -t "$sess" 1b 5b 3c 30 3b $sx 3b $sy 6d
   sleep 0.3
 }
+slow_click() { # x y — press and release farther apart than BC_MAXCLICK (166ms),
+  # so no CLICKED is synthesised; handlers must act on the press itself
+  local sx sy
+  sx=$(hexstr "$1"); sy=$(hexstr "$2")
+  tmux -S "$sock" send-keys -H -t "$sess" 1b 5b 3c 30 3b $sx 3b $sy 4d
+  sleep 0.4
+  tmux -S "$sock" send-keys -H -t "$sess" 1b 5b 3c 30 3b $sx 3b $sy 6d
+  sleep 0.3
+}
 
 if wait_for "canvas"; then ok "builder renders"; else
   bad "builder renders"; cap; tmux -S "$sock" kill-session -t "$sess" 2>/dev/null; rm -f "$sock"; exit 1
@@ -53,6 +62,11 @@ click 5 2
 if wait_for "name:    main.0"; then ok "click Split-H selects main.0"; else bad "click Split-H selects main.0"; cap; fi
 click 17 2
 if wait_for "name:    main.0.0"; then ok "click Split-V selects main.0.0"; else bad "click Split-V selects main.0.0"; cap; fi
+
+# slow click: press and release beyond the CLICKED merge window must still act
+slow_click 5 2
+if wait_for "name:    main.0.0.0"; then ok "slow click Split-H splits main.0.0"; else bad "slow click Split-H splits main.0.0"; cap; fi
+grep -q "mouse:" <<<"$(cap)" && ok "status echoes mouse event" || bad "status echoes mouse event"
 
 # mouse: clickable property rows
 click 93 10
