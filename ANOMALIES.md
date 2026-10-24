@@ -156,38 +156,35 @@ steps then match except the hint/keys trailing-padding cells, which are a
 shape (full-width `(37,40)` padding + `39;49m`), but tmux strips the clone's
 trailing run and keeps `mc.sh`'s. Behavioural parity at 191x74 is clean.
 
+### R18. The F1/F2 dialog rows already match `mc` — was O1
+Re-checked with fresh per-cell SGR diffs of `mc.sh` vs real `mc` (100x30, F1
+Help and F2 User menu open). The single-wide `UP--DIR` row, the merged
+`├──…└──┘──┤` border, and the `DIR` size column are all identical; the only
+differing cells are the wall-clock minute in the timestamp and the `[^]` prompt
+marker. The original note (clone rendering "two consistent 50-col panels") was
+stale — `mc.sh` already imitates `mc`'s single-wide rendering. No code change.
+
+### R19. `mc`'s hint rotation is non-deterministic; per-step text is not matchable — was O2
+Real `mc`'s initial hint is always "Tab changes your current panel.", but after
+a full-screen redraw (e.g. F3 viewer open/close) it advances **exactly once** to
+a tip that varies between sessions ("Key frequently visited ftp sites…", "You
+may specify the editor for F4…", "FTP is built in…", "You can disable all
+requests for confirmation…"), then freezes. There is no reproducible per-step
+schedule to imitate. The clone's deterministic context hints (including the VFS
+hint on directory entry, asserted by `tests/mc_parity.sh`) match `mc`'s *style*
+(R4); the exact per-step text cannot be made to match. No code change.
+
 ---
 
 ## Open
 
-Remaining differences found by the full `visual_diff` pass. Neither affects the
-core listing/navigation/menu behaviour; both are subtle `mc`-side rendering
-behaviours that the clone intentionally renders *consistently* instead.
+None. The two items that remained after the full `visual_diff` pass were
+re-checked against current `mc.sh` and closed (see R18/R19): O1 already matches
+`mc` exactly, and O2's per-step hint text is non-deterministic in `mc` itself.
 
-### O1. F1/F2 dialog: surrounding `..`-row and empty rows render differently
-With the F1 (Help) or F2 (User menu) dialog open, `mc` renders the panel rows
-that are *not* covered by the dialog — the `..` row and the empty rows below
-the listing — as a **single wide panel** (the right panel's name/size area is
-left blank/stale; the `..` size shows `DIR` at the far-right size column). The
-clone renders those same rows as **two consistent 50-col panels** (`UP--DIR` in
-each), which matches the initial state, the top border, and the column header
-row (all of which show two panels in `mc` too).
+### O1. F1/F2 dialog: surrounding `..`-row and empty rows render differently — RESOLVED, see R18
 
-- `mc` is internally inconsistent here (top border + header = two panels, but
-  `..`-row + empty rows = one wide panel). This looks like a `mc` redraw/clear
-  quirk around centred dialogs, not a layout the clone should imitate.
-- This also explains the old "L2" note (`..` size `DIR` vs `UP--DIR`): it is the
-  same `..`-row rendering, not a separate size-column difference.
-- Evidence: `tmp/vd/{mc,clone}/07.menu_f2.plain` (rows 4, 23) and
-  `tmp/vd/{mc,clone}/13.f1_help.plain` (rows 3, 25-26).
-
-### O2. Hint line: exact text at a step differs
-The hint line rotates in both, but the *specific* hint shown at a given step
-differs because it depends on how many times the hint has been redrawn (which
-depends on redraw timing). E.g. after `open_alpha` / `viewer_txt`:
-`mc` shows "Want to do complex searches?…" / "M-t changes quickly the listing
-mode.", the clone shows "Tab changes your current panel." The rotation *style*
-matches `mc` (R4); the exact per-step text does not.
+### O2. Hint line: exact text at a step differs — RESOLVED, see R19
 
 ### O3. Full-screen SGR parity at 191x74 (odd width) — RESOLVED, see R17
 
