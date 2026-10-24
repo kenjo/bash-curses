@@ -963,6 +963,7 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
       else
         BCB_DRAG="move $f $(( sy - BCL_RY[$ef] )) $(( sx - BCL_RX[$ef] ))"
       fi
+      bc_mouse_motion 1
       return 0
     fi
     if _bb_hit_grid "$sy" "$sx" && _bb_hit_bnd "$sy" "$sx" "$BCB_HG"; then
@@ -970,6 +971,7 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
       local ka=${bd[2]} kb=${bd[3]}
       _bb_push
       BCB_DRAG="bnd ${bd[0]} $ka $kb $sy $sx ${BCL_RH[$ka]} ${BCL_RW[$ka]} ${BCL_RH[$kb]} ${BCL_RW[$kb]}"
+      bc_mouse_motion 1
       return 0
     fi
     [[ $a != cvs && -n ${BB_KIND[$n]+set} ]] && bb_select "$n"
@@ -1017,6 +1019,7 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
 
   if (( b & BUTTON1_RELEASED )); then
     BCB_DRAG=""
+    bc_mouse_motion 0
     return 0
   fi
   return 0

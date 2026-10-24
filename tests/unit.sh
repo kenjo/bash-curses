@@ -84,9 +84,12 @@ _e_mot=$(en_on $(( 268435455 + 268435456 )))
 check "enable 1000h"     "yes" "$(has "$_e_all" $'\e[?1000h')"
 check "enable 1006h"     "yes" "$(has "$_e_all" $'\e[?1006h')"
 check "enable no 1002h"  "no"  "$(has "$_e_all" $'\e[?1002h')"
-check "enable 1002h mot" "yes" "$(has "$_e_mot" $'\e[?1002h')"
+check "enable no 1002h m" "no" "$(has "$_e_mot" $'\e[?1002h')"
 check "disable 1006l"    "yes" "$(has "$(en_off 268435455)" $'\e[?1006l')"
 check "disable 1000l"    "yes" "$(has "$(en_off 268435455)" $'\e[?1000l')"
+check "motion on"        "yes" "$( ( BC_MOUSE_ENABLED=1 bc_mouse_motion 1 ) | grep -q $'\e\[?1002h' && echo yes )"
+check "motion off"       "yes" "$( ( BC_MOUSE_ENABLED=1 BC_MOUSE_MOTION=1 bc_mouse_motion 0 ) | grep -q $'\e\[?1002l' && echo yes )"
+check "motion needs on"  "1"   "$( ( BC_MOUSE_ENABLED=0 bc_mouse_motion 1 >/dev/null; echo $? ) )"
 
 # --- C. SGR 1006 decode ---
 sgr() { ( _BC_SGR_B=$1 _BC_SGR_X=$2 _BC_SGR_Y=$3 _BC_SGR_FINAL=$4 _bc_mouse_decode_sgr

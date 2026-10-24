@@ -164,9 +164,10 @@ _bcw_list_click() { # name y x bstate
         declare -F "enter_$a" >/dev/null && "enter_$a" "$idx"
       fi
     fi
-    (( b & BUTTON1_PRESSED )) && BCW_DRAG[$a]=1
+    (( b & BUTTON1_PRESSED )) && { BCW_DRAG[$a]=1; bc_mouse_motion 1; }
   elif (( b & BUTTON1_RELEASED )); then
     BCW_DRAG[$a]=0
+    bc_mouse_motion 0
   elif (( (b & REPORT_MOUSE_POSITION) && ${BCW_DRAG[$a]:-0} )); then
     (( y >= 0 && idx < BCW_N )) && _bcw_list_move "$a" "$idx"
   fi

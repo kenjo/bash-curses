@@ -234,6 +234,7 @@ BC_ME_BSTATE=0
 BC_MOUSE_PRESSED=0        # buttons currently tracked as pressed (_mouse_bstate)
 BC_MOUSE_SEEN=0           # count of decoded mouse events (apps use it to tell
                           # "terminal reports mouse" from "no events at all")
+BC_MOUSE_MOTION=0         # 1 = button-event (1002) drag tracking is on
 BC_MAXCLICK=166           # max interval (ms) to compose click gestures
                           # (ncurses DEFAULT_MAXCLICK)
 BC_OLD_MAXCLICK=0         # previous maxclick (mouseinterval)
@@ -1371,15 +1372,29 @@ _bc_mouse_enable() { # $1 1|0  [$2 mask while enabling (default BC_MOUSE_MASK)]
     # separate sequences: some terminals only honour the first private-mode
     # parameter of a combined "\e[?1006;1000h"
     printf '\e[?1000h\e[?1006h'
-    # button-event tracking so drags report motion while a button is held
-    (( m & REPORT_MOUSE_POSITION )) && printf '\e[?1002h'
     BC_MOUSE_ENABLED=1
     BC_MOUSE_TYPE=1
   else
-    (( BC_MOUSE_MASK & REPORT_MOUSE_POSITION )) && printf '\e[?1002l'
+    (( BC_MOUSE_MOTION )) && printf '\e[?1002l'
     printf '\e[?1006l\e[?1000l'
     BC_MOUSE_ENABLED=0
   fi
+}
+
+# bc_mouse_motion 1|0 — toggle button-event (drag) tracking at runtime.
+# Enabled only while a drag is in progress: some terminals (gnome-terminal)
+# stop reporting mouse events altogether when 1002 is on from startup.
+bc_mouse_motion() {
+  (( BC_MOUSE_ENABLED )) || return 1
+  if (( ${1:-1} )); then
+    printf '\e[?1002h'
+    BC_MOUSE_MOTION=1
+  else
+    (( BC_MOUSE_MOTION )) && printf '\e[?1002l'
+    BC_MOUSE_MOTION=0
+  fi
+  _bc_mouse_log "motion $1"
+  return 0
 }
 
 mousemask() { # $1 newmask [ $2 var_to_receive_oldmask ]

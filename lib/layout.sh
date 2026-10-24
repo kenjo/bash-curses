@@ -1031,7 +1031,9 @@ _bcl_in() { # name y x
 
 # bc_init [mouse] [motion] [clickms=N] — initscr + the usual terminal modes,
 # colours if available, endwin on exit, and SIGWINCH -> KEY_RESIZE. motion
-# also reports mouse movement (for drags); clickms is the click interval.
+# accepts drag (motion) events; the 1002 wire mode is toggled per-drag with
+# bc_mouse_motion, since some terminals misbehave when it is on from startup.
+# clickms is the click interval.
 bc_init() {
   local o mouse=0 mmask=$ALL_MOUSE_EVENTS
   for o in "$@"; do
