@@ -960,6 +960,7 @@ _bc_clear_marks() { # w
 initscr() {
   if (( ! BC_STARTED )); then
     _bc_term
+    _bc_mouse_log_init
     BC_STARTED=1
     if (( BC_SLK_PENDING )); then
       _bc_slk_apply
@@ -1365,6 +1366,7 @@ _bc_mouse_mask2() { # $1 mask -> BC_MOUSE_MASK2 (click implies press|release, ..
 
 _bc_mouse_enable() { # $1 1|0  [$2 mask while enabling (default BC_MOUSE_MASK)]
   local m=${2-$BC_MOUSE_MASK}
+  _bc_mouse_log "enable $1 mask=$m"
   if (( $1 )); then
     # separate sequences: some terminals only honour the first private-mode
     # parameter of a combined "\e[?1006;1000h"
@@ -1478,6 +1480,11 @@ mouse_trafo() { # y x toscreen -> BC_MT_Y BC_MT_X; 0 ok, 1 outside
 # rejected) to the file, for diagnosing terminals that "send no mouse".
 _bc_mouse_log() { # msg
   [[ -n ${BC_MOUSE_DEBUG:-} ]] && printf '%s\n' "$1" >> "$BC_MOUSE_DEBUG"
+  return 0
+}
+
+_bc_mouse_log_init() {
+  [[ -n ${BC_MOUSE_DEBUG:-} ]] && : > "$BC_MOUSE_DEBUG"
   return 0
 }
 
@@ -1755,6 +1762,7 @@ _bc_mouse_run() {
     esac
   done
   _bc_mouse_filter
+  (( ${#BC_MEVENTS[@]} )) || _bc_mouse_log "run empty after filter"
   return 0
 }
 
@@ -4462,10 +4470,12 @@ wgetch() { # win -> sets global key; 0 if read, 1 if ERR
           fi
         fi
         if _bc_ti_lookup "$seq"; then
+          _bc_mouse_log "key $(printf '%q' "$seq")"
           key=$_BC_TI_KEY
           return 0
         fi
         if ! _bc_ti_prefix "$seq"; then
+          _bc_mouse_log "raw $(printf '%q' "$seq")"
           key=$'\x1b'
           BC_PENDING_IN+="${seq:1}"
           return 0
