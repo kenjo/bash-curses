@@ -447,6 +447,10 @@ should not touch it.
 
 - **Areas must be rectangles.** A name's cells must fill their bounding box
   exactly; `bc_screen`/`bc_grid` reject anything else.
+- **Names come from the template.** A child area's name is the token you wrote
+  in the template — `bc_grid body …` does *not* prefix children with `body.`.
+  If you want dotted names (`body.list`), write them in the template, and use
+  the full name in hooks: `draw_body.list`, not `draw_list`.
 - **Track count must match the template.** `rows=`/`cols=` need exactly one
   size per template row/column.
 - **Odd-width rounding.** When weighted tracks don't divide evenly, the extra
