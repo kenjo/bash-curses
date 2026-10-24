@@ -38,13 +38,10 @@ source lib/widgets.sh   # pulls in layout.sh and bc.sh
 - `examples/92-mc-layout.sh` — the full `mc` clone (`examples/mc.sh`) rebuilt
   on `layout.sh` + `widgets.sh`.
 
-Run any of them in tmux:
+Run any of them in a terminal:
 
 ```sh
-tmux new-session -d -s demo -x 100 -y 30 bash examples/90-layout.sh
-tmux capture-pane -t demo -p   # see the screen
-tmux send-keys -t demo q       # feed a key
-tmux kill-session -t demo
+bash examples/90-layout.sh
 ```
 
 ## Related documents

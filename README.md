@@ -93,11 +93,10 @@ wrapper in `lib/bc.sh` at least once. `examples/newdemo.sh` was frame-diffed
 against the C reference: 0 differing cells of 672 written (see DESIGN.md
 "Verification").
 
+Run any of them in a terminal:
+
 ```sh
-tmux new-session -d -s bc -x 100 -y 30 bash examples/newdemo.sh
-tmux capture-pane -t bc -p      # rendered screen as text
-tmux send-keys -t bc q          # feed a key
-tmux kill-session -t bc
+bash examples/newdemo.sh
 ```
 
 Layout-layer examples: `examples/90-layout.sh` (mc-like file manager with a

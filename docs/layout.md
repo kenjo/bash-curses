@@ -151,13 +151,10 @@ bc_init
 bc_run
 ```
 
-Run it in tmux:
+Save it as `demo.sh` and run it in any terminal:
 
 ```sh
-tmux new-session -d -s bc-doc -x 80 -y 24 bash tmp/docs/layout-1.sh
-tmux capture-pane -t bc-doc -p
-tmux send-keys -t bc-doc n n q
-tmux kill-session -t bc-doc
+bash demo.sh
 ```
 
 ### 6. Split an area: `bc_grid` and `bc_cells`
