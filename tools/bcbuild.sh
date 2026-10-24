@@ -1155,7 +1155,7 @@ _bb_colors() {
   done
   alloc_pair 7 4; BCB_SELP=$bc_pair
   alloc_pair 3 0; BCB_MSGP=$bc_pair
-  alloc_pair 7 6; BCB_TBP=$bc_pair
+  alloc_pair 0 6; BCB_TBP=$bc_pair
   alloc_pair 0 7; BCB_PROPB=$bc_pair
 }
 
