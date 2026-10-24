@@ -798,7 +798,7 @@ draw_st() {
     return
   fi
   if (( BC_MOUSE_SEEN == 0 )); then
-    bc_print st 0 1 "no mouse events yet - click anywhere to test (inside tmux: set -g mouse on)"
+    bc_print st 0 1 "no mouse events yet (TERM=$TERM) - inside tmux: set -g mouse on"
     return
   fi
   if [[ -n $BCB_MOUSE ]]; then

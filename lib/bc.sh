@@ -1474,6 +1474,13 @@ mouse_trafo() { # y x toscreen -> BC_MT_Y BC_MT_X; 0 ok, 1 outside
 
 # Read the SGR 1006 payload that follows "\E[<": "b;x;y" then a final 'M'|'m'.
 # Sets _BC_SGR_B/_BC_SGR_X/_BC_SGR_Y/_BC_SGR_FINAL. 0 on success, 1 incomplete.
+# BC_MOUSE_DEBUG=/path/to/log: append every mouse wire event (decoded or
+# rejected) to the file, for diagnosing terminals that "send no mouse".
+_bc_mouse_log() { # msg
+  [[ -n ${BC_MOUSE_DEBUG:-} ]] && printf '%s\n' "$1" >> "$BC_MOUSE_DEBUG"
+  return 0
+}
+
 _bc_mouse_read_sgr() {
   local c payload="" final="" t b x y
   printf -v t '%d.%03d' $(( ESCDELAY / 1000 )) $(( ESCDELAY % 1000 ))
@@ -1483,10 +1490,17 @@ _bc_mouse_read_sgr() {
       [0-9] | ';') payload+=$c ;;
     esac
   done
-  [[ -z $final ]] && return 1
+  if [[ -z $final ]]; then
+    _bc_mouse_log "sgr INCOMPLETE payload=$payload"
+    return 1
+  fi
   IFS=';' read -r b x y _ <<< "$payload"
-  [[ $b =~ ^[0-9]+$ && $x =~ ^[0-9]+$ && $y =~ ^[0-9]+$ ]] || return 1
+  if ! [[ $b =~ ^[0-9]+$ && $x =~ ^[0-9]+$ && $y =~ ^[0-9]+$ ]]; then
+    _bc_mouse_log "sgr BAD payload=$payload final=$final"
+    return 1
+  fi
   _BC_SGR_B=$b _BC_SGR_X=$x _BC_SGR_Y=$y _BC_SGR_FINAL=$final
+  _bc_mouse_log "sgr b=$b x=$x y=$y final=$final"
   return 0
 }
 
@@ -1638,6 +1652,7 @@ _bc_mouse_push_event() {
   local bstate=$_BC_EVT_BSTATE x=$_BC_EVT_X y=$_BC_EVT_Y
   local n off i _ps _rs lid lx ly lbstate
   BC_MOUSE_SEEN=$(( BC_MOUSE_SEEN + 1 ))
+  _bc_mouse_log "push x=$x y=$y bstate=$bstate"
   i=$(( ${#BC_MEVENTS[@]} - 1 ))
   if (( i >= 0 )); then
     read -r lid lx ly lbstate <<< "${BC_MEVENTS[$i]}"
