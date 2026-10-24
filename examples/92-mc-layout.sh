@@ -439,7 +439,7 @@ draw_hint() {
   elif [[ -n $HINT_TEXT ]]; then hint=$HINT_TEXT
   else hint="Tab changes your current panel."; fi
   printf -v s '%-*s' $(( COLS - 1 )) "Hint: $hint"
-  bc_print hint 0 0 "$s"
+  bc_print hint 0 0 "$s" pair=0
 }
 
 cmdline_prompt() {

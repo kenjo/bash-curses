@@ -135,6 +135,17 @@ yellow on the panel background (pair 31), matching the real `mc` selection
 colour observed with `Insert`. Verified by `tests/mc_actions.sh` using SGR
 captures of the listing rows.
 
+### R16. `pair=0` was indistinguishable from "no pair" — was O4
+The pair fallback chain used arithmetic truthiness (`(( rp ))`), so pair 0
+silently became the window background pair and `mc.sh`'s `wattrset 0 0 0`
+full-row repaints could not be expressed through the layout layer. An unset
+current pair is now the empty string in `bc.sh` (`wattrset`, `wattr_set`,
+`wbkgdset`, `wbkgd`, `_bc_render`, the `mvwaddstr` fast path) and in
+`layout.sh` (`_bcl_eff` leaves `BCL_EP` empty, `_bcl_put` falls back only for
+an empty pen pair). A literal `0` passed as a *character* pair still means
+"use the window pair", so existing callers are unaffected. `92`'s `draw_hint`
+now paints its full row with pair 0 like `mc.sh`.
+
 ---
 
 ## Open
@@ -176,8 +187,10 @@ seven steps differ, in two unrelated ways:
 - **hint/keys row padding** (steps 0, 20, 21): `mc.sh` repaints the whole hint
   and button-bar rows with pair 0 (white on black) before drawing the text, so
   the trailing blanks carry explicit `(7,0)` cells; the clone leaves them at the
-  window background, which tmux reports as default. Visually identical, and
-  invisible at 100x30 because tmux strips the trailing run either way.
+  window background, which tmux reports as default. Captures-only: raw PTY
+  streams (`script`) show both apps emitting the identical full-width `(37,40)`
+  padding run followed by `39;49m` — `tmux capture-pane -e` strips the clone's
+  trailing run but keeps `mc.sh`'s. Visually identical.
 - **active-panel state** (steps 5, 7, 9, 10): the two apps agree through step 8
   (both have the right panel active after the `Right`/`Left` arrows), but the
   `Tab` at step 9 switches the clone back to the left panel while `mc.sh` keeps
@@ -189,11 +202,7 @@ seven steps differ, in two unrelated ways:
   draws them in `(11,6)`/`(11,0)`; the title columns (2/11/20/32/44) match. Only
   at 191 wide — at 100x30 the bar matches exactly.
 
-### O4. `bc_print pair=0` cannot request pair 0
-`_bcl_put` does `(( rp )) || rp=${BC_WBGP[$c]}`, so `pair=0` is indistinguishable
-from "no pair" and falls back to the window background. `mc.sh` uses `wattrset 0
-0 0` (pair 0 = white on black) for the hint/button-bar rows; the clone cannot
-express that through the layout layer.
+### O4. `bc_print pair=0` cannot request pair 0 — RESOLVED, see R16
 
 ---
 
