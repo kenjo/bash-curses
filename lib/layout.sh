@@ -665,7 +665,7 @@ bc_style() {
       shadow=*) nv=$(( ${o#*=} ? 1 : 0 )); [[ ${BCL_SHADOW[$a]:-0} == "$nv" ]] || { BCL_SHADOW[$a]=$nv; geom=1; } ;;
       spair=*)  nv=${o#*=}; [[ ${BCL_SPAIR[$a]:-} == "$nv" ]] || { BCL_SPAIR[$a]=$nv; bpen=1; } ;;
       tpair=*)  nv=${o#*=}; [[ ${BCL_TPEN[$a]:-} == "$nv" ]] || { BCL_TPEN[$a]=$nv; bpen=1; } ;;
-      margin=*) nv=${o#*=}; [[ ${BCL_MARGIN[$a]:-0} == "$nv" ]] || { BCL_MARGIN[$a]=$nv; geom=1; } ;;
+      margin=*) nv=${o#*=}; [[ ${BCL_MARGIN[$a]:-0} == "$nv" ]] || { BCL_MARGIN[$a]=$nv; geom=1; }; BCL_MARGIN[$a]=$nv ;;
       divider)  [[ ${BCL_DIVIDER[$a]:-0} == 1 ]] || { BCL_DIVIDER[$a]=1; geom=1; } ;;
       tleft)    [[ ${BCL_TLEFT[$a]:-0} == 1 ]] || { BCL_TLEFT[$a]=1; content=1; } ;;
       *) _bcl_err "bc_style: unknown option '$o'"; return 1 ;;
