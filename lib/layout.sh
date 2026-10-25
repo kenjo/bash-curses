@@ -978,10 +978,16 @@ _bcl_draw_pending() {
 
 # bc_update — relayout if needed, redraw what is pending, push to the terminal.
 bc_update() {
+  local t0 d e
+  [[ -n ${BC_MOUSE_DEBUG:-} ]] && { e=${EPOCHREALTIME//,/}; t0=${e//./}; }
   (( BCL_LAYOUT_DIRTY )) && bc_relayout
   _bcl_draw_pending
   _bcl_place_cursor
   doupdate
+  if [[ -n ${BC_MOUSE_DEBUG:-} && -n $t0 ]]; then
+    e=${EPOCHREALTIME//,/}; d=$(( (${e//./} - t0) / 1000 ))
+    (( d > 50 )) && _bc_mouse_log "update ${d}ms"
+  fi
 }
 
 # bc_cursor NAME Y X — show the terminal cursor at Y,X of NAME's content (it
