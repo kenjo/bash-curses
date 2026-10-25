@@ -1248,14 +1248,16 @@ _bb_colors() {
   # mc colours on FIXED 256-colour indices: the basic 16 (0-15) are
   # remapped by terminal themes (this user's theme paints blue as red),
   # but 16-231 are the immutable xterm cube and render the same everywhere.
-  local blk=16 wht=231 blu=20 ylw=226 cyn=51
-  if (( BC_COLORS < 256 )); then blk=0 wht=7 blu=1 ylw=3 cyn=6; fi
+  local blk=16 wht=231 blu=20 ylw=226 cyn=51 grn=46 red=196
+  if (( BC_COLORS < 256 )); then blk=0 wht=7 blu=1 ylw=3 cyn=6 grn=2 red=1; fi
   alloc_pair $wht $blu; BCB_APPP=$bc_pair    # mc blue screen
   alloc_pair $ylw $blu; BCB_MSGP=$bc_pair    # errors: yellow on blue
   alloc_pair $blk $ylw; BCB_TBP=$bc_pair     # menu/toolbar: black on yellow
   alloc_pair $blk $cyn; BCB_SELP=$bc_pair    # selection: black on cyan
   alloc_pair $blk $wht; BCB_DLG=$bc_pair     # dialogs: black on white
   alloc_pair $wht $blu; BCB_PROPB=$bc_pair   # status line: white on blue
+  alloc_pair $blk $grn; BCB_PREVP=$bc_pair   # Preview button: black on green
+  alloc_pair $wht $red; BCB_QUITP=$bc_pair   # Quit button: white on red
   BCW_PENS="0 0 $BCB_SELP 0"                 # input fields: black on cyan
 }
 
@@ -1300,9 +1302,9 @@ main() {
   bc_menubar tb "File:1 Edit:6 Insert:12 Style:19 Help:25" pairs="$BCB_TBP $BCB_SELP 1 $BCB_SELP 1"
 
   bc_grid bar "
-    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill bar.ol
-    bar.new bar.opn bar.ren bar.nx bar.pv bar.ar bar.ac bar.hp . bar.qu
-  " rows="1 1" cols="auto auto auto auto auto auto auto auto * auto"
+    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill bar.ol . bar.qu
+    bar.new bar.opn bar.ren bar.nx bar.pv bar.ar bar.ac bar.hp . . . .
+  " rows="1 1" cols="auto auto auto auto auto auto auto auto * auto * auto"
   bc_button bar.sh "Split-H"
   bc_button bar.sv "Split-V"
   bc_button bar.del "Delete"
@@ -1318,11 +1320,12 @@ main() {
   bc_button bar.nx "Next"
   bc_button bar.pv "Prev"
   bc_button bar.ol "Preview"
-  bc_style bar.ol pair=$BCB_SELP
+  bc_style bar.ol pair=$BCB_PREVP
   bc_button bar.ar "Auto-R"
   bc_button bar.ac "Auto-C"
   bc_button bar.hp "Help"
   bc_button bar.qu "Quit"
+  bc_style bar.qu pair=$BCB_QUITP
 
   bb_render
   bc_dirty pal prop st
