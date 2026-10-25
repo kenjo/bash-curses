@@ -810,10 +810,6 @@ draw_st() {
     bc_print st 0 1 "! $BCB_ERR" pair=$BCB_MSGP
     return
   fi
-  if (( BC_MOUSE_SEEN == 0 )); then
-    bc_print st 0 1 "no mouse events yet (TERM=$TERM) - inside tmux: set -g mouse on"
-    return
-  fi
   if [[ -n $BCB_MOUSE ]]; then
     bc_print st 0 1 "$BCB_MOUSE"
     return
@@ -1056,7 +1052,7 @@ on_key() {
     D) bb_set_style divider "$([[ -n ${BB_DIVIDER[$BCB_SEL]:-} ]] && echo '' || echo 1)"; bb_after ;;
     m) bb_cycle_margin; bb_after ;;
     w) bb_cycle_tag; bb_after ;;
-    o) BCB_OUTLINE=$(( ! ${BCB_OUTLINE:-1} )); BCB_MODEL_DIRTY=1; bb_after ;;
+    o) bb_outline ;;
     f) bb_add_float; bb_after ;;
     $'\t') bb_cycle_sel 1; bb_after ;;
     $KEY_BTAB) bb_cycle_sel -1; bb_after ;;
@@ -1109,6 +1105,12 @@ bb_cycle_sel() { # delta
   for i in "${!BB_TREE[@]}"; do [[ ${BB_TREE[i]#* } == "$BCB_SEL" ]] && cur=$i; done
   i=$(( (cur + $1 + n) % n ))
   bb_select "${BB_TREE[i]#* }"
+}
+
+bb_outline() {
+  BCB_OUTLINE=$(( ! ${BCB_OUTLINE:-1} ))
+  BCB_MODEL_DIRTY=1
+  bb_after
 }
 
 bb_cycle_shadow() {
@@ -1199,6 +1201,16 @@ press_bar.un()  { bb_undo; bb_after; }
 press_bar.rd()  { bb_redo; bb_after; }
 press_bar.sav() { if [[ -n $BCB_FILE ]]; then bb_save; else bb_saveas; fi; bc_dirty st; }
 press_bar.exp() { bb_exportas; bc_dirty st; }
+press_bar.new() { bb_new; bb_after; }
+press_bar.opn() { bb_open; }
+press_bar.ren() { on_key r; }
+press_bar.nx()  { bb_cycle_sel 1; bb_after; }
+press_bar.pv()  { bb_cycle_sel -1; bb_after; }
+press_bar.ol()  { bb_outline; }
+press_bar.ar()  { bb_toggle_auto 0; bb_after; }
+press_bar.ac()  { bb_toggle_auto 1; bb_after; }
+press_bar.hp()  { bb_help; }
+press_bar.qu()  { bb_quit; }
 
 on_resize() { bb_render; bc_dirty pal prop st; }
 
@@ -1234,7 +1246,7 @@ main() {
     bar  bar  bar
     pal  cvs  prop
     st   st   st
-  " rows="1 1 * 3" cols="24 * 30"
+  " rows="1 2 * 3" cols="24 * 30"
 
   bc_style tb pair=$BCB_TBP
   bc_style bar pair=$BCB_TBP
@@ -1255,8 +1267,9 @@ main() {
   bc_menubar tb "File:1 Edit:6 Insert:12 Style:19 Help:25" pairs="$BCB_TBP $BCB_SELP 1 $BCB_SELP 1"
 
   bc_grid bar "
-    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill
-  " rows="1" cols="auto auto auto auto auto auto auto auto *"
+    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill .
+    bar.new bar.opn bar.ren bar.nx bar.pv bar.ol bar.ar bar.ac bar.hp bar.qu
+  " rows="1 1" cols="auto auto auto auto auto auto auto auto auto *"
   bc_button bar.sh "Split-H"
   bc_button bar.sv "Split-V"
   bc_button bar.del "Delete"
@@ -1266,6 +1279,16 @@ main() {
   bc_button bar.sav "Save"
   bc_button bar.exp "Export"
   bc_content bar.fill 1 1
+  bc_button bar.new "New"
+  bc_button bar.opn "Open"
+  bc_button bar.ren "Rename"
+  bc_button bar.nx "Next"
+  bc_button bar.pv "Prev"
+  bc_button bar.ol "Outline"
+  bc_button bar.ar "Auto-R"
+  bc_button bar.ac "Auto-C"
+  bc_button bar.hp "Help"
+  bc_button bar.qu "Quit"
 
   bb_render
   bc_dirty pal prop st

@@ -73,7 +73,7 @@ if wait_for "name:    main.0.0.0"; then ok "slow click Split-H splits main.0.0";
 grep -q "mouse:" <<<"$(cap)" && ok "status echoes mouse event" || bad "status echoes mouse event"
 
 # mouse: clickable property rows
-click 93 10
+click 93 11
 if wait_for "border:  on"; then ok "click border row toggles border"; else bad "click border row toggles border"; cap; fi
 
 # title through the prompt dialog
