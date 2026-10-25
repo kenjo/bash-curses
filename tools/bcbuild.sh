@@ -27,6 +27,7 @@ BCB_MODEL_DIRTY=0      # model changed -> bb_after must rebuild the grids
 BCB_OUTLINE=1          # canvas preview chrome (borders + name titles)
 BCB_SELSTYLED=""       # selection last mirrored into the canvas styles
 BCB_DRAG=""          # active drag: "bnd|move|size ..." fields
+BCB_HANDLES_DIRTY=1  # canvas drag anchors need redrawing
 BCB_UNDO=() BCB_REDO=()
 
 # design colour pairs: fixed numbers so exports reproduce them; the builder
@@ -606,6 +607,7 @@ bb_render() {
   _bb_sel_style
   local -a _eb=(); for n in "${!BB_KIND[@]}"; do _eb+=("$BCB_E$n"); done
   bc_dirty cvs "${_eb[@]}"
+  BCB_HANDLES_DIRTY=1
   return 0
 }
 
@@ -819,6 +821,108 @@ draw_st() {
   bc_print st 2 1 "+/- < > size  a auto  [] gap  u undo  ? help  q quit  ^S save  ^O open  ^E export"
 }
 
+# ------------------------------------------------------- canvas anchors
+_bb_draw_handles() {
+  local g k ea eb i j gap pe
+  local ay ax ah aw by bx bh bw y0 y1 x0 x1 mid
+  for g in "${!BB_TPL[@]}"; do
+    local -a kids=()
+    for k in ${BB_KIDS[$g]}; do kids+=("$BCB_E$k"); done
+    for (( i = 0; i < ${#kids[@]}; i++ )); do
+      for (( j = i + 1; j < ${#kids[@]}; j++ )); do
+        ea=${kids[i]}; eb=${kids[j]}
+        [[ -n ${BCL_RY[$ea]+set} && -n ${BCL_RY[$eb]+set} ]] || continue
+        if (( BCL_RX[$ea] < BCL_RX[$eb] )); then
+          gap=$(( BCL_RX[$eb] - (BCL_RX[$ea] + BCL_RW[$ea]) ))
+          (( gap >= 0 && gap <= 1 )) || continue
+          _bcl_inner "$ea"; ay=$BCL_Y ax=$BCL_X ah=$BCL_H aw=$BCL_W
+          _bcl_inner "$eb"; by=$BCL_Y bx=$BCL_X bh=$BCL_H bw=$BCL_W
+          (( ah > 0 && bh > 0 && bw > 0 )) || continue
+          y0=$(( ay > by ? ay : by ))
+          y1=$(( ay + ah < by + bh ? ay + ah : by + bh ))
+          (( y1 > y0 )) || continue
+          mid=$(( (y0 + y1 - 1) / 2 ))
+          if (( gap == 1 )); then
+            pe=$([[ $g == "$BCB_ROOT" ]] && printf cvs || printf '%s%s' "$BCB_E" "$g")
+            bc_print "$pe" $(( mid - BCL_RY[$pe] )) $(( BCL_RX[$eb] - 1 - BCL_RX[$pe] )) "+" pair=$BCB_ANCHP
+          else
+            bc_print "$eb" $(( mid - by )) 0 "+" pair=$BCB_ANCHP
+          fi
+        fi
+        if (( BCL_RY[$ea] < BCL_RY[$eb] )); then
+          gap=$(( BCL_RY[$eb] - (BCL_RY[$ea] + BCL_RH[$ea]) ))
+          (( gap >= 0 && gap <= 1 )) || continue
+          _bcl_inner "$ea"; ay=$BCL_Y ax=$BCL_X ah=$BCL_H aw=$BCL_W
+          _bcl_inner "$eb"; by=$BCL_Y bx=$BCL_X bh=$BCL_H bw=$BCL_W
+          (( aw > 0 && bw > 0 && bh > 0 )) || continue
+          x0=$(( ax > bx ? ax : bx ))
+          x1=$(( ax + aw < bx + bw ? ax + aw : bx + bw ))
+          (( x1 > x0 )) || continue
+          mid=$(( (x0 + x1 - 1) / 2 ))
+          if (( gap == 1 )); then
+            pe=$([[ $g == "$BCB_ROOT" ]] && printf cvs || printf '%s%s' "$BCB_E" "$g")
+            bc_print "$pe" $(( BCL_RY[$eb] - 1 - BCL_RY[$pe] )) $(( mid - BCL_RX[$pe] )) "+" pair=$BCB_ANCHP
+          else
+            bc_print "$eb" 0 $(( mid - bx )) "+" pair=$BCB_ANCHP
+          fi
+        fi
+      done
+    done
+  done
+}
+
+on_draw() {
+  (( BCB_HANDLES_DIRTY )) || return 0
+  BCB_HANDLES_DIRTY=0
+  [[ -n $BCB_DRAG ]] && return 0
+  [[ ${BCB_OUTLINE:-1} == 0 ]] && return 0
+  _bb_draw_handles
+}
+
+# ------------------------------------------------------- drag feedback
+_bb_drag_overlay() {
+  local -a dr; read -r -a dr <<< "$BCB_DRAG"
+  local axs=${dr[1]} ka=${dr[2]} kb=${dr[3]} bpos=${dr[6]} d=${dr[11]}
+  local ay axc ah aw by bxc bh bw y0 y1 x0 x1 h w x y cy cx at size
+  _bcl_inner cvs; cy=$BCL_Y cx=$BCL_X
+  if [[ $axs == v ]]; then
+    _bcl_inner "$ka"; ay=$BCL_Y axc=$BCL_X ah=$BCL_H aw=$BCL_W
+    _bcl_inner "$kb"; by=$BCL_Y bxc=$BCL_X bh=$BCL_H bw=$BCL_W
+    y0=$(( ay > by ? ay : by ))
+    y1=$(( ay + ah < by + bh ? ay + ah : by + bh ))
+    h=$(( y1 - y0 )); (( h < 1 )) && return 1
+    x=$(( bpos + d ))
+    at="$(( y0 - cy )),$(( x - cx ))"
+    size="${h}x1"
+  else
+    _bcl_inner "$ka"; ay=$BCL_Y axc=$BCL_X ah=$BCL_H aw=$BCL_W
+    _bcl_inner "$kb"; by=$BCL_Y bxc=$BCL_X bh=$BCL_H bw=$BCL_W
+    x0=$(( axc > bxc ? axc : bxc ))
+    x1=$(( axc + aw < bxc + bw ? axc + aw : bxc + bw ))
+    w=$(( x1 - x0 )); (( w < 1 )) && return 1
+    y=$(( bpos + d ))
+    at="$(( y - cy )),$(( x0 - cx ))"
+    size="1x${w}"
+  fi
+  bc_float c.drag in=cvs within=cvs at="$at" size="$size" border=0 shadow=0 pair=$BCB_DRAGP || return 1
+  bc_dirty c.drag
+  return 0
+}
+
+draw_c.drag() {
+  local a=$1 c=${BCL_WIN[$1]:-}
+  [[ -n $c && -n $BCB_DRAG ]] || return 0
+  local h=${BC_WH[$c]} w=${BC_WW[$c]} i s
+  local -a dr; read -r -a dr <<< "$BCB_DRAG"
+  if [[ ${dr[1]} == v ]]; then
+    for (( i = 0; i < h; i++ )); do bc_print "$a" "$i" 0 "#" pair=$BCB_DRAGP; done
+  else
+    printf -v s '%*s' "$w" ''
+    s=${s// /#}
+    bc_print "$a" 0 0 "$s" pair=$BCB_DRAGP
+  fi
+}
+
 # ------------------------------------------------------- modal prompts
 BB_PROMPT_VAL=""
 
@@ -904,6 +1008,34 @@ _bb_hit_grid() { # y x -> BCB_HG (engine grid name) or 1
   return 0
 }
 
+# Try every grid that contains the point, deepest first: a click on a child's
+# border may still be a boundary of an ancestor grid.
+_bb_hit_bnd_any() { # y x -> BCB_BND / BCB_HG
+  local y=$1 x=$2 n e d p t
+  local -a cands=() order=()
+  for n in "${!BB_TPL[@]}"; do
+    [[ $n == "$BCB_ROOT" ]] && e=cvs || e=$BCB_E$n
+    [[ -n ${BCL_RY[$e]+set} ]] || continue
+    (( y >= BCL_RY[$e] && y < BCL_RY[$e] + BCL_RH[$e] &&
+       x >= BCL_RX[$e] && x < BCL_RX[$e] + BCL_RW[$e] )) || continue
+    d=0; p=$n
+    while [[ -n $p && $p != "$BCB_ROOT" ]]; do p=${BB_PARENT[$p]:-}; d=$(( d + 1 )); done
+    cands+=("$d $e")
+  done
+  order=("${cands[@]}")
+  local i j tmp
+  for (( i = 1; i < ${#order[@]}; i++ )); do
+    for (( j = i; j > 0 && ${order[j-1]%% *} < ${order[j]%% *}; j-- )); do
+      tmp=${order[j-1]}; order[j-1]=${order[j]}; order[j]=$tmp
+    done
+  done
+  for t in "${order[@]}"; do
+    BCB_HG=${t#* }
+    _bb_hit_bnd "$y" "$x" "$BCB_HG" && return 0
+  done
+  return 1
+}
+
 _bb_hit_bnd() { # y x e -> 0 if on a boundary; BCB_BND="v|h e a b pos"
   local y=$1 x=$2 e=$3 k
   local g=$BCB_ROOT
@@ -915,19 +1047,26 @@ _bb_hit_bnd() { # y x e -> 0 if on a boundary; BCB_BND="v|h e a b pos"
     for (( j = i + 1; j < ${#kids[@]}; j++ )); do
       a=${kids[i]}; b=${kids[j]}
       [[ -n ${BCL_RY[$a]+set} && -n ${BCL_RY[$b]+set} ]] || continue
-      if (( BCL_RX[$a] < BCL_RX[$b] &&
-            BCL_RX[$b] - (BCL_RX[$a] + BCL_RW[$a]) <= 1 &&
-            x >= BCL_RX[$a] + BCL_RW[$a] - 1 && x <= BCL_RX[$b] &&
-            y >= BCL_RY[$a] && y < BCL_RY[$a] + BCL_RH[$a] &&
-            y >= BCL_RY[$b] && y < BCL_RY[$b] + BCL_RH[$b] )); then
-        BCB_BND="v $e $a $b $x"; return 0
+      local gap tol
+      if (( BCL_RX[$a] < BCL_RX[$b] )); then
+        gap=$(( BCL_RX[$b] - (BCL_RX[$a] + BCL_RW[$a]) ))
+        (( gap >= 0 && gap <= 1 )) || continue
+        tol=$(( gap == 0 ? 1 : 0 ))
+        if (( x >= BCL_RX[$a] + BCL_RW[$a] - 1 - tol && x <= BCL_RX[$b] + tol &&
+              y >= BCL_RY[$a] && y < BCL_RY[$a] + BCL_RH[$a] &&
+              y >= BCL_RY[$b] && y < BCL_RY[$b] + BCL_RH[$b] )); then
+          BCB_BND="v $e $a $b $x"; return 0
+        fi
       fi
-      if (( BCL_RY[$a] < BCL_RY[$b] &&
-            BCL_RY[$b] - (BCL_RY[$a] + BCL_RH[$a]) <= 1 &&
-            y >= BCL_RY[$a] + BCL_RH[$a] - 1 && y <= BCL_RY[$b] &&
-            x >= BCL_RX[$a] && x < BCL_RX[$a] + BCL_RW[$a] &&
-            x >= BCL_RX[$b] && x < BCL_RX[$b] + BCL_RW[$b] )); then
-        BCB_BND="h $e $a $b $y"; return 0
+      if (( BCL_RY[$a] < BCL_RY[$b] )); then
+        gap=$(( BCL_RY[$b] - (BCL_RY[$a] + BCL_RH[$a]) ))
+        (( gap >= 0 && gap <= 1 )) || continue
+        tol=$(( gap == 0 ? 1 : 0 ))
+        if (( y >= BCL_RY[$a] + BCL_RH[$a] - 1 - tol && y <= BCL_RY[$b] + tol &&
+              x >= BCL_RX[$a] && x < BCL_RX[$a] + BCL_RW[$a] &&
+              x >= BCL_RX[$b] && x < BCL_RX[$b] + BCL_RW[$b] )); then
+          BCB_BND="h $e $a $b $y"; return 0
+        fi
       fi
     done
   done
@@ -975,7 +1114,6 @@ _bb_hit_area() { # y x
 
 on_click() { # NAME Y X BSTATE — NAME is an engine area name
   local a=$1 b=$4 sy=$BC_ME_Y sx=$BC_ME_X
-  printf "CLICK a=%s y=%s x=%s b=%s\n" "$a" "$sy" "$sx" "$b" >> tmp/click.log
   case $a in
     tb|bar|bar.*|prop|st|pal) return 0 ;;
   esac
@@ -1001,11 +1139,28 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
       bc_mouse_motion 1
       return 0
     fi
-    if _bb_hit_grid "$sy" "$sx" && _bb_hit_bnd "$sy" "$sx" "$BCB_HG"; then
+    if _bb_hit_bnd_any "$sy" "$sx"; then
       local -a bd; read -r -a bd <<< "$BCB_BND"
-      local ka=${bd[2]} kb=${bd[3]}
-      _bb_push
-      BCB_DRAG="bnd ${bd[0]} $ka $kb $sy $sx ${BCL_RH[$ka]} ${BCL_RW[$ka]} ${BCL_RH[$kb]} ${BCL_RW[$kb]}"
+      local ka=${bd[2]} kb=${bd[3]} bpos
+      if [[ ${bd[0]} == v ]]; then
+        if (( BCL_RX[$kb] - (BCL_RX[$ka] + BCL_RW[$ka]) == 1 )); then
+          bpos=$(( BCL_RX[$kb] - 1 ))
+        else
+          bpos=${BCL_RX[$kb]}
+        fi
+      else
+        if (( BCL_RY[$kb] - (BCL_RY[$ka] + BCL_RH[$ka]) == 1 )); then
+          bpos=$(( BCL_RY[$kb] - 1 ))
+        else
+          bpos=${BCL_RY[$kb]}
+        fi
+      fi
+      local d0=0
+      [[ ${bd[0]} == v ]] && d0=$(( sx - bpos )) || d0=$(( sy - bpos ))
+      BCB_DRAG="bnd ${bd[0]} $ka $kb $sy $sx $bpos ${BCL_RH[$ka]} ${BCL_RW[$ka]} ${BCL_RH[$kb]} ${BCL_RW[$kb]} $d0"
+      _bb_drag_overlay
+      BCB_MSG="drag ${bd[0]} boundary: $d0"
+      bc_dirty st
       bc_mouse_motion 1
       return 0
     fi
@@ -1028,31 +1183,60 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
         BB_FSIZE[$f]="${h}x${w}"
         bb_render ;;
       bnd)
-        local ax=${dr[1]} ka=${dr[2]} kb=${dr[3]}
-        local ga=${ka#"$BCB_E"} gb=${kb#"$BCB_E"}
-        local g=${BB_PARENT[$ga]}
-        local -a trk
-        local i1 i2 s1 s2 d
+        local ax=${dr[1]} d
         if [[ $ax == v ]]; then
-          read -r -a trk <<< "${BB_COLSPEC[$g]}"
-          i1=${BB_C0[$ga]}; i2=${BB_C0[$gb]}
-          d=$(( sx - dr[5] ))
-          s1=$(( dr[7] + d )); s2=$(( dr[9] - d ))
+          d=$(( sx - dr[6] ))
+          (( d < 1 - dr[8] )) && d=$(( 1 - dr[8] ))
+          (( d > dr[10] - 1 )) && d=$(( dr[10] - 1 ))
         else
-          read -r -a trk <<< "${BB_ROWSPEC[$g]}"
-          i1=${BB_R0[$ga]}; i2=${BB_R0[$gb]}
-          d=$(( sy - dr[4] ))
-          s1=$(( dr[6] + d )); s2=$(( dr[8] - d ))
+          d=$(( sy - dr[6] ))
+          (( d < 1 - dr[7] )) && d=$(( 1 - dr[7] ))
+          (( d > dr[9] - 1 )) && d=$(( dr[9] - 1 ))
         fi
-        (( s1 < 1 )) && s1=1; (( s2 < 1 )) && s2=1
-        trk[i1]=$s1; trk[i2]=$s2
-        if [[ $ax == v ]]; then BB_COLSPEC[$g]="${trk[*]}"; else BB_ROWSPEC[$g]="${trk[*]}"; fi
-        bb_render ;;
+        dr[11]=$d
+        BCB_DRAG="${dr[*]}"
+        _bb_drag_overlay
+        BCB_MSG="drag $ax boundary: $d"
+        bc_dirty st
+        ;;
     esac
     return 0
   fi
 
   if (( b & BUTTON1_RELEASED )); then
+    if [[ -n $BCB_DRAG ]]; then
+      local -a dr; read -r -a dr <<< "$BCB_DRAG"
+      if [[ ${dr[0]} == bnd ]]; then
+        [[ ${BCL_KIND[c.drag]:-} == float ]] && bc_close c.drag
+        local d=${dr[11]}
+        if (( d != 0 )); then
+          local ax=${dr[1]} ka=${dr[2]} kb=${dr[3]}
+          local ga=${ka#"$BCB_E"} gb=${kb#"$BCB_E"}
+          local g=${BB_PARENT[$ga]}
+          local -a trk
+          local i1 i2 s1 s2
+          _bb_push
+          if [[ $ax == v ]]; then
+            read -r -a trk <<< "${BB_COLSPEC[$g]}"
+            i1=${BB_C0[$ga]}; i2=${BB_C0[$gb]}
+            s1=$(( dr[8] + d )); s2=$(( dr[10] - d ))
+            (( s1 < 1 )) && s1=1; (( s2 < 1 )) && s2=1
+            trk[i1]=$s1; trk[i2]=$s2
+            BB_COLSPEC[$g]="${trk[*]}"
+          else
+            read -r -a trk <<< "${BB_ROWSPEC[$g]}"
+            i1=${BB_R0[$ga]}; i2=${BB_R0[$gb]}
+            s1=$(( dr[7] + d )); s2=$(( dr[9] - d ))
+            (( s1 < 1 )) && s1=1; (( s2 < 1 )) && s2=1
+            trk[i1]=$s1; trk[i2]=$s2
+            BB_ROWSPEC[$g]="${trk[*]}"
+          fi
+          bb_render
+        fi
+        BCB_MSG=""
+        bc_dirty st
+      fi
+    fi
     BCB_DRAG=""
     bc_mouse_motion 0
     return 0
@@ -1258,6 +1442,8 @@ _bb_colors() {
   alloc_pair $wht $blu; BCB_PROPB=$bc_pair   # status line: white on blue
   alloc_pair $blk $grn; BCB_PREVP=$bc_pair   # Preview button: black on green
   alloc_pair $wht $red; BCB_QUITP=$bc_pair   # Quit button: white on red
+  alloc_pair $blk $ylw; BCB_ANCHP=$bc_pair   # draggable-boundary anchors
+  alloc_pair $wht $red; BCB_DRAGP=$bc_pair   # live drag indicator
   BCW_PENS="0 0 $BCB_SELP 0"                 # input fields: black on cyan
 }
 
