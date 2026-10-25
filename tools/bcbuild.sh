@@ -310,9 +310,28 @@ _bb_measured() { # axis -> BCB_MV (current size of BCB_SEL)
   fi
 }
 
+_bb_float_dim() { # axis -> BCB_FD
+  local a=$1 ax=$2 spec=${BB_FSIZE[$a]:-autoxauto} v e
+  if (( ax == 0 )); then v=${spec%x*}; else v=${spec#*x}; fi
+  if [[ $v =~ ^[0-9]+$ ]]; then BCB_FD=$v; return 0; fi
+  e=$BCB_E$a
+  if (( ax == 0 )); then BCB_FD=${BCL_RH[$e]:-9}; else BCB_FD=${BCL_RW[$e]:-25}; fi
+}
+
 bb_grow() { # axis 0=row 1=col, delta
   local ax=$1 d=$2
-  [[ -n $BCB_SEL && ${BB_KIND[$BCB_SEL]:-} == area ]] || { BCB_ERR="select an area first"; return 1; }
+  [[ -n $BCB_SEL && -n ${BB_KIND[$BCB_SEL]+set} ]] || { BCB_ERR="select an area or float first"; return 1; }
+  if [[ ${BB_KIND[$BCB_SEL]} == float ]]; then
+    local a=$BCB_SEL h w
+    _bb_float_dim "$a" 0; h=$BCB_FD
+    _bb_float_dim "$a" 1; w=$BCB_FD
+    if (( ax == 0 )); then h=$(( h + d )); else w=$(( w + d )); fi
+    (( h < 3 )) && h=3
+    (( w < 3 )) && w=3
+    _bb_push
+    BB_FSIZE[$a]="${h}x${w}"
+    return 0
+  fi
   _bb_track_idx "$ax" || return 1
   _bb_measured "$ax"
   local cur=$BCB_MV
@@ -347,7 +366,7 @@ bb_add_float() {
   _bb_push
   local f
   _bb_uname dlg; f=$BCB_NAME
-  BB_KIND[$f]=float BB_FIN[$f]=$BCB_ROOT BB_FAT[$f]=center BB_FSIZE[$f]=autoxauto
+  BB_KIND[$f]=float BB_FIN[$f]=$BCB_ROOT BB_FAT[$f]=center BB_FSIZE[$f]=9x25
   BB_FRAME[$f]=1 BB_TITLE[$f]=$f
   BB_FLOATS+=" $f"
   BCB_SEL=$f
@@ -977,8 +996,9 @@ Click an area (or a tree row) to select it.
   D            toggle divider       m  cycle margin (0-2)
   w            cycle widget tag (label list input button ...)
   o / Preview  toggle canvas preview outlines (off = real rendering)
-  f            add a float          Tab  next area
-  + / -        grow / shrink rows   < / >  grow / shrink cols
+  f            add a visible float  Tab  next area
+  + / -        grow / shrink rows (area track or float height)
+  < / >        grow / shrink cols (area track or float width)
   a / A        toggle auto on the row / column track
   [ / ]        gap - / + in the parent grid
   drag a track boundary; drag a float (corner resizes)
@@ -1126,7 +1146,8 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
 
   if (( b & (BUTTON1_PRESSED | BUTTON1_CLICKED) )); then
     if _bb_float_of "$n"; then
-      local f=$BCB_FOF ef=$BCB_E$f
+      local f=$BCB_FOF
+      local ef=$BCB_E$f
       bb_select "$f"
       bc_raise "$ef"
       _bb_push

@@ -1,0 +1,8 @@
+# bcbuild layout
+bc_screen "
+  top
+  bot
+" rows="* *" cols="*" gap=0 border=0
+bc_style top border tleft pair=1 bpair=2
+bc_style bot border tleft pair=1 bpair=2
+BB_SEL_X="top"

@@ -49,6 +49,9 @@ source lib/dialog.sh   # pulls in widgets.sh, layout.sh and bc.sh
 - `examples/91-shining-layout.sh` — the `shining.sh` demo redone with floats.
 - `examples/92-mc-layout.sh` — the full `mc` clone (`examples/mc.sh`) rebuilt
   on `layout.sh` + `widgets.sh`.
+- `examples/dtail.sh` — dual tail: two commands in stacked bordered panes,
+  with each command shown in its top border.
+  → **[docs/tutorial-dtail.md](tutorial-dtail.md)**
 
 Run any of them in a terminal:
 

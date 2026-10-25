@@ -65,6 +65,12 @@ bb_rename main.0 left
 bb_add_float
 [[ ${BB_KIND[dlg]} == float && ${BB_FIN[dlg]} == @ && " $BB_FLOATS " == *" dlg "* ]] \
   && ok "float: added" || bad "float: added"
+[[ ${BB_FSIZE[dlg]} == 9x25 ]] && ok "float: visible default size" \
+  || bad "float: visible default size (got '${BB_FSIZE[dlg]}')"
+bb_grow 0 1
+[[ ${BB_FSIZE[dlg]} == 10x25 ]] && ok "float: grow height" \
+  || bad "float: grow height (got '${BB_FSIZE[dlg]}')"
+bb_undo
 
 # serialise -> load -> serialise must be stable
 s1=$(bb_serialize)
@@ -106,6 +112,12 @@ bb_export "$REPO/tmp/bcbuild_export.sh"
 bash -n "$REPO/tmp/bcbuild_export.sh" && ok "export: valid bash" || bad "export: valid bash"
 grep -q 'bc_list main.0' "$REPO/tmp/bcbuild_export.sh" && ok "export: tagged widget emitted" || bad "export: tagged widget emitted"
 grep -q '^BB_TAG' "$REPO/tmp/bcbuild_export.sh" && bad "export: BB_TAG leaked" || ok "export: BB_TAG stripped"
+
+bb_load_file "$REPO/examples/dtail.bcl" \
+  && [[ ${BB_KIND[top]} == area && ${BB_KIND[bot]} == area ]] \
+  && ok "load: dtail.bcl has top/bot" || bad "load: dtail.bcl has top/bot"
+bb_export "$REPO/tmp/dtail_export.sh" && bash -n "$REPO/tmp/dtail_export.sh" \
+  && ok "export: dtail.bcl valid" || bad "export: dtail.bcl valid"
 
 echo
 if (( fail == 0 )); then echo "unit_builder: $pass passed"; else echo "unit_builder: $pass passed, $fail FAILED"; fi

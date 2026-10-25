@@ -97,6 +97,18 @@ if wait_for "Export"; then ok "export prompt opens"; else bad "export prompt ope
 tmux -S "$sock" send-keys -t "$sess" Enter
 if wait_for "exported"; then ok "app exported"; else bad "app exported"; cap; fi
 
+# regression: clicking a newly added float must not crash the builder
+tmux -S "$sock" send-keys -t "$sess" f
+if wait_for "* dlg"; then ok "float added"; else bad "float added"; cap; fi
+rect=$(cap | sed -n 's/.*rect: *[0-9]\+x[0-9]\+ @ \([0-9]\+,[0-9]\+\).*/\1/p' | head -1)
+IFS=, read -r ry rx <<< "$rect"
+click $((rx + 13)) $((ry + 6))
+if tmux -S "$sock" has-session -t "$sess" 2>/dev/null; then
+  ok "click float survives"
+else
+  bad "click float survives"; cap
+fi
+
 # quit-confirm dialog must render its text and buttons (regression: a
 # 1-cell row in a 2-col grid made bc_grid fail and the dialog came up empty)
 tmux -S "$sock" send-keys -t "$sess" h

@@ -233,6 +233,17 @@ _bcl_min() { # area axis -> BCL_M
   local a=$1 ax=$2
   if [[ -z ${BCL_TPL[$a]+set} ]]; then
     if (( ax == 0 )); then BCL_M=${BCL_CH[$a]:-0}; else BCL_M=${BCL_CW[$a]:-0}; fi
+    if (( BCL_M == 0 )); then
+      _bcl_insets "$a"
+      if (( ax == 0 )); then BCL_M=$(( BCL_IT + BCL_IB )); else BCL_M=$(( BCL_IL + BCL_IR )); fi
+      if (( ${BCL_FRAME[$a]:-0} )); then
+        (( BCL_M < 3 )) && BCL_M=3
+        if (( ax == 1 )) && [[ -n ${BCL_TITLE[$a]:-} ]]; then
+          local tw=$(( ${#BCL_TITLE[$a]} + 4 ))
+          (( BCL_M < tw )) && BCL_M=$tw
+        fi
+      fi
+    fi
     return 0
   fi
   local spec

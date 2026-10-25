@@ -427,6 +427,14 @@ bc_update >/dev/null
 check "F close reveals below" "        " "$(srow 14 46 8)"
 check "F close frees windows" "" "${BCL_WIN[msg]:-}${BCL_TEXT[msg]:-}"
 
+# empty auto floats still get a visible border/title box
+bc_float empty border title=Empty
+bc_relayout
+read -r _ _ eh ew <<< "$(frect empty)"
+(( eh >= 3 && ew >= 9 )) && ok "F auto empty float visible" || bad "F auto empty float visible: $eh x $ew"
+bc_close empty
+bc_update >/dev/null
+
 # random placement is fixed at creation and scales with the parent
 RANDOM=7
 bc_float r1 in=left at=random size=4..8x10..20

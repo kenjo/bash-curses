@@ -54,9 +54,9 @@ It needs a terminal of at least **110x32**.
 | `D` | toggle divider |
 | `m` | cycle margin (0–2) |
 | `w` | cycle the widget tag (`label list input button check cycle menubar`) |
-| `f` | add a float |
-| `+` `-` | grow / shrink the selected area's row track |
-| `<` `>` | grow / shrink the column track |
+| `f` | add a visible float (`9x25`, centred) |
+| `+` `-` | grow / shrink the selected area's row track, or a float's height |
+| `<` `>` | grow / shrink the column track, or a float's width |
 | `a` / `A` | toggle `auto` on the row / column track |
 | `[` `]` | gap − / + in the parent grid |
 | `u`, `Ctrl-Y` | undo / redo |
@@ -92,6 +92,10 @@ BB_TAG[main.0]=list
 ```
 
 `BB_TAG[...]` lines record which widget each leaf should get on export.
+
+`examples/dtail.bcl` is a saved two-pane project; `examples/dtail.sh` is the
+filled-in dual-tail app built from that layout.
+→ **[docs/tutorial-dtail.md](tutorial-dtail.md)**
 
 ## Export
 
