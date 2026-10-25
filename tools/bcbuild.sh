@@ -23,6 +23,8 @@ BCB_MOUSE=""
 BCB_SEL=""
 BCB_FILE=""
 BCB_DIRTY=0
+BCB_MODEL_DIRTY=0      # model changed -> bb_after must rebuild the grids
+BCB_SELSTYLED=""       # selection last mirrored into the canvas styles
 BCB_DRAG=""          # active drag: "bnd|move|size ..." fields
 BCB_UNDO=() BCB_REDO=()
 
@@ -63,6 +65,7 @@ bb_new() {
   BB_GAP[$BCB_ROOT]=0 BB_BORDER[$BCB_ROOT]=0
   _bb_parse_grid "$BCB_ROOT" || return 1
   BCB_SEL=main
+  BCB_MODEL_DIRTY=1
   return 0
 }
 
@@ -133,6 +136,7 @@ _bb_push() { # snapshot for undo
   (( ${#BCB_UNDO[@]} > 60 )) && unset 'BCB_UNDO[0]'
   BCB_REDO=()
   BCB_DIRTY=1
+  BCB_MODEL_DIRTY=1
 }
 
 bb_split() { # h|v
@@ -401,6 +405,7 @@ _bb_tpl_nl() { # grid -> template with rows on separate lines
 # library functions are never shadowed).
 bb_load_text() { # text
   bb_reset
+  BCB_MODEL_DIRTY=1
   local line out=""
   while IFS= read -r line; do
     case $line in
@@ -598,7 +603,8 @@ bb_render() {
   done
   for n in "${!BB_KIND[@]}"; do _bb_style_e "$n"; done
   _bb_sel_style
-  bc_dirty all
+  local -a _eb=(); for n in "${!BB_KIND[@]}"; do _eb+=("$BCB_E$n"); done
+  bc_dirty cvs "${_eb[@]}"
   return 0
 }
 
@@ -834,12 +840,12 @@ bb_prompt() { # title label default -> REPLY
 }
 
 bb_yes() { # title text -> 0 yes
-  bc_dialog bcq "$1" 7x44 margin=1 shadow=mc
+  bc_dialog bcq "$1" autox44 margin=1 shadow=mc
   bc_grid bcq "
-    bcq.txt  bcq.txt  bcq.txt
-    .        bcq.yes  bcq.no
-  " rows="auto auto" cols="* * *"
-  bc_text bcq.txt "$2"
+    bcq.txt  bcq.txt  bcq.txt  bcq.txt
+    .        bcq.yes  bcq.no   .
+  " rows="auto auto" cols="* auto auto *"
+  bc_text bcq.txt "$2" align=center
   bc_button bcq.yes "Yes" ok
   bc_button bcq.no "No" cancel
   bc_dialog_run bcq focus=bcq.yes
@@ -1068,7 +1074,19 @@ on_key() {
 
 bb_after() {
   _bb_tree
-  bb_render
+  if (( BCB_MODEL_DIRTY )); then
+    bb_render
+    BCB_MODEL_DIRTY=0
+    BCB_SELSTYLED=$BCB_SEL
+  elif [[ $BCB_SELSTYLED != "$BCB_SEL" ]]; then
+    # selection-only change: restyle the two affected areas instead of
+    # rebuilding every grid (the full rebuild cost seconds on big terminals)
+    [[ -n $BCB_SELSTYLED && -n ${BB_KIND[$BCB_SELSTYLED]+set} ]] && \
+      _bb_style_e "$BCB_SELSTYLED"
+    _bb_sel_style
+    bc_dirty "${BCB_E}${BCB_SELSTYLED}" "${BCB_E}${BCB_SEL}" cvs
+    BCB_SELSTYLED=$BCB_SEL
+  fi
   local i
   i=$(_bb_tree_idx "$BCB_SEL") || i=-1
   (( i >= 0 )) && bc_list_sel pal "$i"
