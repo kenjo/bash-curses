@@ -1304,7 +1304,7 @@ main() {
   bc_grid bar "
     bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill bar.ol . bar.qu
     bar.new bar.opn bar.ren bar.nx bar.pv bar.ar bar.ac bar.hp . . . .
-  " rows="1 1" cols="auto auto auto auto auto auto auto auto * auto * auto"
+  " rows="1 1" cols="auto auto auto auto auto auto auto auto * auto 4 auto"
   bc_button bar.sh "Split-H"
   bc_button bar.sv "Split-V"
   bc_button bar.del "Delete"
