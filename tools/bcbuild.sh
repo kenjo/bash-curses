@@ -24,6 +24,7 @@ BCB_SEL=""
 BCB_FILE=""
 BCB_DIRTY=0
 BCB_MODEL_DIRTY=0      # model changed -> bb_after must rebuild the grids
+BCB_OUTLINE=1          # canvas preview chrome (borders + name titles)
 BCB_SELSTYLED=""       # selection last mirrored into the canvas styles
 BCB_DRAG=""          # active drag: "bnd|move|size ..." fields
 BCB_UNDO=() BCB_REDO=()
@@ -634,10 +635,11 @@ _bb_style_e() { # model name -> mirror BB_* into BCL_*
         # the canvas always outlines areas so the layout is visible while
         # editing, even when the model has no border; the exported app uses
         # BB_FRAME. An untitled area shows its name as the preview title.
-        FRAME) bc_style "$e" border ;;
+        # 'o' turns the preview chrome off to see the real rendering.
+        FRAME) bc_style "$e" "$([[ ${BCB_OUTLINE:-1} != 0 ]] && echo border || echo border=0)" ;;
         SHADOW) bc_style "$e" shadow=0 ;;
         BPAIR) bc_style "$e" bpair=0 ;;
-        TITLE) bc_style "$e" "title=$n" ;;
+        TITLE) if [[ ${BCB_OUTLINE:-1} != 0 ]]; then bc_style "$e" "title=$n"; else unset "BCL_TITLE[$e]"; fi ;;
         TPAIR) unset 'BCL_TPEN[$e]' ;;
         *) unset "BCL_$k[$e]" ;;
       esac
@@ -873,6 +875,7 @@ Click an area (or a tree row) to select it.
   s            cycle shadow         l  toggle title-left
   D            toggle divider       m  cycle margin (0-2)
   w            cycle widget tag (label list input button ...)
+  o            toggle canvas outlines (off = see the real rendering)
   f            add a float          Tab  next area
   + / -        grow / shrink rows   < / >  grow / shrink cols
   a / A        toggle auto on the row / column track
@@ -1053,6 +1056,7 @@ on_key() {
     D) bb_set_style divider "$([[ -n ${BB_DIVIDER[$BCB_SEL]:-} ]] && echo '' || echo 1)"; bb_after ;;
     m) bb_cycle_margin; bb_after ;;
     w) bb_cycle_tag; bb_after ;;
+    o) BCB_OUTLINE=$(( ! ${BCB_OUTLINE:-1} )); BCB_MODEL_DIRTY=1; bb_after ;;
     f) bb_add_float; bb_after ;;
     $'\t') bb_cycle_sel 1; bb_after ;;
     $KEY_BTAB) bb_cycle_sel -1; bb_after ;;
