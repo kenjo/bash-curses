@@ -985,12 +985,13 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
     [[ -z $n ]] && return 0
   fi
 
-  if (( b & BUTTON1_PRESSED )); then
+  if (( b & (BUTTON1_PRESSED | BUTTON1_CLICKED) )); then
     if _bb_float_of "$n"; then
       local f=$BCB_FOF ef=$BCB_E$f
       bb_select "$f"
       bc_raise "$ef"
       _bb_push
+      (( b & BUTTON1_CLICKED )) && { bb_after; return 0; }
       if (( sy == BCL_RY[$ef] + BCL_RH[$ef] - 1 && sx == BCL_RX[$ef] + BCL_RW[$ef] - 1 )); then
         BCB_DRAG="size $f $sy $sx ${BCL_RH[$ef]} ${BCL_RW[$ef]}"
       else
