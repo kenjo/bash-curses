@@ -4061,7 +4061,10 @@ doupdate() {
    done
   fi
 
-  [[ -n $out ]] && printf '%s' "$out"
+  if [[ -n $out ]]; then
+    _bc_mouse_log "out ${#out}B"
+    printf '%s' "$out"
+  fi
   printf '%s[%d;%dH' "$BC_ESC" "$(( BC_WAY[$BC_STDSCR] + 1 ))" "$(( BC_WAX[$BC_STDSCR] + 1 ))"
   # clear the dirty marks for exactly the cells/rows we flushed
   for w in "${wins[@]}"; do
