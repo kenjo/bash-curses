@@ -1036,6 +1036,7 @@ _bcl_place_cursor() {
   c=${BCL_WIN[$a]:-}
   [[ -n $c ]] || return 0
   BC_WAY[$BC_STDSCR]=$(( BC_WY[$c] + y )) BC_WAX[$BC_STDSCR]=$(( BC_WX[$c] + x ))
+  BC_CURY=${BC_WAY[$BC_STDSCR]} BC_CURX=${BC_WAX[$BC_STDSCR]} BC_CURSET=1
 }
 
 # ------------------------------------------------------------ input
