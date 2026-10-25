@@ -1112,7 +1112,9 @@ bb_cycle_sel() { # delta
 }
 
 bb_cycle_shadow() {
-  local a=$BCB_SEL cur=${BB_SHADOW[$a]:-0}
+  local a=$BCB_SEL cur
+  [[ -n $a && -n ${BB_KIND[$a]+set} ]] || { BCB_ERR="select an area first"; return 1; }
+  cur=${BB_SHADOW[$a]:-0}
   case $cur in
     0|'') bb_set_style shadow 1 ;;
     1) bb_set_style shadow mc ;;
@@ -1121,7 +1123,9 @@ bb_cycle_shadow() {
 }
 
 bb_cycle_margin() {
-  local a=$BCB_SEL cur=${BB_MARGIN[$a]:-0}
+  local a=$BCB_SEL cur
+  [[ -n $a && -n ${BB_KIND[$a]+set} ]] || { BCB_ERR="select an area first"; return 1; }
+  cur=${BB_MARGIN[$a]:-0}
   cur=$(( (cur + 1) % 3 ))
   bb_set_style margin "$([[ $cur == 0 ]] && echo '' || echo "$cur")"
 }
