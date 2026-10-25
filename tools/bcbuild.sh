@@ -1222,13 +1222,18 @@ _bb_colors() {
     fb=$(_bb_pal "$i")
     init_pair "$i" $fb
   done
-  alloc_pair 7 1; BCB_APPP=$bc_pair     # mc blue screen
-  alloc_pair 11 1; BCB_MSGP=$bc_pair    # errors: bright yellow on blue
-  alloc_pair 0 3; BCB_TBP=$bc_pair      # menu/toolbar: yellow on blue
-  alloc_pair 0 6; BCB_SELP=$bc_pair     # selection: black on cyan
-  alloc_pair 0 7; BCB_DLG=$bc_pair      # dialogs: black on white
-  alloc_pair 7 1; BCB_PROPB=$bc_pair    # status line: white on blue
-  BCW_PENS="0 0 $BCB_SELP 0"            # input fields: black on cyan
+  # mc colours on FIXED 256-colour indices: the basic 16 (0-15) are
+  # remapped by terminal themes (this user's theme paints blue as red),
+  # but 16-231 are the immutable xterm cube and render the same everywhere.
+  local blk=16 wht=231 blu=20 ylw=226 cyn=51
+  if (( BC_COLORS < 256 )); then blk=0 wht=7 blu=1 ylw=3 cyn=6; fi
+  alloc_pair $wht $blu; BCB_APPP=$bc_pair    # mc blue screen
+  alloc_pair $ylw $blu; BCB_MSGP=$bc_pair    # errors: yellow on blue
+  alloc_pair $blk $ylw; BCB_TBP=$bc_pair     # menu/toolbar: black on yellow
+  alloc_pair $blk $cyn; BCB_SELP=$bc_pair    # selection: black on cyan
+  alloc_pair $blk $wht; BCB_DLG=$bc_pair     # dialogs: black on white
+  alloc_pair $wht $blu; BCB_PROPB=$bc_pair   # status line: white on blue
+  BCW_PENS="0 0 $BCB_SELP 0"                 # input fields: black on cyan
 }
 
 main() {
