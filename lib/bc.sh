@@ -1744,10 +1744,10 @@ _bc_mouse_filter() {
 _bc_mouse_run() {
   _bc_mouse_push_event
   local t c s s2
-  # Only peek briefly for a follow-up event: handlers act on the press, so
-  # blocking for the whole BC_MAXCLICK merge window would add that latency to
-  # every click. Bytes already in the buffer still merge into a CLICKED.
-  t=0.03
+  # wait the full BC_MAXCLICK window so a press/release pair merges into a
+  # CLICKED: reference apps (mc) act on CLICKED only, so the merge must not
+  # be missed for slow human clicks
+  printf -v t '%d.%03d' $(( BC_MAXCLICK / 1000 )) $(( BC_MAXCLICK % 1000 ))
   while :; do
     c=""
     IFS= read -rsn1 -t "$t" c || break
