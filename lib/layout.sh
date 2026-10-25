@@ -485,14 +485,18 @@ _bcl_unbind() { # name
 }
 
 # Paint the frame window (background, border, title) and the shadow strips.
-_bcl_paint_frame() { # name
-  local a=$1 f=${BCL_FWIN[$1]} sw
+_bcl_paint_frame() { # name [nobg]
+  local a=$1 f=${BCL_FWIN[$1]} sw nobg=${2:-}
   _bcl_eff "$a"
   local bh=${BC_WH[$f]} bw=${BC_WW[$f]} p=${BCL_EP:-0} at=$BCL_EA
   # set the background and paint every cell once (wbkgd would repaint all
-  # cells itself, and the content derwin shares these cells)
-  wbkgdset "$f" ' ' "$at" "$p"
-  werase "$f"
+  # cells itself, and the content derwin shares these cells). With nobg the
+  # background is already correct (e.g. a border-pair-only restyle): skip the
+  # erase so only the border cells get dirtied.
+  if [[ -z $nobg ]]; then
+    wbkgdset "$f" ' ' "$at" "$p"
+    werase "$f"
+  fi
   local m=${BCL_MARGIN[$a]:-0}
   local y0=$m x0=$m y1=$(( bh - 1 - m )) x1=$(( bw - 1 - m ))
   if (( ${BCL_FRAME[$a]:-0} && y1 - y0 >= 1 && x1 - x0 >= 1 )); then
@@ -647,23 +651,23 @@ bc_relayout() {
 bc_style() {
   local a=$1 o; shift
   [[ $a == screen || -n ${BCL_KIND[$a]+set} ]] || { _bcl_err "bc_style: unknown area '$a'"; return 1; }
-  local geom=0
+  local geom=0 bpen=0 content=0
   for o in "$@"; do
     case $o in
-      pair=*)   BCL_PAIR[$a]=${o#*=} ;;
-      attr=*)   BCL_ATTR[$a]=${o#*=} ;;
-      bpair=*)  BCL_BPAIR[$a]=${o#*=} ;;
-      title=*)  BCL_TITLE[$a]=${o#*=} ;;
+      pair=*)   nv=${o#*=}; [[ ${BCL_PAIR[$a]:-0} == "$nv" ]] || { BCL_PAIR[$a]=$nv; content=1; } ;;
+      attr=*)   nv=${o#*=}; [[ ${BCL_ATTR[$a]:-0} == "$nv" ]] || { BCL_ATTR[$a]=$nv; content=1; } ;;
+      bpair=*)  nv=${o#*=}; [[ ${BCL_BPAIR[$a]:-} == "$nv" ]] || { BCL_BPAIR[$a]=$nv; bpen=1; } ;;
+      title=*)  nv=${o#*=}; [[ ${BCL_TITLE[$a]:-} == "$nv" ]] || { BCL_TITLE[$a]=$nv; content=1; } ;;
       border)   [[ ${BCL_FRAME[$a]:-0} == 1 ]] || { BCL_FRAME[$a]=1; geom=1; } ;;
       border=*) nv=$(( ${o#*=} ? 1 : 0 )); [[ ${BCL_FRAME[$a]:-0} == "$nv" ]] || { BCL_FRAME[$a]=$nv; geom=1; } ;;
       shadow)   [[ ${BCL_SHADOW[$a]:-0} == 1 ]] || { BCL_SHADOW[$a]=1; geom=1; } ;;
       shadow=mc) [[ ${BCL_SHADOW[$a]:-} == mc ]] || { BCL_SHADOW[$a]=mc; geom=1; } ;;
       shadow=*) nv=$(( ${o#*=} ? 1 : 0 )); [[ ${BCL_SHADOW[$a]:-0} == "$nv" ]] || { BCL_SHADOW[$a]=$nv; geom=1; } ;;
-      spair=*)  BCL_SPAIR[$a]=${o#*=} ;;
-      tpair=*)  BCL_TPEN[$a]=${o#*=} ;;
+      spair=*)  nv=${o#*=}; [[ ${BCL_SPAIR[$a]:-} == "$nv" ]] || { BCL_SPAIR[$a]=$nv; bpen=1; } ;;
+      tpair=*)  nv=${o#*=}; [[ ${BCL_TPEN[$a]:-} == "$nv" ]] || { BCL_TPEN[$a]=$nv; bpen=1; } ;;
       margin=*) nv=${o#*=}; [[ ${BCL_MARGIN[$a]:-0} == "$nv" ]] || { BCL_MARGIN[$a]=$nv; geom=1; } ;;
       divider)  [[ ${BCL_DIVIDER[$a]:-0} == 1 ]] || { BCL_DIVIDER[$a]=1; geom=1; } ;;
-      tleft)    BCL_TLEFT[$a]=1 ;;
+      tleft)    [[ ${BCL_TLEFT[$a]:-0} == 1 ]] || { BCL_TLEFT[$a]=1; content=1; } ;;
       *) _bcl_err "bc_style: unknown option '$o'"; return 1 ;;
     esac
   done
@@ -672,12 +676,24 @@ bc_style() {
     werase "$BC_STDSCR"
     return 0
   fi
+  # nothing actually changed: no repaint needed
+  (( geom || bpen || content )) || return 0
   # insets changed -> rebuild the windows; otherwise just repaint in place
   if (( geom )); then
     unset "BCL_WRECT[$a]"; BCL_LAYOUT_DIRTY=1
     # content size includes the insets: re-measure retained text
     [[ -n ${BCL_TEXT[$a]+set} ]] && bc_text "$a" "${BCL_TEXT[$a]}" pair="${BCL_TPAIR[$a]}" attr="${BCL_TATTR[$a]}" align="${BCL_TALIGN[$a]}"
   else
+    # a border-pair-only change touches just the frame cells: repaint the
+    # frame without forgetting the area's text (which would dirty every cell).
+    # A borderless area has no frame to repaint, so the change is a no-op.
+    if (( bpen && !content )); then
+      if [[ -n ${BCL_FWIN[$a]:-} ]]; then
+        _bcl_eff "$a"
+        _bcl_paint_frame "$a" nobg
+      fi
+      return 0
+    fi
     # repaint this area and everything inheriting its colours
     _bcl_order
     local n p

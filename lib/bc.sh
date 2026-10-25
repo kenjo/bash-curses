@@ -3975,12 +3975,21 @@ doupdate() {
       fi
     done
     # the per-cell composite path samples every window's cells, so any row cache
-    # that could be read under a dirty cell must be materialized first.
-    if (( ! owner )); then
-      local rkg bwg ayg
+    # that could be read under a dirty cell must be materialized first. Only
+    # caches on a dirty row whose window overlaps the dirty columns can be read
+    # there; flushing every cache on screen turns a 30-cell update into an
+    # O(screen) one.
+    if (( ! owner )) && (( ${#RC[@]} > 0 )); then
+      local -A drow=()
+      for k in "${!RC[@]}"; do drow[${k% *}]=1; done
+      local rkg bwg ayg wxg ww2 wg
       for rkg in "${!BC_PUNI[@]}"; do
         bwg=${rkg% *}; ayg=${rkg##* }
-        _bc_flush_row "${BC_BUF2W[$bwg]}" "$ayg"
+        [[ -n ${drow[$ayg]:-} ]] || continue
+        wg=${BC_BUF2W[$bwg]}
+        wxg=${BC_WX[$wg]}; ww2=${BC_WW[$wg]}
+        (( wxg <= bmaxx && wxg + ww2 > bminx )) || continue
+        _bc_flush_row "$wg" "$ayg"
       done
     fi
   fi

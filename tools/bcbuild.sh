@@ -633,6 +633,7 @@ _bb_style_e() { # model name -> mirror BB_* into BCL_*
       case $k in
         FRAME) bc_style "$e" border=0 ;;
         SHADOW) bc_style "$e" shadow=0 ;;
+        BPAIR) bc_style "$e" bpair=0 ;;
         TPAIR) unset 'BCL_TPEN[$e]' ;;
         *) unset "BCL_$k[$e]" ;;
       esac
@@ -680,11 +681,9 @@ _bb_tree_idx() { # name -> index or -1
 bb_select() { # name
   BCB_SEL=$1
   [[ -n ${BCB_TEST:-} ]] && return 0
-  local i
-  i=$(_bb_tree_idx "$1") || i=-1
-  (( i >= 0 )) && bc_list_sel pal "$i"
-  bb_render
-  bc_dirty prop st
+  # bb_after() restyles the old/new selection and redraws pal/prop/st; a full
+  # bb_render here would relayout and repaint every engine area.
+  return 0
 }
 
 row_pal() { # idx y sel
@@ -1086,7 +1085,6 @@ bb_after() {
     [[ -n $BCB_SELSTYLED && -n ${BB_KIND[$BCB_SELSTYLED]+set} ]] && \
       _bb_style_e "$BCB_SELSTYLED"
     _bb_sel_style
-    bc_dirty "${BCB_E}${BCB_SELSTYLED}" "${BCB_E}${BCB_SEL}" cvs
     BCB_SELSTYLED=$BCB_SEL
   fi
   local i
