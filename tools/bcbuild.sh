@@ -825,14 +825,14 @@ BB_PROMPT_VAL=""
 bb_prompt() { # title label default -> REPLY
   local title=$1 label=$2 def=$3
   BB_PROMPT_VAL=$def
-  bc_dialog bcprompt "$title" autox44 margin=1 shadow=mc
+  bc_dialog bcprompt "$title" autox44 margin=1 pair=$BCB_DLG shadow=mc
   bc_grid bcprompt "
-    . bcprompt.lbl bcprompt.fld      .
-    . bcprompt.ok  bcprompt.cancel   .
-  " rows="auto auto" cols="* auto auto *" gap=1
-  bc_label bcprompt.lbl "$label"
+    bcprompt.fld bcprompt.fld bcprompt.fld bcprompt.fld bcprompt.fld
+    .            .            .            .            .
+    .            bcprompt.ok  bcprompt.sp  bcprompt.cancel .
+  " rows="auto auto auto" cols="* auto auto auto *" gap=0
+  bc_content bcprompt.sp 1 1
   bc_input bcprompt.fld BB_PROMPT_VAL
-  bc_content bcprompt.fld 1 24
   bc_button bcprompt.ok "OK" ok
   bc_button bcprompt.cancel "Cancel" cancel
   if bc_dialog_run bcprompt focus=bcprompt.fld; then
@@ -844,7 +844,7 @@ bb_prompt() { # title label default -> REPLY
 }
 
 bb_yes() { # title text -> 0 yes
-  bc_dialog bcq "$1" autox44 margin=1 shadow=mc
+  bc_dialog bcq "$1" autox44 margin=1 pair=$BCB_DLG shadow=mc
   bc_grid bcq "
     bcq.txt  bcq.txt  bcq.txt  bcq.txt
     .        bcq.yes  bcq.no   .
@@ -860,7 +860,7 @@ _bchelp_key() { bc_close bchelp; }
 
 bb_help() {
   bc_float bchelp in=screen at=center size=autox74 border title="bcbuild — keys" \
-    shadow=mc keys=_bchelp_key pair=6
+    shadow=mc keys=_bchelp_key pair=$BCB_DLG
   bc_text bchelp "
 Click an area (or a tree row) to select it.
 
@@ -1222,10 +1222,13 @@ _bb_colors() {
     fb=$(_bb_pal "$i")
     init_pair "$i" $fb
   done
-  alloc_pair 7 4; BCB_SELP=$bc_pair
-  alloc_pair 3 0; BCB_MSGP=$bc_pair
-  alloc_pair 0 6; BCB_TBP=$bc_pair
-  alloc_pair 0 7; BCB_PROPB=$bc_pair
+  alloc_pair 7 1; BCB_APPP=$bc_pair     # mc blue screen
+  alloc_pair 11 1; BCB_MSGP=$bc_pair    # errors: bright yellow on blue
+  alloc_pair 0 3; BCB_TBP=$bc_pair      # menu/toolbar: yellow on blue
+  alloc_pair 0 6; BCB_SELP=$bc_pair     # selection: black on cyan
+  alloc_pair 0 7; BCB_DLG=$bc_pair      # dialogs: black on white
+  alloc_pair 7 1; BCB_PROPB=$bc_pair    # status line: white on blue
+  BCW_PENS="0 0 $BCB_SELP 0"            # input fields: black on cyan
 }
 
 main() {
@@ -1249,11 +1252,12 @@ main() {
     st   st   st
   " rows="1 2 * 3" cols="24 * 30"
 
+  bc_style screen pair=$BCB_APPP
   bc_style tb pair=$BCB_TBP
   bc_style bar pair=$BCB_TBP
-  bc_style pal border title="Areas" tleft
-  bc_style cvs border title="canvas"
-  bc_style prop border title="Properties" tleft
+  bc_style pal pair=$BCB_APPP border title="Areas" tleft
+  bc_style cvs pair=$BCB_APPP border title="canvas"
+  bc_style prop pair=$BCB_APPP border title="Properties" tleft
   bc_style st pair=$BCB_PROPB
 
   _bb_tree
