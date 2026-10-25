@@ -4062,7 +4062,7 @@ doupdate() {
   fi
 
   if [[ -n $out ]]; then
-    _bc_mouse_log "out ${#out}B"
+    _bc_mouse_log "out ${#out}B cells $emitted"
     printf '%s' "$out"
   fi
   printf '%s[%d;%dH' "$BC_ESC" "$(( BC_WAY[$BC_STDSCR] + 1 ))" "$(( BC_WAX[$BC_STDSCR] + 1 ))"
@@ -4147,6 +4147,38 @@ _bc_stack_dirty() {
     [[ ${BC_PHID[$z]} == 1 ]] && continue
     w=${BC_PWIN[$z]}
     _bc_win_rect_dirty "$w"
+  done
+  return 0
+}
+
+# Reordering the stack only changes what is visible where two panels
+# overlap AND their relative order flipped; tiling layouts (grids) reorder
+# constantly without any visual change, so dirtying every window there
+# forces a full-screen repaint on every selection change.
+_bc_stack_reorder_dirty() { # old stack order...
+  local -a old=("$@")
+  local -A oi=()
+  local i j p q w1 w2 y1 x1 h1 w1w y2 x2 h2 w2w flipped
+  for i in "${!old[@]}"; do oi[${old[i]}]=$i; done
+  for (( i = 0; i < ${#BC_PSTACK[@]}; i++ )); do
+    for (( j = i + 1; j < ${#BC_PSTACK[@]}; j++ )); do
+      p=${BC_PSTACK[i]}; q=${BC_PSTACK[j]}
+      [[ -n ${oi[$p]:-} && -n ${oi[$q]:-} ]] || continue
+      (( oi[p] < oi[q] )) && continue
+      w1=${BC_PWIN[$p]}; w2=${BC_PWIN[$q]}
+      [[ ${BC_PHID[$p]:-0} == 1 || ${BC_PHID[$q]:-0} == 1 ]] && continue
+      y1=${BC_WY[$w1]}; x1=${BC_WX[$w1]}; h1=${BC_WH[$w1]}; w1w=${BC_WW[$w1]}
+      y2=${BC_WY[$w2]}; x2=${BC_WX[$w2]}; h2=${BC_WH[$w2]}; w2w=${BC_WW[$w2]}
+      (( y1 < y2 + h2 && y2 < y1 + h1 && x1 < x2 + w2w && x2 < x1 + w1w )) || continue
+      # nested windows (a grid area and its own frame/content) always keep
+      # their relative order by construction; a flip there is an artefact of
+      # panels being appended at the top on bind, not a visual change.
+      if (( (y1 <= y2 && y1 + h1 >= y2 + h2 && x1 <= x2 && x1 + w1w >= x2 + w2w) ||
+            (y2 <= y1 && y2 + h2 >= y1 + h1 && x2 <= x1 && x2 + w2w >= x1 + w1w) )); then
+        continue
+      fi
+      _bc_win_rect_dirty "$w1"; _bc_win_rect_dirty "$w2"
+    done
   done
   return 0
 }

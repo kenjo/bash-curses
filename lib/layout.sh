@@ -600,8 +600,17 @@ _bcl_restack() {
   for p in "${BC_PSTACK[@]}"; do [[ -n ${mine[$p]:-} ]] || mid+=("$p"); done
   ns=("${low[@]}" "${mid[@]}" "${high[@]}")
   if [[ "${ns[*]}" != "${BC_PSTACK[*]}" ]]; then
+    local -a old=("${BC_PSTACK[@]}")
     BC_PSTACK=("${ns[@]}")
-    _bc_stack_dirty
+    if (( ${#old[@]} == ${#ns[@]} )); then
+      local -A _om=()
+      local p same=1
+      for p in "${old[@]}"; do _om[$p]=1; done
+      for p in "${ns[@]}"; do [[ -n ${_om[$p]:-} ]] || { same=0; break; }; done
+      if (( same )); then _bc_stack_reorder_dirty "${old[@]}"; else _bc_stack_dirty; fi
+    else
+      _bc_stack_dirty
+    fi
   fi
 }
 
@@ -645,15 +654,15 @@ bc_style() {
       attr=*)   BCL_ATTR[$a]=${o#*=} ;;
       bpair=*)  BCL_BPAIR[$a]=${o#*=} ;;
       title=*)  BCL_TITLE[$a]=${o#*=} ;;
-      border)   BCL_FRAME[$a]=1; geom=1 ;;
-      border=*) BCL_FRAME[$a]=$(( ${o#*=} ? 1 : 0 )); geom=1 ;;
-      shadow)   BCL_SHADOW[$a]=1; geom=1 ;;
-      shadow=mc) BCL_SHADOW[$a]=mc; geom=1 ;;
-      shadow=*) BCL_SHADOW[$a]=$(( ${o#*=} ? 1 : 0 )); geom=1 ;;
+      border)   [[ ${BCL_FRAME[$a]:-0} == 1 ]] || { BCL_FRAME[$a]=1; geom=1; } ;;
+      border=*) nv=$(( ${o#*=} ? 1 : 0 )); [[ ${BCL_FRAME[$a]:-0} == "$nv" ]] || { BCL_FRAME[$a]=$nv; geom=1; } ;;
+      shadow)   [[ ${BCL_SHADOW[$a]:-0} == 1 ]] || { BCL_SHADOW[$a]=1; geom=1; } ;;
+      shadow=mc) [[ ${BCL_SHADOW[$a]:-} == mc ]] || { BCL_SHADOW[$a]=mc; geom=1; } ;;
+      shadow=*) nv=$(( ${o#*=} ? 1 : 0 )); [[ ${BCL_SHADOW[$a]:-0} == "$nv" ]] || { BCL_SHADOW[$a]=$nv; geom=1; } ;;
       spair=*)  BCL_SPAIR[$a]=${o#*=} ;;
       tpair=*)  BCL_TPEN[$a]=${o#*=} ;;
-      margin=*) BCL_MARGIN[$a]=${o#*=}; geom=1 ;;
-      divider)  BCL_DIVIDER[$a]=1; geom=1 ;;
+      margin=*) nv=${o#*=}; [[ ${BCL_MARGIN[$a]:-0} == "$nv" ]] || { BCL_MARGIN[$a]=$nv; geom=1; } ;;
+      divider)  [[ ${BCL_DIVIDER[$a]:-0} == 1 ]] || { BCL_DIVIDER[$a]=1; geom=1; } ;;
       tleft)    BCL_TLEFT[$a]=1 ;;
       *) _bcl_err "bc_style: unknown option '$o'"; return 1 ;;
     esac

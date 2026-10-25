@@ -647,7 +647,9 @@ _bb_sel_style() {
   local e=$BCB_E$BCB_SEL
   [[ -n ${BCL_KIND[$e]+set} ]] || return 0
   bc_style "$e" "bpair=$BCB_SELP"
-  [[ -z ${BCL_FRAME[$e]:-} ]] && bc_style "$e" border
+  # never toggle the frame here: adding/removing a border changes geometry,
+  # which relayouts every window and repaints the whole screen (seconds on
+  # large terminals). Borderless areas are highlighted via the tree/props.
 }
 
 # ------------------------------------------------------------------- UI
