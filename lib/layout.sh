@@ -1019,11 +1019,11 @@ bc_update() {
 # follows the area across relayouts). bc_cursor with no arguments hides it.
 bc_cursor() {
   if (( $# < 3 )); then
-    [[ -n $BCL_CURSOR ]] && curs_set 0 >/dev/null
+    [[ -n $BCL_CURSOR ]] && curs_set 0
     BCL_CURSOR=""
     return 0
   fi
-  [[ -z $BCL_CURSOR ]] && curs_set 1 >/dev/null
+  [[ -z $BCL_CURSOR ]] && curs_set 1
   BCL_CURSOR="$1 $2 $3"
 }
 

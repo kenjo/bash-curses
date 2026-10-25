@@ -974,6 +974,7 @@ _bb_hit_area() { # y x
 
 on_click() { # NAME Y X BSTATE — NAME is an engine area name
   local a=$1 b=$4 sy=$BC_ME_Y sx=$BC_ME_X
+  printf "CLICK a=%s y=%s x=%s b=%s\n" "$a" "$sy" "$sx" "$b" >> tmp/click.log
   case $a in
     tb|bar|bar.*|prop|st|pal) return 0 ;;
   esac
@@ -1006,7 +1007,7 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
       bc_mouse_motion 1
       return 0
     fi
-    [[ -n ${BB_KIND[$n]+set} ]] && bb_select "$n"
+    [[ -n ${BB_KIND[$n]+set} ]] && { bb_select "$n"; bb_after; }
     return 0
   fi
 
