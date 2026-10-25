@@ -825,13 +825,14 @@ BB_PROMPT_VAL=""
 bb_prompt() { # title label default -> REPLY
   local title=$1 label=$2 def=$3
   BB_PROMPT_VAL=$def
-  bc_dialog bcprompt "$title" 7x44 margin=1 shadow=mc
+  bc_dialog bcprompt "$title" autox44 margin=1 shadow=mc
   bc_grid bcprompt "
-    bcprompt.lbl  bcprompt.fld
-    bcprompt.ok   bcprompt.cancel
-  " rows="auto auto" cols="auto *" gap=1
+    . bcprompt.lbl bcprompt.fld      .
+    . bcprompt.ok  bcprompt.cancel   .
+  " rows="auto auto" cols="* auto auto *" gap=1
   bc_label bcprompt.lbl "$label"
   bc_input bcprompt.fld BB_PROMPT_VAL
+  bc_content bcprompt.fld 1 24
   bc_button bcprompt.ok "OK" ok
   bc_button bcprompt.cancel "Cancel" cancel
   if bc_dialog_run bcprompt focus=bcprompt.fld; then
@@ -847,7 +848,7 @@ bb_yes() { # title text -> 0 yes
   bc_grid bcq "
     bcq.txt  bcq.txt  bcq.txt  bcq.txt
     .        bcq.yes  bcq.no   .
-  " rows="auto auto" cols="* auto auto *"
+  " rows="auto auto" cols="* auto auto *" gap=1
   bc_style bcq.txt margin=1
   bc_text bcq.txt "$2" align=center
   bc_button bcq.yes "Yes" ok
