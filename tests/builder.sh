@@ -60,6 +60,7 @@ fi
 grep -q "Areas" <<<"$(cap)" && ok "tree panel present" || bad "tree panel present"
 grep -q "name:    main" <<<"$(cap)" && ok "properties show main" || bad "properties show main"
 grep -q "Split-H" <<<"$(cap)" && ok "toolbar present" || bad "toolbar present"
+grep -q "Preview" <<<"$(cap)" && ok "preview button present" || bad "preview button present"
 
 # mouse: toolbar buttons
 click 5 2

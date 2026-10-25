@@ -872,7 +872,7 @@ Click an area (or a tree row) to select it.
   s            cycle shadow         l  toggle title-left
   D            toggle divider       m  cycle margin (0-2)
   w            cycle widget tag (label list input button ...)
-  o            toggle canvas outlines (off = see the real rendering)
+  o / Preview  toggle canvas preview outlines (off = real rendering)
   f            add a float          Tab  next area
   + / -        grow / shrink rows   < / >  grow / shrink cols
   a / A        toggle auto on the row / column track
@@ -1300,9 +1300,9 @@ main() {
   bc_menubar tb "File:1 Edit:6 Insert:12 Style:19 Help:25" pairs="$BCB_TBP $BCB_SELP 1 $BCB_SELP 1"
 
   bc_grid bar "
-    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill .
-    bar.new bar.opn bar.ren bar.nx bar.pv bar.ol bar.ar bar.ac bar.hp bar.qu
-  " rows="1 1" cols="auto auto auto auto auto auto auto auto auto *"
+    bar.sh bar.sv bar.del bar.fl bar.un bar.rd bar.sav bar.exp bar.fill bar.ol
+    bar.new bar.opn bar.ren bar.nx bar.pv bar.ar bar.ac bar.hp . bar.qu
+  " rows="1 1" cols="auto auto auto auto auto auto auto auto * auto"
   bc_button bar.sh "Split-H"
   bc_button bar.sv "Split-V"
   bc_button bar.del "Delete"
@@ -1317,7 +1317,8 @@ main() {
   bc_button bar.ren "Rename"
   bc_button bar.nx "Next"
   bc_button bar.pv "Prev"
-  bc_button bar.ol "Outline"
+  bc_button bar.ol "Preview"
+  bc_style bar.ol pair=$BCB_SELP
   bc_button bar.ar "Auto-R"
   bc_button bar.ac "Auto-C"
   bc_button bar.hp "Help"

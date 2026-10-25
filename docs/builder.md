@@ -27,10 +27,12 @@ It needs a terminal of at least **110x32**.
 
 - **Areas** — the design tree; floats are listed with `*`. Click a row (or the
   canvas) to select. `Tab` cycles the selection.
-- **Toolbar** — a row of buttons under the menu bar: `Split-H`, `Split-V`,
-  `Delete`, `Float`, `Undo`, `Redo`, `Save`, `Export`. Click to press.
+- **Toolbar** — buttons under the menu bar: `Split-H`, `Split-V`, `Delete`,
+  `Float`, `Undo`, `Redo`, `Save`, `Export`, and a cyan `Preview` button on the
+  right. Click to press.
 - **Canvas** — the design rendered live, exactly as the layout engine will
-  lay it out. The selected area gets a highlighted border.
+  lay it out. The selected area gets a highlighted border. Preview outlines are
+  shown by default; `o` or the `Preview` button toggles them.
 - **Properties** — name, kind, parent, current rect, tracks, style and tag of
   the selection. Most rows are clickable: click `border`, `divider`, `t-left`
   to toggle them, `pair`, `shadow`, `margin`, `tag` to cycle them, `title` to
@@ -45,6 +47,7 @@ It needs a terminal of at least **110x32**.
 | `r` | rename the selected area |
 | `t` | set the border title |
 | `b` | toggle border |
+| `o` | toggle the canvas preview outlines (same as the `Preview` button) |
 | `p` | cycle the colour pair (8 design pairs) |
 | `s` | cycle shadow (`1` → `mc` → off) |
 | `l` | toggle title-left |
