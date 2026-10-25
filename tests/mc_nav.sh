@@ -1,14 +1,14 @@
 #!/bin/bash
-# tmux-driven end-to-end test for examples/mc.sh navigation.
+# tmux-driven end-to-end test for apps/mc.sh navigation.
 #
 # Regression guard: PageUp/PageDown once drove POS negative (out of range), which
 # hid the selection (no highlighted row) and garbled the status line. The
 # selection row must stay visible (black-on-cyan, pair 6 -> SGR bg 46) at all
 # times. The menu bar must also be cyan (pair 6).
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# MC_SCRIPT: the clone under test (default apps/mc.sh); MC_TAG: prefix for
 # this run's tmp files/sockets so two runs can go in parallel.
-MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MC_SCRIPT=${MC_SCRIPT:-$REPO/apps/mc.sh}
 MCT=${MC_TAG:-}
 SOCK="$REPO/tmp/${MCT}bc_nav.sock"
 T=bcnav

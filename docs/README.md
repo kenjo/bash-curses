@@ -41,19 +41,24 @@ source lib/dialog.sh   # pulls in widgets.sh, layout.sh and bc.sh
   save it as a replayable `.bcl` project, or export a runnable app skeleton.
   → **[docs/builder.md](builder.md)**
 
-## Examples
+## Apps
 
-- `examples/newdemo.sh` — core layer, frame-diffed against the C reference.
-- `examples/90-layout.sh` — layout layer: mc-like file manager with a modal
-  Copy dialog.
-- `examples/91-shining-layout.sh` — the `shining.sh` demo redone with floats.
-- `examples/92-mc-layout.sh` — the full `mc` clone (`examples/mc.sh`) rebuilt
-  on `layout.sh` + `widgets.sh`.
-- `examples/dtail.sh` — dual tail: two commands in stacked bordered panes,
-  with each command shown in its top border.
+- `apps/newdemo.sh` — core layer demo.
+- `apps/shining.sh` — overlapping-window core layer demo.
+- `apps/shining-layout.sh` — the `shining.sh` demo redone with floats.
+- `apps/mc.sh` — Midnight Commander clone built on `lib/bc.sh`.
+- `apps/mc-layout.sh` — the same clone rebuilt on `layout.sh` + `widgets.sh`.
+- `apps/dtail.sh` — dual tail: two commands in stacked bordered panes, with
+  each command shown in its top border.
   → **[docs/tutorial-dtail.md](tutorial-dtail.md)**
 
-Run any of them in a terminal:
+## Examples
+
+- `examples/90-layout.sh` — layout layer: mc-like file manager with a modal
+  Copy dialog.
+- `examples/[0-9]*.sh` — small ports of ncurses test-suite demos.
+
+Run one in a terminal:
 
 ```sh
 bash examples/90-layout.sh
@@ -73,6 +78,6 @@ bash lib/bc.sh unbundle myapp -o outdir/     # script + lib files again
 
 ## Related documents
 
-- `MOUSE.md` — mouse semantics, ground truth, and the bstate table.
-- `DESIGN.md` — architecture and internals of all three layers.
-- `references/API-MATRIX.md` — which ncurses API surface is covered.
+- `mouse.md` — mouse semantics and the bstate table.
+- `../internal/README.md` — contributor notes: design, testing, mouse
+  internals, example parity, and the API matrix.

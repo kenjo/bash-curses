@@ -2,7 +2,7 @@
 # Parity probe: run real Midnight Commander and the bash clone in identical
 # controlled trees, feed identical keys/menu selections, and record GUI/action
 # mismatches. This script is intentionally discovery-only: it does not patch
-# examples/mc.sh.
+# apps/mc.sh.
 #
 # Usage:
 #   PARITY_RESET=1 bash tests/parity_probe.sh
@@ -11,14 +11,14 @@
 # Output:
 #   tmp/p/{mc,clone}/NN_<label>.{plain,sgr}
 #   tmp/p/REPORT.txt
-#   PARITY_FINDINGS.md (append unless PARITY_RESET=1)
+#   tmp/p/PARITY_FINDINGS.md (append unless PARITY_RESET=1)
 
 set -u
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# MC_SCRIPT: the clone under test (default apps/mc.sh); MC_TAG: prefix for
 # this run's tmp files/sockets so two runs can go in parallel.
-MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MC_SCRIPT=${MC_SCRIPT:-$REPO/apps/mc.sh}
 MCT=${MC_TAG:-}
 source "$REPO/tests/lib/screen.sh"
 
@@ -33,7 +33,7 @@ SESSM=parity_mc
 SESSC=parity_clone
 X=100
 Y=30
-FINDINGS="$REPO/PARITY_FINDINGS.md"
+FINDINGS="$ROOT/PARITY_FINDINGS.md"
 REPORT="$ROOT/REPORT.txt"
 
 RUN_LABELS=("$@")

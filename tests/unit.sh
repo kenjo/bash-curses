@@ -618,12 +618,12 @@ check "vw_scanw"                 "9"       "$(scr 'BC_PENDING_IN=$'"'"'9\r'"'"';
 check "wchgat win x-offset attr" "9 0" "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; wmove 5 0 0; wchgat 5 -1 9 4; printf "%s %s" "${BC_A["5/2 3"]:-0}" "${BC_A["5/2 0"]:-0}" ) )"
 check "wchgat win x-offset pair" "4 0" "$( ( source "$REPO/lib/bc.sh"; _bc_init_window 0 0 0 24 80; _bc_init_window 5 2 3 10 20; BC_CURR=0; wmove 5 0 0; wchgat 5 -1 9 4; printf "%s %s" "${BC_P["5/2 3"]:-0}" "${BC_P["5/2 0"]:-0}" ) )"
 
-# --- J. examples/mc.sh headless regressions (sourced, no tty) ---
+# --- J. apps/mc.sh headless regressions (sourced, no tty) ---
 # run $1 in a fresh subshell with mc.sh sourced and a 100x30 stdscr at origin
-mc() { ( source "$REPO/examples/mc.sh"; COLS=100 LINES=30
+mc() { ( source "$REPO/apps/mc.sh"; COLS=100 LINES=30
          _bc_init_window 0 0 0 30 100; BC_CURR=0; eval "$1"; ); }
 # run $1 with mc.sh sourced plus a 26x50 panel window (WIN[0]) holding 50 entries
-mcnav() { ( source "$REPO/examples/mc.sh"; COLS=100 LINES=30
+mcnav() { ( source "$REPO/apps/mc.sh"; COLS=100 LINES=30
             _bc_init_window 0 0 0 30 100; _bc_init_window 10 1 0 26 50;
             WIN[0]=10; CUR=0; NAMES_0=( $(seq 0 49) ); eval "$1"; ); }
 
@@ -677,7 +677,7 @@ check "mc broken symlink color"   "35"       "$(mc 'rm -rf "$REPO/tmp/unit_broke
 check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| file|0" "$(
   d="$REPO/tmp/list_dir_test.$$"
   rm -rf "$d"; mkdir -p "$d/dir" "$d/zzz"; : > "$d/file"; : > "$d/.hidden"; : > "$d/exe"; chmod +x "$d/exe"
-  ( source "$REPO/examples/mc.sh"; DIR[0]="$d"; HIDE[0]=1; FILTERS[0]=''; SORT[0]=name; REV[0]=0
+  ( source "$REPO/apps/mc.sh"; DIR[0]="$d"; HIDE[0]=1; FILTERS[0]=''; SORT[0]=name; REV[0]=0
     list_dir 0; hid=0; [[ " ${NAMES_0[*]} " == *" .hidden "* ]] && hid=1
     IFS='|'; printf '%s|%s' "${NAMES_0[*]}" "$hid" )
   rm -rf "$d"
@@ -685,7 +685,7 @@ check "list_dir sorts dirs first and marks executables" "/..|/dir|/zzz|*exe| fil
 check "list_dir applies filter" "/..| file.txt" "$(
   d="$REPO/tmp/list_dir_test.$$"
   rm -rf "$d"; mkdir -p "$d"; : > "$d/file.txt"; : > "$d/file.md"
-  ( source "$REPO/examples/mc.sh"; DIR[0]="$d"; HIDE[0]=0; FILTERS[0]='*.txt'; SORT[0]=name; REV[0]=0
+  ( source "$REPO/apps/mc.sh"; DIR[0]="$d"; HIDE[0]=0; FILTERS[0]='*.txt'; SORT[0]=name; REV[0]=0
     list_dir 0; IFS='|'; printf '%s' "${NAMES_0[*]}" )
   rm -rf "$d"
 )"

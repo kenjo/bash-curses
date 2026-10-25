@@ -3,7 +3,7 @@
 # same controlled directory tree, feed them an identical key sequence, capture the
 # screen (plain + SGR colors) after every step, and report exactly where the two
 # diverge. This is a slow, interactive discovery tool -- it is NOT part of
-# tests/run.sh. Findings are recorded in ANOMALIES.md at the repo root.
+# tests/run.sh. Findings are recorded in tmp/vd/ANOMALIES.md.
 #
 # Usage:  bash tests/visual_diff.sh [step ...]
 #   With no args it runs every step in the built-in script. Pass one or more step
@@ -16,9 +16,9 @@
 #   diff_<n>_<label>.txt          raw diff for the (first) differing step, if any
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# MC_SCRIPT: the clone under test (default apps/mc.sh); MC_TAG: prefix for
 # this run's tmp files/sockets so two runs can go in parallel.
-MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MC_SCRIPT=${MC_SCRIPT:-$REPO/apps/mc.sh}
 MCT=${MC_TAG:-}
 # per-cell SGR grid parser (text + fg + bg + attrs) for rich color diffs
 source "$REPO/tests/lib/screen.sh"

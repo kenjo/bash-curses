@@ -16,7 +16,7 @@ expected_fail=(
 )
 
 # Examples whose plain capture matches but whose SGR capture is a documented,
-# accepted artifact (see EXAMPLE_DEVIATIONS.md).  The gate runs in strict mode,
+# accepted artifact (see internal/example-deviations.md).  The gate runs in strict mode,
 # so these are tolerated only when the failure is SGR-only (plain must match).
 expected_sgr_fail=(
   64-slk-extra

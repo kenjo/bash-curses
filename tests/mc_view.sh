@@ -1,14 +1,14 @@
 #!/bin/bash
-# tmux-driven end-to-end test for the F3 full-screen file viewer (examples/mc.sh).
+# tmux-driven end-to-end test for the F3 full-screen file viewer (apps/mc.sh).
 #
 # Covers:
 #   - F3 opens a full-screen scrollable view (title bar: path + offset/total, fn-key bar)
 #   - End scrolls to the bottom (the offset in the title becomes non-zero)
 #   - q closes the viewer and restores the file-manager panels
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# MC_SCRIPT: the clone under test (default apps/mc.sh); MC_TAG: prefix for
 # this run's tmp files/sockets so two runs can go in parallel.
-MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MC_SCRIPT=${MC_SCRIPT:-$REPO/apps/mc.sh}
 MCT=${MC_TAG:-}
 SOCK="$REPO/tmp/${MCT}bc_view2.sock"
 T=bcview2

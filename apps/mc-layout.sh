@@ -1,9 +1,9 @@
-# 92-mc-layout: the Midnight Commander clone (examples/mc.sh) rewritten on
+# mc-layout: the Midnight Commander clone (apps/mc.sh) rewritten on
 # lib/layout.sh + lib/widgets.sh. Same palette, same positions, same
 # features; the layout layer does the geometry, resizing and redrawing, and
 # widgets do the lists, menus and dialog controls.
 #
-#   bash examples/92-mc-layout.sh
+#   bash apps/mc-layout.sh
 #   MC_HINTBAR=0 hides the hint line.
 
 source "${BASH_SOURCE[0]%/*}/../lib/widgets.sh"

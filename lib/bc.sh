@@ -1982,7 +1982,7 @@ COLOR_PAIR() { printf '%s' "$1"; }
 
 # -------------------------------------------------------------- windows
 # Window creation stores the new handle in the global bc_win
-# (bash cannot return a pointer; see DESIGN.md).
+# (bash cannot return a pointer; see internal/design.md).
 newwin() { # nlines ncols begin_y begin_x
   if (( $1 < 1 || $2 < 1 )); then
     return 1

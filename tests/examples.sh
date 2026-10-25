@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmux-driven smoke tests for examples/*.sh.
+# tmux-driven smoke tests for numbered examples/*.sh.
 # Each example is run in a real tty, sent a few keys, and must exit cleanly.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 RES="$REPO/tmp/examples_results"

@@ -1,8 +1,8 @@
-# 91-shining-layout: examples/shining.sh rewritten with lib/layout.sh.
+# shining-layout: apps/shining.sh rewritten with lib/layout.sh.
 # A screen full of random-sized, overlapping windows that each keep typing
 # "All work and no play makes Jack a dull boy." on cream paper. Quit with q.
 #
-# Same picture as shining.sh, but nothing computes a coordinate: the screen is
+# Same picture as apps/shining.sh, but nothing computes a coordinate: the screen is
 # one framed area split into cells, every window is a float placed at random
 # inside a cell (or inside its parent window), and the library clamps,
 # shadows, stacks and re-places them on resize.

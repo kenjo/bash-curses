@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs the mc.sh tmux tests (tests/mc_*.sh) against examples/92-mc-layout.sh,
+# Runs the mc.sh tmux tests (tests/mc_*.sh) against apps/mc-layout.sh,
 # the rewrite on lib/layout.sh + lib/widgets.sh, while it is being built.
 #
 # Every check must pass except those listed in tests/mc_layout.xfail
@@ -30,7 +30,7 @@ fi
 pids=()
 [[ -n ${MC_LAYOUT_NORUN:-} ]] && TORUN=() || TORUN=("${TESTS[@]}")   # NORUN: re-judge old logs
 for t in "${TORUN[@]}"; do
-  MC_SCRIPT="$REPO/examples/92-mc-layout.sh" MC_TAG="lay_" \
+  MC_SCRIPT="$REPO/apps/mc-layout.sh" MC_TAG="lay_" \
     timeout 600 bash "$REPO/tests/$t.sh" > "$LOG/$t.log" 2>&1 &
   pids+=("$!")
   while (( $(jobs -rp | wc -l) >= JOBS )); do wait -n; done
@@ -87,7 +87,7 @@ done
 
 if [[ -n ${MC_LAYOUT_UPDATE:-} ]]; then
   {
-    printf '# Checks expected to fail for examples/92-mc-layout.sh (features not built\n'
+    printf '# Checks expected to fail for apps/mc-layout.sh (features not built\n'
     printf '# yet). Format: "<test>: <check name prefix>". See tests/mc_layout.sh.\n'
     printf '%s\n' "${newx[@]}" | sort -u
   } > "$XFAIL"

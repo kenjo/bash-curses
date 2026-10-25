@@ -261,7 +261,7 @@ Key introspection: `has_key KEY`, `keyname KEY` (prints the `KEY_` name),
 ## Mouse
 
 Enable with `mousemask ALL_MOUSE_EVENTS`; `wgetch` then returns `KEY_MOUSE`
-and the event sits in a queue. Full semantics in `MOUSE.md`.
+and the event sits in a queue. Full semantics in `mouse.md`.
 
 | Function | Meaning |
 |---|---|
@@ -488,7 +488,9 @@ The ncurses alias families all exist and behave like their base form:
 
 ## See also
 
-- `MOUSE.md` — mouse semantics and the bstate table.
-- `DESIGN.md` — internals of all three layers.
-- `references/API-MATRIX.md` — ncurses coverage.
-- `examples/newdemo.sh` — this layer, frame-diffed against the C reference.
+- `mouse.md` — mouse semantics and the bstate table.
+- `../internal/design.md` — internals of all three layers.
+- `../internal/example-deviations.md` — current accepted example parity
+  differences.
+- `../internal/api-matrix.md` — ncurses coverage.
+- `../apps/newdemo.sh` — core layer example.

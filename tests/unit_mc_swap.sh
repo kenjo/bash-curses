@@ -1,5 +1,5 @@
 #!/bin/bash
-# Headless regression test for examples/mc.sh do_swap_panels (C-u "Swap panels").
+# Headless regression test for apps/mc.sh do_swap_panels (C-u "Swap panels").
 #
 # Regression guard: the old action only toggled CUR, so the panel *contents*
 # never swapped and C-u was not bound at all. do_swap_panels must swap every
@@ -10,8 +10,8 @@ pass=0 fail=0
 ok()  { printf 'ok   %s\n' "$1"; pass=$((pass+1)); }
 bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
 
-# shellcheck source=../examples/mc.sh
-source "$REPO/examples/mc.sh"   # main() is guarded, so this only defines state+funcs
+# shellcheck source=../apps/mc.sh
+source "$REPO/apps/mc.sh"   # main() is guarded, so this only defines state+funcs
 
 eq() { # desc got want
   if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1 (want [$3] got [$2])"; fi

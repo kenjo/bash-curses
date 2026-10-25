@@ -2,14 +2,14 @@
 
 This tutorial builds the app that ships as:
 
-- `examples/dtail.bcl` — the saved `bcbuild` layout
-- `examples/dtail.sh` — the finished dual-tail app
+- `apps/dtail.bcl` — the saved `bcbuild` layout
+- `apps/dtail.sh` — the finished dual-tail app
 
 The app runs two commands and shows each command's output in its own bordered
 window. The command itself is printed in that window's top border.
 
 ```sh
-examples/dtail.sh 'tail -f /var/log/syslog' 'journalctl -f'
+apps/dtail.sh 'tail -f /var/log/syslog' 'journalctl -f'
 ```
 
 The point is not just the finished app, but the pattern:
@@ -49,7 +49,7 @@ In the builder:
 4. turn on `border` for both;
 5. turn on `tleft` so the title is left-aligned;
 6. give the content and border colours, for example `pair=1` and `bpair=2`;
-7. save the project as `examples/dtail.bcl`.
+7. save the project as `apps/dtail.bcl`.
 
 The saved project is plain replayable layout code:
 
@@ -67,7 +67,7 @@ BB_SEL_X="top"
 You can also open that file directly:
 
 ```sh
-tools/bcbuild.sh examples/dtail.bcl
+tools/bcbuild.sh apps/dtail.bcl
 ```
 
 If you want side-by-side panes instead, use one row and two columns:

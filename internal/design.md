@@ -2,7 +2,7 @@
 
 An ncurses-flavoured API implemented in pure bash. Not a 1:1 reimplementation:
 it covers the areas of the ncurses API that the reference corpora actually
-exercise (see `references/API-MATRIX.md`), excludes wide characters and the
+exercise (see `api-matrix.md`), excludes wide characters and the
 terminfo API (impractical in bash, no real consumer in the corpora), and
 makes a small number of deliberate API deviations listed below. `wgetch`
 key decoding consults the terminal's terminfo keycaps via `infocmp` (see
@@ -13,7 +13,8 @@ Input).
 - `lib/bc.sh` — the library. Source it: `source ./lib/bc.sh`. Requires bash
   >= 4.3 (associative arrays), `stty`, `tput`. ASCII only.
 - `examples/*.sh` — ports of the ncurses test-suite demos, used as smoke
-  tests. Each example is C-faithful to its source program.
+  tests. Most examples are C-faithful; current accepted differences are
+  listed in `example-deviations.md`.
 
 ## Testing
 
@@ -21,12 +22,10 @@ Interactive programs need a real tty. `tmux` is installed on the host and is
 the standard way to run the examples (and reference TUI apps such as `mc`),
 feed them keys, and inspect the rendered screen:
 
-- `tmux new-session -d -s bc -x 100 -y 30 ./examples/newdemo.sh`
+- `tmux new-session -d -s bc -x 100 -y 30 ./apps/newdemo.sh`
 - `tmux capture-pane -t bc -p` — pane contents as text
 - `tmux send-keys -t bc Down Enter q` — feed keys
 - `tmux kill-session -t bc`
-
-Verified working with Midnight Commander (`mc`) on this host.
 
 Notes for driving tmux panes programmatically:
 
@@ -40,19 +39,12 @@ Notes for driving tmux panes programmatically:
 - panes inherit the host default `TERM=screen-256color` — export
   `TERM=xterm-256color` in the app when injecting xterm key sequences.
 
-## Test suite
+## Testing
 
-`tests/run.sh` runs both suites:
+`tests/run.sh` runs the full suite. See `testing.md` for the current groups,
+app-level tests, parity tools, and tmux caveats.
 
-- `tests/unit.sh` — headless (no tty): mouse decode/merge semantics,
-  SGR/X10 battery, key-table lookup, and KEY_*/mouse-mask constants
-  compared against `/usr/include/ncurses.h`.
-- `tests/integration.sh` — tmux-based: runs the key + mouse battery app
-  in a pane, injects keys and mouse reports with `send-keys -H`, and
-  asserts the expected KEY_*/bstate output (the app writes to
-  `tmp/bc_out.txt`; panes are created/killed by the test).
-
-## Scope (from references/API-MATRIX.md)
+## Scope (from api-matrix.md)
 
 Implemented now:
 init, window, pad (minimal), output, input, mouse, color, attr,
@@ -64,33 +56,9 @@ slk_restore/slk_touch/slk_color/slk_attr* family, 16 base symbols).
 Planned (in scope per the matrix, not yet implemented):
 panels, menus, forms.
 
-Out of scope: wide (77 symbols), terminfo API (85 symbols; keycap lookup
-via `infocmp` is used for key decoding).
-
-## Verification (examples/newdemo.sh vs C newdemo)
-
-Headless frame-diff harness: run each under a 24x80 pty with `script`,
-no input, capture the byte stream, decode it to an 80x24 cell grid
-(char + SGR attrs + colour pair), and diff.
-
-- Captures: C `references/ncurses/test/newdemo` (timeout 34, ends mid first
-  wait) vs `bash examples/newdemo.sh` (timeout 43, same point).
-- Result: **0 differing cells of 672 written cells** — the rendered frame
-  (window, border, colours, subwindows, Ausmap, PDCurses line) matches the
-  C reference pixel-for-pixel.
-- The random-char and bouncing-ball phases use different RNGs (C `rand()`
-  vs bash `RANDOM`), so they match structurally, not pixel-for-pixel.
-
-Slk parity: a 7-frame demo (`/tmp/opencode/slkdemo.c` / `slkdemo_sh.sh`)
-exercises slk_init(0) + 8 slk_set labels + per-frame slk_refresh/refresh
-(frames 0-5), and frame 6 uses slk_init(3): 2-line slk, 12 labels, and the
-info line. Each frame decodes to 0 differing cells of 1920 (C capture vs
-bash).
-
-Caveat: every capture must be run with `TERM=xterm-256color` explicitly.
-The host default TERM is screen-256color, whose smacs/rmacs are SO/SI
-(`\016`/`\017`) instead of the A9 charset switch; ACS characters then
-appear in the byte stream as plain `l`/`q`/`x`/... with no `\x1b(0`.
+Out of scope: the wide-character cell model (77 symbols; only thin
+single-cell wrappers are provided), and the terminfo API (85 symbols; keycap
+lookup via `infocmp` is used for key decoding).
 
 ## Slk implementation notes
 - The slk window is a 1x80 (fmt 0..2) or 2x80 (fmt 3) window created by
@@ -190,8 +158,9 @@ poll.
 
 ## Mouse
 
-Implemented (see `MOUSE.md` for the full semantics, ground-truth evidence,
-and debugging record):
+Implemented (see `../docs/mouse.md` for user-facing semantics and
+`mouse-internals.md` for wire formats, test coverage, and implementation
+notes):
 
 - API: `mousemask`, `mouseinterval`, `getmouse`, `ungetmouse`,
   `has_mouse`.
@@ -337,8 +306,8 @@ Cost (tests/bench_layout.sh, this host): solving the mc-like screen is ~1.9 ms
 and a no-op `bc_relayout` ~2.5 ms; a real resize of it is ~130 ms, mostly
 painting the rebuilt windows. The shining-like stress case (136 floats, 566
 panels) solves in ~18 ms and rebuilds in ~0.9 s. Measured in a real 191x74
-terminal: `91-shining-layout.sh` shows its first frame after ~1.9 s and runs
-at ~3.9 frames/s (`shining.sh`: ~1.5 s, ~1.1 frames/s); a Down in
+terminal: `apps/shining-layout.sh` shows its first frame after ~1.9 s and runs
+at ~3.9 frames/s (`apps/shining.sh`: ~1.5 s, ~1.1 frames/s); a Down in
 `90-layout.sh` takes ~35 ms, like `mc.sh`. Startup and frame
 times must be measured in a real terminal (tmux + `BC_TEST_DIR` frame
 counter); headless runs that send `doupdate` to /dev/null hide its cost.
@@ -351,27 +320,26 @@ old and new selected rows when the scroll top is unchanged (`BCW_PSEL`/
 `BCW_PSEQ`/`BCW_PTOP`), and `bc_list_redraw_sel NAME` redraws just the selected
 row when the highlight depends on state outside the list (which panel is
 active, whether the menu bar is open) — so a Tab or an F9 dirties two rows
-instead of two whole panels. `examples/92-mc-layout.sh` rewrites the full `mc`
+instead of two whole panels. `apps/mc-layout.sh` rewrites the full `mc`
 clone (3829 lines) as 1526 lines of template + draw callbacks + widgets, and
 `tests/mc_layout.sh` runs the entire `mc_*` regression suite against it.
-Two lessons from matching `mc.sh` cell-for-cell at odd widths: a `"* *"` grid
-rounds the extra column into the first track, so the panel split must be
-`cols="$((COLS/2)) $((COLS/2)) $((COLS-2*(COLS/2)))"` with a `"."` filler
-column (and `on_resize` rebuilds the template, since the tracks are fixed);
-and `_bcl_put` treats `pair=0` as "no pair", so `mc.sh`'s `wattrset 0 0 0`
-full-row repaints cannot be expressed through the layout layer (ANOMALIES O4).
+Current layout behavior:
 
-`bc.sh` fixes found while building it: the uniform row cache is only used by
-the window that owns the buffer (a derwin's full-width rows were replayed from
-the owner's left edge, over its border); `delwin` of a derwin no longer
-deletes the parent's cells and only walks its own rectangle; clearing a
-window's dirty marks walks its own dirty list instead of all marks;
-`doupdate` composites through a cached owner map (`BC_OWN`, which window
-shows at each cell, rebuilt only when the panel stack or a panel's
-rectangle changes) instead of walking every panel for every dirty cell —
-that walk made the shining demos take ~19 s per full frame at 191x74;
-`werase` no longer calls a function per cell; `cbreak` re-enables signal
-keys as in ncurses (Ctrl-C was delivered as a byte under initscr's raw mode).
+- A `"* *"` grid rounds the extra column into the first track. For exact
+  panel splits at odd widths, use explicit fixed tracks plus a filler column
+  and rebuild the template from `on_resize`.
+- `_bcl_put` treats `pair=0` as "no pair". Full-row repaints that need a
+  literal pair 0 must use the window background pair or raw `bc.sh` calls.
+
+Current core behavior:
+
+- The uniform row cache is used only by the window that owns the buffer.
+- `delwin` of a derwin walks only its own rectangle.
+- Clearing a window's dirty marks walks that window's dirty list.
+- `doupdate` composites through a cached owner map (`BC_OWN`), rebuilt when
+  the panel stack or a panel rectangle changes.
+- `werase` does not call a function per cell.
+- `cbreak` re-enables signal keys as in ncurses.
 
 ## Bash 5.3 implementation pitfalls
 

@@ -245,7 +245,7 @@ drags; `clickms=N` sets the click interval). In `bc_run`, a mouse event
 arrives as `KEY_MOUSE` and is dispatched for you: the topmost area under the
 pointer is found, and `click_NAME Y X BSTATE` is called (or `on_click NAME Y X
 BSTATE` if you don't define one). `Y X` are content coordinates of that area;
-`BSTATE` is the button state (see `docs/bc.md` and `MOUSE.md`).
+`BSTATE` is the button state (see `bc.md` and `mouse.md`).
 
 ```bash
 click_left() { sel=$1; bc_dirty left; }   # Y is the row clicked

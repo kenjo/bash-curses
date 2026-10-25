@@ -1,9 +1,9 @@
 #!/bin/bash
-# tmux-driven regression test for mouse input in examples/mc.sh.
+# tmux-driven regression test for mouse input in apps/mc.sh.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# MC_SCRIPT: the clone under test (default apps/mc.sh); MC_TAG: prefix for
 # this run's tmp files/sockets so two runs can go in parallel.
-MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MC_SCRIPT=${MC_SCRIPT:-$REPO/apps/mc.sh}
 MCT=${MC_TAG:-}
 SOCK="$REPO/tmp/${MCT}bc_mouse.sock"
 TREE="$REPO/tmp/${MCT}mc_mouse"

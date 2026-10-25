@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmux-driven end-to-end test for the F9 menu in examples/mc.sh.
+# tmux-driven end-to-end test for the F9 menu in apps/mc.sh.
 #
 # Regression guards (all were broken before the menu rework):
 #   - the menu bar is always visible (Left File Command Options Right) and cyan
@@ -9,9 +9,9 @@
 #   - Right moves to the next bar item; its dropdown shows that menu's items
 #     (File -> "Filtered view"), not the previous menu's
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# MC_SCRIPT: the clone under test (default examples/mc.sh); MC_TAG: prefix for
+# MC_SCRIPT: the clone under test (default apps/mc.sh); MC_TAG: prefix for
 # this run's tmp files/sockets so two runs can go in parallel.
-MC_SCRIPT=${MC_SCRIPT:-$REPO/examples/mc.sh}
+MC_SCRIPT=${MC_SCRIPT:-$REPO/apps/mc.sh}
 MCT=${MC_TAG:-}
 SOCK="$REPO/tmp/${MCT}bc_menu.sock"
 T=bcmenu

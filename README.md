@@ -1,28 +1,32 @@
-# bc — terminal UI for bash
+# bash_curses — ncurses clone in bash
 
-An ncurses-flavoured TUI library written in pure bash. Source `lib/bc.sh`,
-then write terminal apps with the familiar `initscr` / `waddstr` / `wgetch` /
-`wrefresh` API. On top of it sit three optional layers — `lib/layout.sh`
-(describe the screen in a template, draw by area name), `lib/widgets.sh`
-(lists, menu bars, dialogs) and `lib/dialog.sh` (`dialog`-style msgbox / yesno
-/ menu prompts) — so most apps never compute coordinates.
+A pure-bash ncurses clone plus optional layout, widgets, and dialog layers.
+Source `lib/bc.sh`, then write terminal apps with the familiar `initscr` /
+`waddstr` / `wgetch` / `wrefresh` API. On top of it sit three optional layers —
+`lib/layout.sh` (describe the screen in a template, draw by area name),
+`lib/widgets.sh` (lists, menu bars, dialogs) and `lib/dialog.sh`
+(`dialog`-style msgbox / yesno / menu prompts) — so most apps never compute
+coordinates.
+
+The repo also includes finished showcase apps in `apps/`, including a Midnight
+Commander clone, and small API demos in `examples/`.
 
 It is not a 1:1 reimplementation: it covers the parts of the ncurses API the
-reference corpora actually exercise (see `references/API-MATRIX.md`), includes
+reference corpora actually exercise (see `internal/api-matrix.md`), includes
 thin single-cell wide-character wrappers but excludes the terminfo API, and
 makes a small number of deliberate API deviations (see
 [docs/bc.md](docs/bc.md#deviations-and-gaps) — read them before porting C
 code).
 
-**Documentation lives in [`docs/`](docs/README.md)**: a tutorial and full API
-reference for each layer.
+**User documentation lives in [`docs/`](docs/README.md)**: a tutorial and full
+API reference for each layer. Contributor notes live in
+[`internal/`](internal/README.md).
 
 ## Requirements
 
 - bash >= 4.3, `stty`, `tput`, `infocmp`
 - a real tty for running apps
-- `tmux` (to run/drive interactive apps on a headless host, and for the
-  integration tests)
+- `tmux` for running/driving interactive apps and the integration tests
 
 ## Quick start
 
@@ -89,24 +93,28 @@ bc_run
 [docs/layout.md](docs/layout.md), [docs/widgets.md](docs/widgets.md),
 [docs/bc.md](docs/bc.md), [docs/builder.md](docs/builder.md).
 
-## Examples
+## Apps and examples
 
-`examples/` holds ports of ncurses test-suite demos. `tests/examples.sh`
-smoke-tests them in tmux. The current example set also exercises every public
-wrapper in `lib/bc.sh` at least once. `examples/newdemo.sh` was frame-diffed
-against the C reference: 0 differing cells of 672 written (see DESIGN.md
-"Verification").
+`apps/` holds finished showcase programs:
 
-Run any of them in a terminal:
+- `apps/newdemo.sh` — color/window demo ported from ncurses `newdemo`.
+- `apps/shining.sh` — overlapping windows typing the same sentence.
+- `apps/shining-layout.sh` — `shining.sh` rebuilt with `lib/layout.sh`.
+- `apps/mc.sh` — Midnight Commander clone built on `lib/bc.sh`.
+- `apps/mc-layout.sh` — the same clone rebuilt on `lib/layout.sh` +
+  `lib/widgets.sh`.
+- `apps/dtail.sh` — dual tail app built with `lib/layout.sh`.
+
+Run one in a terminal:
 
 ```sh
-bash examples/newdemo.sh
+bash apps/newdemo.sh
 ```
 
-Layout-layer examples: `examples/90-layout.sh` (mc-like file manager with a
-modal Copy dialog), `examples/91-shining-layout.sh` (`shining.sh` redone with
-floats), `examples/92-mc-layout.sh` (the full `mc` clone rebuilt on
-`lib/layout.sh` + `lib/widgets.sh`).
+`examples/` holds small ports of ncurses test-suite demos, plus
+`examples/90-layout.sh` as a layout-layer example. The numbered examples are
+smoke-tested in tmux by `tests/examples.sh`. Current accepted differences from
+the C reference binaries are listed in `internal/example-deviations.md`.
 
 ## Mouse
 
@@ -114,8 +122,8 @@ floats), `examples/92-mc-layout.sh` (the full `mc` clone rebuilt on
 CLICK and CLICK runs into DOUBLE/TRIPLE, filters by the `mousemask`, and
 returns `KEY_MOUSE`; `getmouse` then drains the queue into
 `BC_ME_ID`/`BC_ME_X`/`BC_ME_Y`/`BC_ME_BSTATE`. `bstate` uses the ncurses
-mouse-version-2 encoding; wheel up/down are buttons 4/5. Full semantics,
-ground-truth evidence, and the bstate table: `MOUSE.md`.
+mouse-version-2 encoding; wheel up/down are buttons 4/5. Full user-facing
+semantics and the bstate table: [docs/mouse.md](docs/mouse.md).
 
 ## API deviations from ncurses (must-read)
 
@@ -145,38 +153,9 @@ Details: [docs/distributing.md](docs/distributing.md).
 bash tests/run.sh
 ```
 
-- `tests/unit.sh` — headless (no tty): key-table lookup, SGR/X10 mouse decode,
-  mask expansion, click/double/triple merge runs, and KEY_*/mouse constants vs
-  the installed ncurses header.
-- `tests/unit_screen.sh` — headless: SGR capture parser, per-cell grid model,
-  and raw cursor tracker.
-- `tests/unit_layout.sh` — headless: `lib/layout.sh` template parsing and
-  errors, track sizing, window binding/rebuilds, floats, and the event loop
-  (with a fake key source).
-- `tests/unit_widgets.sh` — headless: `lib/widgets.sh` lists (partial redraw,
-  selection hooks, clamping), menubar, and dialog widgets.
-- `tests/unit_dialog.sh` — headless: `lib/dialog.sh` text prep/wrapping and
-  button sizing.
-- `tests/unit_builder.sh` — headless: `tools/bcbuild.sh` model operations
-  (split, delete/collapse, rename, styles, tags, floats, serialise
-  round-trip, undo/redo, export).
-- `tests/builder.sh` — tmux-driven: drives the builder UI, saves a project
-  and exports a runnable app.
-- `tests/dialog_app.sh` — tmux-driven: drives the ported
-  `/home/kenjo/proj/ai/start_local_ai_bc.sh` with fake tools (skipped if the
-  app is absent).
-- `tests/layout_demo.sh`, `tests/layout_shining.sh` — tmux-driven: the two
-  layout examples, incl. dialogs, shadows, clicks and resizes.
-  (`tests/bench_layout.sh` is a benchmark, not part of `run.sh`.)
-- `tests/integration.sh` — tmux-driven: runs `tests/battery_app.sh` in a pane,
-  injects key and mouse bytes via `send-keys -H`, and asserts the decoded
-  `KEY`/`EV` output.
-- `tests/examples.sh` — tmux-driven: runs `examples/*.sh` smoke tests in a real
-  tty, feeds keys (including raw SGR mouse bytes), and requires clean exits.
-- `tests/mc_*.sh` — tmux-driven regression tests for the `mc` clone: navigation,
-  menus, viewer, resize, dialogs, actions, and MC-vs-clone parity checks.
-  `tests/mc_layout.sh` runs the same suite against `examples/92-mc-layout.sh`
-  (known diffs listed in `tests/mc_layout.xfail`).
+The suite includes headless unit tests, tmux integration tests, example smoke
+tests, and app regression tests. Details:
+[internal/testing.md](internal/testing.md).
 
 ## Layout
 
@@ -185,11 +164,10 @@ lib/bc.sh        the library (source it)
 lib/layout.sh    optional layout layer: templates, floats, draw by name, bc_run
 lib/widgets.sh   optional widgets on top of layout: lists, menubar, dialogs
 lib/dialog.sh    optional dialog layer on top of widgets: msgbox, yesno, menu
-docs/            tutorials + API reference for each layer (start at docs/README.md)
-examples/        ports of ncurses test-suite demos (smoke tests)
-tests/           run.sh, unit.sh, unit_screen.sh, integration.sh, mc_* tests
-references/      read-only vendored ncurses corpus (do not edit)
-DESIGN.md        architecture, data model, input/mouse, verification, deviations
-MOUSE.md         mouse semantics, ground truth, debugging record
+docs/            user tutorials + API reference for each layer (start at docs/README.md)
+internal/        contributor notes: design, testing, mouse internals, parity, API matrix
+apps/            finished showcase apps: mc, newdemo, shining, dtail
+examples/        small ncurses API demos and layout examples
+tests/           run.sh, unit*.sh, integration.sh, examples, mc_*, app tests
 AGENTS.md        working conventions for this repo
 ```

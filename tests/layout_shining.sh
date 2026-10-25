@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmux smoke test for examples/91-shining-layout.sh: lib/layout.sh floats
+# tmux smoke test for apps/shining-layout.sh: lib/layout.sh floats
 # (random placement, overhang via within=, nested floats, shadows), the
 # bc_run fps loop (animation via on_tick), and relayout on resize.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,7 +13,7 @@ source "$REPO/tests/lib/screen.sh"
 tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 rm -f "$SOCK"
 tmux -S "$SOCK" new-session -d -s "$T" -x 100 -y 30 \
-  "cd '$REPO' && TERM=xterm-256color bash examples/91-shining-layout.sh 2>'$REPO/tmp/layout_shining.err'"
+  "cd '$REPO' && TERM=xterm-256color bash apps/shining-layout.sh 2>'$REPO/tmp/layout_shining.err'"
 cap() { tmux -S "$SOCK" capture-pane -t "$T" -p; }
 
 ready=0 t0=${EPOCHREALTIME//[!0-9]/}
@@ -77,7 +77,7 @@ tmux -S "$SOCK" kill-session -t "$T" 2>/dev/null
 
 # Ctrl-C must quit (initscr's raw mode used to swallow it) and restore the tty
 tmux -S "$SOCK" new-session -d -s "$T" -x 80 -y 24 \
-  "cd '$REPO' && TERM=xterm-256color bash examples/91-shining-layout.sh; echo EXITED; sleep 30"
+  "cd '$REPO' && TERM=xterm-256color bash apps/shining-layout.sh; echo EXITED; sleep 30"
 for _ in $(seq 1 100); do cap | grep -q 'dull boy' && break; sleep 0.1; done
 tmux -S "$SOCK" send-keys -t "$T" C-c
 for _ in $(seq 1 40); do cap | grep -q EXITED && break; sleep 0.25; done

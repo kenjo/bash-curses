@@ -113,7 +113,7 @@ bash -n "$REPO/tmp/bcbuild_export.sh" && ok "export: valid bash" || bad "export:
 grep -q 'bc_list main.0' "$REPO/tmp/bcbuild_export.sh" && ok "export: tagged widget emitted" || bad "export: tagged widget emitted"
 grep -q '^BB_TAG' "$REPO/tmp/bcbuild_export.sh" && bad "export: BB_TAG leaked" || ok "export: BB_TAG stripped"
 
-bb_load_file "$REPO/examples/dtail.bcl" \
+bb_load_file "$REPO/apps/dtail.bcl" \
   && [[ ${BB_KIND[top]} == area && ${BB_KIND[bot]} == area ]] \
   && ok "load: dtail.bcl has top/bot" || bad "load: dtail.bcl has top/bot"
 bb_export "$REPO/tmp/dtail_export.sh" && bash -n "$REPO/tmp/dtail_export.sh" \

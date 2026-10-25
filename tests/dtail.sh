@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmux-driven test for examples/dtail.sh: two commands get their own bordered
+# tmux-driven test for apps/dtail.sh: two commands get their own bordered
 # panes, the command is shown in the border, and q exits cleanly.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 T="$REPO/tmp/dtail"
@@ -17,7 +17,7 @@ CMD2='seq 1 3 | sed "s/^/bot /"'
 
 tmux -S "$sock" new-session -d -s "$sess" -x 100 -y 30 \
   bash -c 'bash "$1" "$2" "$3" 2>"$4"; rc=$?; printf "%s\n" "$rc" > "$5"' _ \
-  "$REPO/examples/dtail.sh" "$CMD1" "$CMD2" "$err" "$out"
+  "$REPO/apps/dtail.sh" "$CMD1" "$CMD2" "$err" "$out"
 
 wait_for() { # needle
   local needle=$1 _

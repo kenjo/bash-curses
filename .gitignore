@@ -12,6 +12,10 @@ examples/*.o
 references/
 ncurses-6.6/
 
+# generated discovery logs
+ANOMALIES.md
+PARITY_FINDINGS.md
+
 # stray files
 typescript
 ~

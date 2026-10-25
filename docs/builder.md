@@ -93,7 +93,7 @@ BB_TAG[main.0]=list
 
 `BB_TAG[...]` lines record which widget each leaf should get on export.
 
-`examples/dtail.bcl` is a saved two-pane project; `examples/dtail.sh` is the
+`apps/dtail.bcl` is a saved two-pane project; `apps/dtail.sh` is the
 filled-in dual-tail app built from that layout.
 → **[docs/tutorial-dtail.md](tutorial-dtail.md)**
 

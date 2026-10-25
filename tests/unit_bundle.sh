@@ -10,9 +10,10 @@ bad() { printf 'FAIL %s\n' "$1"; fail=$((fail+1)); }
 rm -rf "$T"
 mkdir -p "$T"
 
-check_roundtrip() { # example-base (uses its real source line)
-  local base=$1
-  bash "$BC" bundle "$REPO/examples/$base.sh" -o "$T/$base.bundled" >/dev/null 2>"$T/$base.err"
+check_roundtrip() { # repo-relative script path (uses its real source line)
+  local rel=$1 base=${1##*/}
+  base=${base%.sh}
+  bash "$BC" bundle "$REPO/$rel" -o "$T/$base.bundled" >/dev/null 2>"$T/$base.err"
   if [[ $? != 0 || ! -f "$T/$base.bundled" ]]; then
     bad "$base: bundle failed"
     return
@@ -25,7 +26,7 @@ check_roundtrip() { # example-base (uses its real source line)
   local libs=()
   case $base in
     90-layout) libs=(bc.sh layout.sh) ;;
-    92-mc-layout) libs=(bc.sh layout.sh widgets.sh) ;;
+    mc-layout) libs=(bc.sh layout.sh widgets.sh) ;;
     *) libs=(bc.sh) ;;
   esac
   local lib badlib=0
@@ -33,7 +34,7 @@ check_roundtrip() { # example-base (uses its real source line)
     cmp -s "$T/$base.out/$lib" "$REPO/lib/$lib" || badlib=1
   done
   if (( badlib )); then bad "$base: unbundled libs differ from lib/"; else ok "$base: unbundled libs identical"; fi
-  if diff -q <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets|dialog).sh"?[[:space:]]*$' "$REPO/examples/$base.sh") \
+  if diff -q <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets|dialog).sh"?[[:space:]]*$' "$REPO/$rel") \
              <(grep -vE '^[[:space:]]*source .*(bc|layout|widgets|dialog).sh"?[[:space:]]*$' "$T/$base.out/$base.bundled") >/dev/null; then
     ok "$base: script body identical after round-trip"
   else
@@ -50,9 +51,9 @@ check_roundtrip() { # example-base (uses its real source line)
   fi
 }
 
-check_roundtrip 12-mouse
-check_roundtrip 90-layout
-check_roundtrip 92-mc-layout
+check_roundtrip examples/12-mouse.sh
+check_roundtrip examples/90-layout.sh
+check_roundtrip apps/mc-layout.sh
 
 # dialog.sh as a fourth layer
 printf '#!/bin/bash\nsource "%s/lib/dialog.sh"\nbc_menu "T" "M" a "A"\n' "$REPO" > "$T/dlg.sh"

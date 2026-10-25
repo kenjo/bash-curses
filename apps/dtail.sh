@@ -2,9 +2,9 @@
 # dtail — dual tail: run two commands side-by-side in their own bordered
 # windows, with the command shown in each window's top border.
 #
-#   examples/dtail.sh 'tail -f /var/log/syslog' 'journalctl -f'
+#   apps/dtail.sh 'tail -f /var/log/syslog' 'journalctl -f'
 #
-# The layout is the one exported from tools/bcbuild.sh (examples/dtail.bcl):
+# The layout is the one exported from tools/bcbuild.sh (apps/dtail.bcl):
 # a two-row screen, top and bot, each with a left-aligned border title.
 
 source "${BASH_SOURCE[0]%/*}/../lib/layout.sh"
