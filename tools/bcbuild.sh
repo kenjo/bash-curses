@@ -638,7 +638,7 @@ _bb_style_e() { # model name -> mirror BB_* into BCL_*
         # 'o' turns the preview chrome off to see the real rendering.
         FRAME) bc_style "$e" "$([[ ${BCB_OUTLINE:-1} != 0 ]] && echo border || echo border=0)" ;;
         SHADOW) bc_style "$e" shadow=0 ;;
-        BPAIR) bc_style "$e" bpair=0 ;;
+        BPAIR) bc_style "$e" "bpair=$BCB_APPP" ;;
         TITLE) if [[ ${BCB_OUTLINE:-1} != 0 ]]; then bc_style "$e" "title=$n"; else unset "BCL_TITLE[$e]"; fi ;;
         TPAIR) unset 'BCL_TPEN[$e]' ;;
         *) unset "BCL_$k[$e]" ;;
@@ -957,12 +957,32 @@ on_mouse() { # Y X BSTATE AREA — status-line echo of every mouse event
   bc_dirty st
 }
 
+# Deepest engine area whose bound rect contains y,x ('' for the root).
+# Used when a click lands on 'cvs' because freshly split areas were not
+# bound yet at hit-test time.
+_bb_hit_area() { # y x
+  local y=$1 x=$2 best="" e d
+  for e in "${!BCL_RY[@]}"; do
+    [[ $e == "$BCB_E"* ]] || continue
+    (( y >= BCL_RY[$e] && y < BCL_RY[$e] + BCL_RH[$e] &&
+       x >= BCL_RX[$e] && x < BCL_RX[$e] + BCL_RW[$e] )) || continue
+    d=${#e}
+    if [[ -z $best ]] || (( d > ${#best} )); then best=$e; fi
+  done
+  printf '%s' "${best#"$BCB_E"}"
+}
+
 on_click() { # NAME Y X BSTATE — NAME is an engine area name
   local a=$1 b=$4 sy=$BC_ME_Y sx=$BC_ME_X
   case $a in
     tb|bar|bar.*|prop|st|pal) return 0 ;;
   esac
   local n=${a#"$BCB_E"}
+  if [[ $a == cvs ]]; then
+    bc_relayout
+    n=$(_bb_hit_area "$sy" "$sx")
+    [[ -z $n ]] && return 0
+  fi
 
   if (( b & BUTTON1_PRESSED )); then
     if _bb_float_of "$n"; then
@@ -986,7 +1006,7 @@ on_click() { # NAME Y X BSTATE — NAME is an engine area name
       bc_mouse_motion 1
       return 0
     fi
-    [[ $a != cvs && -n ${BB_KIND[$n]+set} ]] && bb_select "$n"
+    [[ -n ${BB_KIND[$n]+set} ]] && bb_select "$n"
     return 0
   fi
 
