@@ -846,6 +846,7 @@ bb_yes() { # title text -> 0 yes
     bcq.txt  bcq.txt  bcq.txt  bcq.txt
     .        bcq.yes  bcq.no   .
   " rows="auto auto" cols="* auto auto *"
+  bc_style bcq.txt margin=1
   bc_text bcq.txt "$2" align=center
   bc_button bcq.yes "Yes" ok
   bc_button bcq.no "No" cancel
