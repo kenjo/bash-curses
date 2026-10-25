@@ -631,9 +631,13 @@ _bb_style_e() { # model name -> mirror BB_* into BCL_*
       esac
     else
       case $k in
-        FRAME) bc_style "$e" border=0 ;;
+        # the canvas always outlines areas so the layout is visible while
+        # editing, even when the model has no border; the exported app uses
+        # BB_FRAME. An untitled area shows its name as the preview title.
+        FRAME) bc_style "$e" border ;;
         SHADOW) bc_style "$e" shadow=0 ;;
         BPAIR) bc_style "$e" bpair=0 ;;
+        TITLE) bc_style "$e" "title=$n" ;;
         TPAIR) unset 'BCL_TPEN[$e]' ;;
         *) unset "BCL_$k[$e]" ;;
       esac
