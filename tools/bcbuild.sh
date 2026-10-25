@@ -836,7 +836,7 @@ bb_prompt() { # title label default -> REPLY
 bb_yes() { # title text -> 0 yes
   bc_dialog bcq "$1" 7x44 margin=1 shadow=mc
   bc_grid bcq "
-    bcq.txt
+    bcq.txt  bcq.txt
     bcq.yes  bcq.no
   " rows="auto auto" cols="* *"
   bc_text bcq.txt "$2"

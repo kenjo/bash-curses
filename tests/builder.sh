@@ -96,7 +96,14 @@ if wait_for "Export"; then ok "export prompt opens"; else bad "export prompt ope
 tmux -S "$sock" send-keys -t "$sess" Enter
 if wait_for "exported"; then ok "app exported"; else bad "app exported"; cap; fi
 
+# quit-confirm dialog must render its text and buttons (regression: a
+# 1-cell row in a 2-col grid made bc_grid fail and the dialog came up empty)
+tmux -S "$sock" send-keys -t "$sess" h
+sleep 0.3
 tmux -S "$sock" send-keys -t "$sess" q
+if wait_for "Discard unsaved changes?"; then ok "quit confirm renders"; else bad "quit confirm renders"; cap; fi
+grep -q "\[ No \]" <<<"$(cap)" && ok "quit confirm has buttons" || bad "quit confirm has buttons"
+tmux -S "$sock" send-keys -t "$sess" Enter   # Yes -> quit
 for _ in $(seq 1 50); do [[ -f $out ]] && break; sleep 0.1; done
 tmux -S "$sock" kill-session -t "$sess" 2>/dev/null; rm -f "$sock"
 
