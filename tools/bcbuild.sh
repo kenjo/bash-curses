@@ -944,7 +944,8 @@ _bb_float_of() { # name
   return 1
 }
 
-on_mouse() { # Y X BSTATE AREA — status-line echo of every mouse event
+on_mouse() { # Y X BSTATE AREA — status-line echo of mouse events (BCB_MOUSE_DEBUG=1)
+  [[ -n ${BCB_MOUSE_DEBUG:-} ]] || return 0
   local y=$1 x=$2 b=$3 a=$4 what
   if (( b & BUTTON1_PRESSED )); then what=press
   elif (( b & BUTTON1_RELEASED )); then what=release

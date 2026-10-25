@@ -13,7 +13,7 @@ sock="$T/bc.sock" out="$T/rc.out" sess=bcbuild
 tmux -S "$sock" kill-session -t "$sess" 2>/dev/null
 rm -f "$sock" "$out"
 tmux -S "$sock" new-session -d -s "$sess" -x 120 -y 35 \
-  bash -c 'bash "$1"; rc=$?; printf "%s\n" "$rc" > "$2"' _ "$REPO/tools/bcbuild.sh" "$out"
+  bash -c 'BCB_MOUSE_DEBUG=1 bash "$1"; rc=$?; printf "%s\n" "$rc" > "$2"' _ "$REPO/tools/bcbuild.sh" "$out"
 
 wait_for() { # needle
   local needle=$1 _
