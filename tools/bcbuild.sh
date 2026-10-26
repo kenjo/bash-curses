@@ -1453,7 +1453,7 @@ _bb_colors() {
   # mc colours on FIXED 256-colour indices: the basic 16 (0-15) are
   # remapped by terminal themes (this user's theme paints blue as red),
   # but 16-231 are the immutable xterm cube and render the same everywhere.
-  local blk=16 wht=231 blu=20 ylw=226 cyn=51 grn=46 red=196
+  local blk=16 wht=231 blu=20 ylw=178 cyn=51 grn=46 red=196
   if (( BC_COLORS < 256 )); then blk=0 wht=7 blu=1 ylw=3 cyn=6 grn=2 red=1; fi
   alloc_pair $wht $blu; BCB_APPP=$bc_pair    # mc blue screen
   alloc_pair $ylw $blu; BCB_MSGP=$bc_pair    # errors: yellow on blue

@@ -67,7 +67,7 @@ It needs a terminal of at least **110x32**.
 Mouse: click selects; click the toolbar buttons or the property rows (see
 above) to act; **drag a track boundary** between two areas to resize the two
 tracks; **drag a float** to move it, drag its bottom-right corner to resize.
-When canvas outlines are on, a yellow `+` marks the middle of each draggable
+When canvas outlines are on, a gold `+` marks the middle of each draggable
 boundary. While dragging a boundary, a red `#` line shows the proposed edge in
 real time; the layout is applied when the button is released. The menu bar
 (`F9`) mirrors all of the above.
